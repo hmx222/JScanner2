@@ -46,7 +46,7 @@ if __name__ == '__main__':
         # features scan
         for _url in all_url_list:
             try:
-                url_response_obj = send_http(url, "GET", args.header)
+                url_response_obj = send_http(_url, "GET", args.header)
                 status_code = status(url_response_obj)
                 if status_code in args.blackStatus:
                     continue

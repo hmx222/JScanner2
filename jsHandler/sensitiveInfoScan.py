@@ -58,6 +58,12 @@ def find_swagger(text)->list:
     pattern = r'((swagger-ui.html)|(\"swagger\":)|(Swagger UI)|(swaggerUi)|(swaggerVersion))'
     return re.findall(pattern, text)
 
+def find_js_map_files(text):
+    """寻找所有可能的.js.map文件路径"""
+    # 匹配所有以 .js.map 结尾的路径或 URL
+    pattern = r'(\S+\.js\.map)'  # 匹配非空白字符后的 .js.map 文件路径
+    matches = re.findall(pattern, text)  # 返回所有匹配的结果
+    return matches
 
 def find_redis(text)->list:
     """
@@ -68,23 +74,6 @@ def find_redis(text)->list:
     pattern = r'((redis://)|(redis-cluster://)|(rediss://)|(rediss-cluster://))'
     return re.findall(pattern, text)
 
-def find_ip(text)->list:
-    """
-    ip提取
-    :param text:
-    :return:
-    """
-    pattern = r'(([0-9]{1,3}\.){3}[0-9]{1,3})'
-    return re.findall(pattern, text)
-
-def find_mac(text)->list:
-    """
-    mac提取
-    :param text:
-    :return:
-    """
-    pattern = r'(([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}))'
-    return re.findall(pattern, text)
 
 def find_sensitive_info(text)->list:
     """
@@ -92,8 +81,9 @@ def find_sensitive_info(text)->list:
     :param text:
     :return:
     """
-    pattern = r"((\[)?('|\"|`)?([\w]{0,10})((key)|(secret)|(token)|(config)|(auth)|(access)|(admin)|(ticket))([\w]{0,10})('|\"|`)?(\])?( |)(:|=)( |)('|\"|`)(.*?)('|\"|`)(|,))"
-    return re.findall(pattern, text)
+    pattern = r"(\[?)('?'\"`)?([\w]{0,10})((key|secret|token|config|auth|access|admin|ticket))([\w]{0,10})('?\"`)?(\])?\s*(=|:)\s*['\"`](.*?)['\"`](,?)"
+    matches = re.findall(pattern, text)
+    return matches
 
 def find_all(text)->list:
     """
@@ -110,7 +100,7 @@ def find_all(text)->list:
     import_info.extend(find_jdbc(text))
     import_info.extend(find_swagger(text))
     import_info.extend(find_redis(text))
-    import_info.extend(find_ip(text))
-    import_info.extend(find_mac(text))
+    import_info.extend(find_js_map_files(text))
+
     import_info.extend(find_sensitive_info(text))
     return import_info
