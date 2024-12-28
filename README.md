@@ -44,25 +44,25 @@ python main.py -u "https://example.com/xxxxx"
 ##### 设置header请求头
 
 ```shell
-python Jscanner.py -u "https://example.com/xxxxx" -r "{'cookie':'xxxx','user-Agent':'xxxx','xxxx':'xxxx'}"
+python main.py -u "https://example.com/xxxxx" -r "{'cookie':'xxxx','user-Agent':'xxxx','xxxx':'xxxx'}"
 ```
 若不设置则会使用默认的请求头
 
 ##### 设置查找深度
 
 ```shell
-python Jscanner.py -u "https://example.com/xxxxx" -H 2
+python main.py -u "https://example.com/xxxxx" -H 2
 ```
 
 
 ##### 设置您不想要的状态码
 
 ```shell
-python Jscanner.py -u "https://example.com/xxxxx" -B "(404,502)"
+python main.py -u "https://example.com/xxxxx" -B "(404,502)"
 ```
-##### 输出为Excel表格的形式（推荐）
+##### 输出为Excel表格的形式
 ```shell
-python Jscanner.py -u "https://example.com/xxxxx" -o excel
+python main.py -u "https://example.com/xxxxx" -o excel
 ```
 
 .........
