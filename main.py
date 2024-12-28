@@ -8,7 +8,7 @@ from jsHandler.sensitiveInfoScan import find_all
 from parse_args import parse_args
 
 if __name__ == '__main__':
-    # 初始化colorama，在Windows系统下需要这一步来启用ANSI转义序列支持
+    # 初始化colorama，
     init()
 
     # get user args
