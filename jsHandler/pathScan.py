@@ -1,7 +1,8 @@
 import os
 import re
 from urllib.parse import urlparse
-
+import concurrent.futures
+from colorama import Fore
 from tldextract import tldextract
 
 from httpHandler.httpSend import send_http
@@ -104,17 +105,62 @@ def data_clean(url,data_list)->list:
             return_url_list.append(return_url)
     return return_url_list
 
-def height_scan(urls, method, header, high):
-    """深度查找"""
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def height_scan(urls, method, header, high, max_workers=5):
+    """深度查找 (多线程优化)"""
     return_murl_list = []
-    for num in range(high):
-        for url in urls:
-            response_object = send_http(url, method, header)
+
+    def process_url(url):
+        # 单独处理一个 URL 的逻辑
+        if url in return_murl_list:
+            return []
+        response_object = send_http(url, method, header)
+        if response_object is None:
+            return []
+        if status(response_object) == 200:
             response_body = response_object.text
-            # object = url_request(i, header=header, wait_time=wait_time)
-            if status(object) == 200:
-                urlResult = data_clean(url,analysis_by_rex(response_body))
-                return_murl_list.extend(urlResult)
-        urls = []
-        urls.extend(return_murl_list)
+            return data_clean(url, analysis_by_rex(response_body))
+        return []
+
+    for _ in range(high):
+        # 使用线程池来并发处理 URL
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {executor.submit(process_url, url): url for url in urls}
+            for future in as_completed(future_to_url):
+                try:
+                    result = future.result()
+                    return_murl_list.extend(result)
+                except Exception as e:
+                    print(f"Error processing URL {future_to_url[future]}: {e}")
+
+        # 更新 URL 列表，去重
+        urls = list(set(return_murl_list))
+
     return return_murl_list
+
+
+
+
+# def height_scan(urls, method, header, high):
+#     """深度查找"""
+#     return_murl_list = []
+#     for num in range(high):
+#         for url in urls:
+#             # 为了避免重复的请求，所以需要进行判断
+#             if url in return_murl_list:
+#                 continue
+#             print(f"now url :{url}")
+#
+#             response_object = send_http(url, method, header)
+#             if response_object is None:
+#                 continue
+#             response_body = response_object.text
+#             # object = url_request(i, header=header, wait_time=wait_time)
+#             if status(response_object) == 200:
+#                 urlResult = data_clean(url,analysis_by_rex(response_body))
+#                 return_murl_list.extend(urlResult)
+#         urls = []
+#         urls.extend(return_murl_list)
+#     return return_murl_list

@@ -22,7 +22,8 @@ if __name__ == '__main__':
 
     for url in url_list:
         url_response_obj = send_http(url, "GET", args.header)
-
+        if url_response_obj is None:
+            continue
         first_analysis_result_list = data_clean(args.url,analysis_by_rex(url_response_obj.text))
 
         all_url_list = []

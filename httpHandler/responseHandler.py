@@ -37,7 +37,7 @@ def get_title(requests)->str:
     else:
         return title_str
 
-def status(requests)->str:
+def status(requests)->int:
     """变更为对状态码的提取"""
     try:
         status_code = requests.status_code
