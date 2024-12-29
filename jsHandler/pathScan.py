@@ -140,7 +140,7 @@ def height_scan(urls, method, header, high, max_workers=5, use_selenium="/path/c
             future_to_url = {executor.submit(process_url, url): url for url in urls}
             for future in as_completed(future_to_url):
                 try:
-                    #TODO 修复bug
+
                     result = future.result()
                     return_murl_list.extend(result)
                 except Exception as e:
