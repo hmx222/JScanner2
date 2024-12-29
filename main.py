@@ -1,8 +1,10 @@
 from colorama import Fore, init
+from user_agent import generate_user_agent
 
 from fileHandler.fileIO import read, write_excel, remove_duplicates
 from httpHandler.httpSend import send_http
 from httpHandler.responseHandler import status, get_title, return_length
+from jsHandler.getJSFromSelenium import get_js_from_chrome
 from jsHandler.pathScan import analysis_by_rex, height_scan, data_clean
 from jsHandler.sensitiveInfoScan import find_all
 from parse_args import parse_args
@@ -21,15 +23,22 @@ if __name__ == '__main__':
         url_list = [args.url]
 
     for url in url_list:
+        if args.RandomUA:
+            # 生成一个随机的 User-Agent
+            random_user_agent = generate_user_agent()
+            # 替换 User-Agent
+            args.header['User-Agent'] = random_user_agent
         url_response_obj = send_http(url, "GET", args.header)
         if url_response_obj is None:
             continue
         first_analysis_result_list = data_clean(args.url,analysis_by_rex(url_response_obj.text))
-
+        if args.selenium:
+            first_analysis_result_list.extend(get_js_from_chrome(url,args.selenium))
         all_url_list = []
         if args.height > 0:
             # heigth scan
-            height_scan_list = height_scan(first_analysis_result_list, "GET", args.header, args.height)
+            height_scan_list = height_scan(urls=first_analysis_result_list, method="GET", header=args.header, high=args.height,max_workers=5,use_selenium=args.selenium)
+
             # add two list into all_url_list
             all_url_list.extend(height_scan_list)
             all_url_list.extend(first_analysis_result_list)
@@ -59,6 +68,9 @@ if __name__ == '__main__':
             except Exception as e:
                 print(Fore.CYAN + f"{_url}\n\tERROR"+ Fore.RESET)
                 table_output.append((url,"ERROR"))
+            except KeyboardInterrupt as k:
+                print(Fore.RED + f"{_url}\n\tKeyboardInterrupt"+ Fore.RESET)
+                break
             else:
                 print(Fore.BLUE + f"url:{_url}\n\tstatus_code:{status_code}\n\ttitle:{title}\n\tlength:{length}" + Fore.RESET)
                 table_output.append((url, status_code, title, length))

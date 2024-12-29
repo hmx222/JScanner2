@@ -1,8 +1,8 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
-import concurrent.futures
-from colorama import Fore
+from jsHandler.getJSFromSelenium import *
 from tldextract import tldextract
 
 from httpHandler.httpSend import send_http
@@ -71,6 +71,7 @@ def data_clean(url,data_list)->list:
         # 解析出路径
         Path = handled_url.path
 
+
         if Path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','.css')):
             continue
         if "jquery" in Path:
@@ -106,9 +107,7 @@ def data_clean(url,data_list)->list:
     return return_url_list
 
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-def height_scan(urls, method, header, high, max_workers=5):
+def height_scan(urls, method, header, high, max_workers=5, use_selenium="/path/chromedriver.exe"):
     """深度查找 (多线程优化)"""
     return_murl_list = []
 
@@ -121,7 +120,18 @@ def height_scan(urls, method, header, high, max_workers=5):
             return []
         if status(response_object) == 200:
             response_body = response_object.text
-            return data_clean(url, analysis_by_rex(response_body))
+            if use_selenium:
+                try:
+                    js_from_chrome = get_js_from_chrome(url, use_selenium)
+                except Exception as e:
+                    print("You have not configured the correct chromedriver path")
+                    js_from_chrome = []  # 如果获取 JS 失败，确保 js_from_chrome 是空列表
+            else:
+                js_from_chrome = []  # 如果没有 Selenium，则设置为默认空列表
+
+            # 返回合并后的结果
+            return data_clean(url, analysis_by_rex(response_body)) + data_clean(url,js_from_chrome)
+
         return []
 
     for _ in range(high):
@@ -130,10 +140,14 @@ def height_scan(urls, method, header, high, max_workers=5):
             future_to_url = {executor.submit(process_url, url): url for url in urls}
             for future in as_completed(future_to_url):
                 try:
+                    #TODO 修复bug
                     result = future.result()
                     return_murl_list.extend(result)
                 except Exception as e:
                     print(f"Error processing URL {future_to_url[future]}: {e}")
+                except KeyboardInterrupt as k:
+                    print("You have canceled the task")
+                    break
 
         # 更新 URL 列表，去重
         urls = list(set(return_murl_list))
