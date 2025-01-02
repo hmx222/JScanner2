@@ -65,6 +65,10 @@ python Jscanner.py -u "https://example.com/xxxxx" -B "(404,502)"
 ```shell
 python Jscanner.py -u "https://example.com/xxxxx" -o excel
 ```
+##### coming soon 
+- 利用chromedriver抓取
+- 优化代码逻辑
+- docker 部署
 
 .........
 
