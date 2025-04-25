@@ -28,6 +28,7 @@ pip install -r requirements.txt
 #### 注意：
 whiteList是白名单文件，里面存放的是需要排除的url，位于config目录下。
 所有的输出信息都位于output目录下。
+download_files目录下存放的是下载的文件。
 
 
 ##### 推荐用法1
