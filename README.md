@@ -26,9 +26,9 @@ pip install -r requirements.txt
 - 可以输出内容到excel当中
 
 #### 注意：
-whiteList是白名单文件，里面存放的是需要排除的url，位于config目录下。
-所有的输出信息都位于output目录下。
-download_files目录下存放的是下载的文件。
+- whiteList是白名单文件，里面存放的是需要排除的url，位于config目录下。
+- 所有的输出信息都位于output目录下。
+- download_files目录下存放的是下载的文件。
 
 
 ##### 推荐用法1
@@ -46,8 +46,6 @@ python main.py -u "http://example.com" -H 3 -b files.txt
 python main.py -u "https://example.com -H 3 -e "output.xlsx"
 ```
 
-输出到表格的形式
-![image](https://github.com/user-attachments/assets/71aa32c2-6deb-433d-b8fb-817ec1c5e0f3)
 可以按照对每个端点进行排除，方便进行统计分析，方便构造更多的api。
 
 #### Coming
