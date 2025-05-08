@@ -1,5 +1,4 @@
 import json
-import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -12,12 +11,9 @@ from urllib3.exceptions import InsecureRequestWarning
 from filerw import write2json
 from httpHandler.responseHandler import get_webpage_title
 
-
 # 禁用安全请求警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-# 标签页队列，用于管理标签页
-tab_queue = queue.Queue()
 
 def get_source(page: ChromiumPage, urls, headers, thread_num):
     """

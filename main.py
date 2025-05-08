@@ -28,6 +28,7 @@ def is_valid_url(url):
 def main(_page, urls, depth):
     global read_url_from_file
     global visited_urls
+    global hashed_source_codes
 
     depth += 1
 
@@ -49,6 +50,12 @@ def main(_page, urls, depth):
                 continue
 
             if url_info[2] >= 404:
+                continue
+
+            # 为了减少正则表达式重复匹配，此处计算源代码的哈希值
+            source_hash = hash(url_info[1])
+            # 检查是否已经处理过这个URL
+            if source_hash in hashed_source_codes:
                 continue
 
             # 将当前URL标记为已访问

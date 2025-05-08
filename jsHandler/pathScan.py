@@ -98,23 +98,23 @@ def check_url(original_url,splicing_url):
     if "jquery" in urlparse2.path:
         return False
 
-    # if "update" in urlparse2.path:
-    #     return False
-    #
-    # if "delete" in urlparse2.path:
-    #     return False
-    #
-    # if "add" in urlparse2.path:
-    #     return False
+    if "update" in urlparse2.path:
+         return False
 
-    # if "test" in urlparse2.netloc:
-    #     return False
-    #
-    # if "pre" in urlparse2.netloc:
-    #     return False
-    #
-    # if "dev" in urlparse2.netloc:
-    #     return False
+    if "delete" in urlparse2.path:
+         return False
+
+    if "add" in urlparse2.path:
+         return False
+
+    if "test" in urlparse2.netloc:
+         return False
+
+    if "pre" in urlparse2.netloc:
+         return False
+
+    if "dev" in urlparse2.netloc:
+         return False
 
     if (get_root_domain(original_url) == get_root_domain(splicing_url)) or (get_root_domain(splicing_url) in whiteList):
         return True
