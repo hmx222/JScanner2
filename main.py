@@ -52,11 +52,14 @@ def main(_page, urls, depth):
             if url_info[2] >= 404:
                 continue
 
-            # 为了减少正则表达式重复匹配，此处计算源代码的哈希值
-            source_hash = hash(url_info[1])
-            # 检查是否已经处理过这个URL
+            # 为了减少正则表达式重复匹配，此处计算源代码前300字节的哈希值
+            source_hash = hash(url_info[1][:400])
+            # 检查是否已经处理过这个URL的源代码
             if source_hash in hashed_source_codes:
+                # print(f"跳过重复的URL: {url_info[0]}")
                 continue
+            # 将当前URL的源代码哈希值添加到集合中
+            hashed_source_codes.add(source_hash)
 
             # 将当前URL标记为已访问
             visited_urls.add(url_info[0])
@@ -96,7 +99,7 @@ if __name__ == '__main__':
           .auto_port()
           .ignore_certificate_errors()
           .no_imgs()
-          .headless(False))
+          .headless(True))
 
     # co.set_proxy(args.proxy)
 
@@ -108,6 +111,8 @@ if __name__ == '__main__':
 
     # 全局已访问URL集合，用于避免重复爬取
     visited_urls = set()
+    # 全局已访问源代码哈希值集合，用于避免重复处理
+    hashed_source_codes = set()
 
     # 创建文件并清空内容，scanInfo.json和sensitiveInfo.json
     clear_or_create_file("./result/scanInfo.json")
