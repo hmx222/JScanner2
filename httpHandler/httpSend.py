@@ -6,6 +6,7 @@ from colorama import Fore
 from DrissionPage import ChromiumPage
 import requests
 from urllib3.exceptions import InsecureRequestWarning
+from tqdm import tqdm  # 导入tqdm库用于进度条显示
 
 from filerw import write2json
 from httpHandler.responseHandler import get_webpage_title
@@ -16,6 +17,10 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 def get_source(browser: ChromiumPage, urls, headers, thread_num):
     """线程安全的页面源码获取"""
+    # 创建一个线程安全的锁，用于更新进度条
+    progress_lock = threading.Lock()
+    progress_bar = tqdm(total=len(urls), desc="请求进度", unit="url", ncols=100)
+
     # 每个线程使用独立的标签页
     def fetch_page(url):
         tab = None
@@ -31,7 +36,7 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num):
             tab.wait.doc_loaded(timeout=2)
 
             # 暂时使用了requests库，后续考虑使用DrissionPage的方法
-            response = requests.get(url, timeout=3,verify=False)
+            response = requests.get(url, timeout=3, verify=False)
 
             # 获取源码和状态码
             html = tab.html
@@ -51,11 +56,16 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num):
                     tab.close()
                 except:
                     pass
-
+            # 更新进度条（线程安全）
+            with progress_lock:
+                progress_bar.update(1)
 
     # 线程池控制（限制并发）
     with ThreadPoolExecutor(max_workers=thread_num) as executor:
         results = list(executor.map(fetch_page, urls))
+
+    # 关闭进度条
+    progress_bar.close()
 
     # 处理结果
     url_source_code = []
