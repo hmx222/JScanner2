@@ -53,15 +53,16 @@ def write2json(file_path, json_str):
 
 
 def clear_or_create_file(file_path):
-    # 检查文件是否存在
-    if os.path.exists(file_path):
-        # 文件存在，清空文件内容
-        with open(file_path, 'w', encoding='utf-8') as file:
-            file.truncate()  # 清空文件内容
-    else:
-        # 文件不存在，创建文件
-        with open(file_path, 'w', encoding='utf-8') as file:
-            pass  # 文件创建时为空
+    # 获取文件所在的目录路径
+    directory = os.path.dirname(file_path)
+
+    # 确保目录存在（如果不存在则创建）
+    if not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)  # exist_ok=True 防止目录已存在时出错
+
+    # 现在可以安全地创建或清空文件
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write('')
 
 
 

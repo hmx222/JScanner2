@@ -10,6 +10,7 @@ from urllib3.exceptions import InsecureRequestWarning
 
 from filerw import write2json
 from httpHandler.responseHandler import get_webpage_title
+from jsHandler.pathScan import extract_js_api_params
 
 # 禁用安全请求警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -68,10 +69,12 @@ def get_source(page: ChromiumPage, urls, headers, thread_num):
             # 关闭标签页
             threading.Thread(target=tab.close).start()
 
-
-    # 使用 ThreadPoolExecutor 并行化处理
-    with ThreadPoolExecutor(max_workers=thread_num, thread_name_prefix="TabThread") as executor:
-        results = list(executor.map(fetch_page, urls))
+    try:
+        # 使用 ThreadPoolExecutor 并行化处理
+        with ThreadPoolExecutor(max_workers=thread_num, thread_name_prefix="TabThread") as executor:
+            results = list(executor.map(fetch_page, urls))
+    except Exception as e:
+        pass
 
     # 处理返回结果
     url_source_code = []
@@ -79,7 +82,7 @@ def get_source(page: ChromiumPage, urls, headers, thread_num):
     for page_html, url, status in results:
         if page_html is None:
             continue
-        url_source_code.append((url, page_html, status))
+        url_source_code.append((url, page_html, status, extract_js_api_params(page_html)))
         parsed_url = urlparse(url)
         scan_info = {
             "domain": parsed_url.hostname,
@@ -88,13 +91,14 @@ def get_source(page: ChromiumPage, urls, headers, thread_num):
             "port": parsed_url.port,
             "status": status,
             "title": get_webpage_title(page_html),
-            "length": len(page_html)
+            "length": len(page_html),
+            "params": list(extract_js_api_params(page_html).values())
         }
         scan_info_list.append(scan_info)
 
     # 输出并保存扫描信息
-    for url, page_html, status in url_source_code:
-        print(Fore.BLUE + f"url:{url}\n\tstatus:{status}\n\ttitle:{get_webpage_title(page_html)}\n\tlength:{len(page_html)}" + Fore.RESET)
+    for url, page_html, status,params in url_source_code:
+        print(Fore.BLUE + f"url:{url}\n\tstatus:{status}\n\ttitle:{get_webpage_title(page_html)}\n\tlength:{len(page_html)}\n\tparams:{list(params.values())}" + Fore.RESET)
         print('\n')
 
     # 批量保存信息到 JSON

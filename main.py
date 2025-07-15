@@ -9,7 +9,7 @@ from user_agent import generate_user_agent
 
 from filerw import write2json, clear_or_create_file, generate_path_excel
 from httpHandler.httpSend import get_source
-from jsHandler.pathScan import analysis_by_rex, data_clean, read, get_root_domain
+from jsHandler.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
 from jsHandler.sensitiveInfoScan import find_all_info_by_rex
 from parse_args import parse_args
 
@@ -56,7 +56,7 @@ def main(_page, urls, depth):
             source_hash = hash(url_info[1][:400])
             # 检查是否已经处理过这个URL的源代码
             if source_hash in hashed_source_codes:
-                # print(f"跳过重复的URL: {url_info[0]}")
+                print(f"跳过重复的URL: {url_info[0]}")
                 continue
             # 将当前URL的源代码哈希值添加到集合中
             hashed_source_codes.add(source_hash)
@@ -66,6 +66,7 @@ def main(_page, urls, depth):
 
             if ".js" in url_info[0] or url_info[0] in read_url_from_file:
                 dirty_data = analysis_by_rex(url_info[1])
+
                 import_info = find_all_info_by_rex(url_info[1])
                 clean_data = data_clean(url_info[0], dirty_data)
 
@@ -99,9 +100,10 @@ if __name__ == '__main__':
           .auto_port()
           .ignore_certificate_errors()
           .no_imgs()
-          .headless(True))
+          .headless(False))
 
-    # co.set_proxy(args.proxy)
+    co.set_download_path("./download_file")
+    co.set_proxy(args.proxy)
 
     # init page
     page = ChromiumPage(co)
