@@ -2,108 +2,88 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-
-import requests
-from DrissionPage._pages.chromium_page import ChromiumPage
 from colorama import Fore
+from DrissionPage import ChromiumPage
+import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 from filerw import write2json
 from httpHandler.responseHandler import get_webpage_title
 from jsHandler.pathScan import extract_js_api_params
 
-# 禁用安全请求警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
-def get_source(page: ChromiumPage, urls, headers, thread_num):
-    """
-    获取多个 URL 的页面源码及相关信息
-    """
-
+def get_source(browser: ChromiumPage, urls, headers, thread_num):
+    """线程安全的页面源码获取"""
+    # 每个线程使用独立的标签页
     def fetch_page(url):
+        tab = None
         try:
-
-            # 新建标签页
-            tab = page.new_tab()
-
+            # 新建标签页（线程内独立）
+            tab = browser.new_tab()
             tab.set.headers(headers)
-
-            # tab.set.cert_errors(accept=True)
             tab.get(url, timeout=5)
 
-            # 取消弹窗
-            tab.handle_alert(False)
-
-            # 如果遇到证书错误页面，强制继续访问
+            # 处理证书错误
             if '证书' in tab.title or '私密连接' in tab.title:
                 tab.ele('text:继续访问').click()
-
             tab.wait.doc_loaded(timeout=2)
-
-            # 设置下载路径
-            tab.set.download_path("./download_file")
-            # 设置同名文件取消下载
-            tab.set.when_download_file_exists('skip')
-
-            # 设置对于弹窗的处理
-            tab.set.auto_handle_alert(on_off=True,accept=False)
 
             # 暂时使用了requests库，后续考虑使用DrissionPage的方法
             response = requests.get(url, timeout=3,verify=False)
 
-            # 处理页面源码
+            # 获取源码和状态码
             html = tab.html
+            status = response.status_code if response else None
+            if not status:
+                status = requests.get(url, timeout=3, verify=False).status_code
+            return html, url, status
 
-            # 为了减少正则表达式的压力，html长度小于200，直接进行返回
-            if len(html) < 300:
-                raise Exception("html length is too short")
-
-            # tab_queue.put(tab)
-            return html, url, response.status_code
         except Exception as e:
-            page.stop_loading()
+            # print(f"{Fore.RED}获取 {url} 失败: {str(e)}{Fore.RESET}")
             return None, url, None
 
         finally:
-            # 关闭标签页
-            threading.Thread(target=tab.close).start()
+            # 确保标签页关闭（线程安全）
+            if tab:
+                try:
+                    tab.close()
+                except:
+                    pass
 
-    try:
-        # 使用 ThreadPoolExecutor 并行化处理
-        with ThreadPoolExecutor(max_workers=thread_num, thread_name_prefix="TabThread") as executor:
-            results = list(executor.map(fetch_page, urls))
-    except Exception as e:
-        pass
 
-    # 处理返回结果
+    # 线程池控制（限制并发）
+    with ThreadPoolExecutor(max_workers=thread_num) as executor:
+        results = list(executor.map(fetch_page, urls))
+
+    # 处理结果
     url_source_code = []
     scan_info_list = []
-    for page_html, url, status in results:
-        if page_html is None:
+    for html, url, status in results:
+        if not html:
             continue
-        url_source_code.append((url, page_html, status, extract_js_api_params(page_html)))
-        parsed_url = urlparse(url)
+
+        js_params = extract_js_api_params(html)
+        url_source_code.append((url, html, status, js_params))
+
+        parsed = urlparse(url)
         scan_info = {
-            "domain": parsed_url.hostname,
+            "domain": parsed.hostname,
             "url": url,
-            "path": parsed_url.path,
-            "port": parsed_url.port,
+            "path": parsed.path,
+            "port": parsed.port or (443 if parsed.scheme == 'https' else 80),
             "status": status,
-            "title": get_webpage_title(page_html),
-            "length": len(page_html),
-            "params": list(extract_js_api_params(page_html).values())
+            "title": get_webpage_title(html),
+            "length": len(html),
+            "params": list(js_params.values())
         }
         scan_info_list.append(scan_info)
 
-    # 输出并保存扫描信息
-    for url, page_html, status,params in url_source_code:
-        print(Fore.BLUE + f"url:{url}\n\tstatus:{status}\n\ttitle:{get_webpage_title(page_html)}\n\tlength:{len(page_html)}\n\tparams:{list(params.values())}" + Fore.RESET)
-        print('\n')
-
-    # 批量保存信息到 JSON
     if scan_info_list:
         write2json("./result/scanInfo.json", json.dumps(scan_info_list))
 
-    # 返回 URL 和源码列表
+    for item in url_source_code:
+        print(f"{Fore.BLUE}url:{item[0]}\n\tstatus:{item[2]}\n\ttitle:{get_webpage_title(item[1])}{Fore.RESET}")
+
     return url_source_code
