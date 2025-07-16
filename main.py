@@ -1,141 +1,237 @@
 import json
 import time
+import os
+import threading
 from urllib.parse import urlparse
-
-from DrissionPage._configs.chromium_options import ChromiumOptions
-from DrissionPage._pages.chromium_page import ChromiumPage
+from DrissionPage import ChromiumOptions, ChromiumPage, WebPage
 from colorama import init, Fore
 from user_agent import generate_user_agent
 
 from filerw import write2json, clear_or_create_file, generate_path_excel
-from httpHandler.httpSend import get_source
-from jsHandler.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
-from jsHandler.sensitiveInfoScan import find_all_info_by_rex
+from HttpHandle.httpSend import get_source  # 后续需同步优化此模块
+from JsHandle.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
+from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 from parse_args import parse_args
 
 
-def is_valid_url(url):
-    """
-    检查URL是否有效（属于目标域名且未访问过）
-    """
+class Scanner:
+    def __init__(self, args):
+        # 初始化配置
+        self.args = args
+        self.visited_urls = set()
+        self.hashed_source_codes = set()
+        self.title_visited_urls = set()
+        self.read_url_from_file = []
+        # 线程锁（解决多线程资源竞争）
+        self.url_lock = threading.Lock()
+        self.hash_lock = threading.Lock()
+        # 初始化浏览器
+        self.browser = self._init_browser()
 
-    if url in visited_urls:
-        return False
-    parsed_url = urlparse(url)
-    return parsed_url.netloc.endswith(get_root_domain(url))
+
+    def _init_browser(self):
+        """初始化浏览器配置，优化稳定性"""
+        co = (ChromiumOptions()
+              .auto_port()  # 自动选择端口，避免冲突
+              .ignore_certificate_errors()  # 忽略证书错误
+              .no_imgs()  # 禁止加载图片，提升速度
+              .headless(not self.args.visible)  # 控制无头模式
+              .set_user_agent(generate_user_agent())  # 随机UA
+              )
+
+        # 配置代理
+        if self.args.proxy:
+            co.set_proxy(self.args.proxy)
+
+        # 配置下载
+        co.set_download_path("./download_file")
+        # co.set_download_policy('skip')  # 同名文件跳过
+
+        # 创建浏览器实例（使用WebPage更灵活）
+        browser = WebPage(chromium_options=co)
+        # 自动处理弹窗
+        browser.set.auto_handle_alert(True, accept=False)
+        return browser
 
 
-def main(_page, urls, depth):
-    global read_url_from_file
-    global visited_urls
-    global hashed_source_codes
+    def is_valid_url(self, url):
+        """线程安全的URL有效性检查"""
+        with self.url_lock:
+            if url in self.visited_urls:
+                return False
+            parsed_url = urlparse(url)
+            target_root = get_root_domain(self.read_url_from_file[0]) if self.read_url_from_file else ""
+            return parsed_url.netloc.endswith(target_root)
 
-    depth += 1
 
-    if depth > args.height:
-        return
+    def add_visited_url(self, url):
+        """线程安全地添加已访问URL"""
+        with self.url_lock:
+            self.visited_urls.add(url)
 
-    header = {
-        "User-Agent": generate_user_agent()
-    }
 
-    try:
-        source_code_list = get_source(_page, urls, header, args.thread_num)
-        tem_set = set()
+    def check_and_add_hash(self, source):
+        """线程安全地检查并添加源码哈希"""
+        # 使用MD5替代内置hash，避免哈希值不稳定
+        import hashlib
+        source_hash = hashlib.md5(source[:400].encode()).hexdigest()
+        with self.hash_lock:
+            if source_hash in self.hashed_source_codes:
+                return False
+            self.hashed_source_codes.add(source_hash)
+        return True
 
-        for url_info in source_code_list:
+    def check_and_add_title(self, title, url):
+        """线程安全地检查并添加标题，且标题一样的前提是域名一样"""
+        if title is None or title == "" or title == " " or "Index" in title:
+            return True
 
-            # 检查URL是否有效
-            if not is_valid_url(url_info[0]):
+        parsed_url = urlparse(url)
+        current_domain = parsed_url.netloc
+
+        with self.url_lock:  # 使用url_lock保证visited_urls遍历安全
+            # 检查同域名URL时需要先获取锁
+            same_domain_urls = [
+                d_url for d_url in self.visited_urls
+                if urlparse(d_url).netloc == current_domain
+            ]
+
+        # 仅在发现同域名URL时检查标题重复
+        if same_domain_urls:
+            with self.hash_lock:  # 复用hash_lock保证标题集合操作安全
+                if title in self.title_visited_urls:
+                    # print("跳过重复URL: ", url, " 标题: ", title, " 原因: 标题重复")
+                    return False
+                self.title_visited_urls.add(title)
+        else:
+            with self.hash_lock:
+                self.title_visited_urls.add(title)
+
+        return True
+
+
+
+    def scan(self, urls, depth):
+        stack = [(urls, depth)]
+        while stack:
+            current_urls, current_depth = stack.pop()
+            if current_depth > self.args.height:
                 continue
 
-            if url_info[2] >= 404:
-                continue
+            # 生成请求头
+            header = {"User-Agent": generate_user_agent()}
 
-            # 为了减少正则表达式重复匹配，此处计算源代码前300字节的哈希值
-            source_hash = hash(url_info[1][:400])
-            # 检查是否已经处理过这个URL的源代码
-            if source_hash in hashed_source_codes:
-                print(f"跳过重复的URL: {url_info[0]}")
-                continue
-            # 将当前URL的源代码哈希值添加到集合中
-            hashed_source_codes.add(source_hash)
+            try:
+                # 获取页面源码（后续需优化get_source使其线程安全）
+                source_code_list = get_source(
+                    self.browser,
+                    current_urls,
+                    header,
+                    self.args.thread_num,
+                    self.args
+                )
+                next_urls = set()
 
-            # 将当前URL标记为已访问
-            visited_urls.add(url_info[0])
+                for url_info in source_code_list:
+                    if len(url_info) < 3:
+                        continue
+                    url, page_html, status = url_info[0], url_info[1], url_info[2]
 
-            if ".js" in url_info[0] or url_info[0] in read_url_from_file:
-                dirty_data = analysis_by_rex(url_info[1])
+                    # 检查URL有效性
+                    if not self.is_valid_url(url):
+                        continue
 
-                import_info = find_all_info_by_rex(url_info[1])
-                clean_data = data_clean(url_info[0], dirty_data)
+                    # 过滤错误状态码
+                    if status and status >= 404:
+                        continue
 
-                write2json("./result/sensitiveInfo.json", json.dumps({
-                "url": url_info[0],
-                "sensitive_info": import_info
-                }))
+                    # 过滤过短源码
+                    if not page_html or len(page_html) < 300:
+                        # print(f"{Fore.YELLOW}跳过短内容URL: {url}{Fore.RESET}")
+                        continue
 
-                print(Fore.RED + f"url:{url_info[0]}\n\tsensitive_info:{import_info}" + Fore.RESET)
-                print('\n')
+                    if args.de_duplication_hash:
+                        # 检查源码哈希
+                        if not self.check_and_add_hash(page_html):
+                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                            continue
 
-                if clean_data is None:
-                    continue
+                    if args.de_duplication_title:
+                        # 检查标题去重
+                        if not self.check_and_add_title(url_info[2], url_info[0]):
+                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                            continue
 
-                tem_set.update(clean_data)
+                    # 标记为已访问
+                    self.add_visited_url(url)
 
-        main(_page, tem_set, depth)
-    except Exception as e:
-        pass
+                    # 处理JS文件和初始URL
+                    if ".js" in url or url in self.read_url_from_file:
+                        dirty_data = analysis_by_rex(page_html)
+                        import_info = find_all_info_by_rex(page_html)
+                        clean_data = data_clean(url, dirty_data)
+
+                        # 写入敏感信息
+                        write2json("./result/sensitiveInfo.json", json.dumps({
+                            "url": url,
+                            "sensitive_info": import_info
+                        }))
+                        print(f"{Fore.RED}url:{url}\n\tsensitive_info:{import_info}{Fore.RESET}\n")
+
+                        if clean_data:
+                            next_urls.update(clean_data)
+
+                # 将下一层URL加入栈（迭代替代递归）
+                if next_urls:
+                    stack.append((next_urls, current_depth + 1))
+
+            except Exception as e:
+                print(f"{Fore.RED}扫描出错: {str(e)}{Fore.RESET}")
+                # 出错时尝试重启浏览器恢复
+                self.browser.quit()
+                self.browser = self._init_browser()
+
+
+    def run(self):
+        """主运行逻辑"""
+        # 初始化文件
+        os.makedirs("./result", exist_ok=True)
+        clear_or_create_file("./result/scanInfo.json")
+        clear_or_create_file("./result/sensitiveInfo.json")
+
+        # 读取目标URL
+        if self.args.batch:
+            self.read_url_from_file = read(self.args.batch)
+            if not self.read_url_from_file:
+                print(f"{Fore.RED}批量文件为空或读取失败{Fore.RESET}")
+                return
+        else:
+            if not self.args.url:
+                print(f"{Fore.RED}请指定URL或批量文件{Fore.RESET}")
+                return
+            self.read_url_from_file = [self.args.url]
+
+        # 开始扫描
+        start_time = time.time()
+        for url in self.read_url_from_file:
+            # print(f"{Fore.GREEN}开始扫描: {url}{Fore.RESET}")
+            self.scan([url], 0)
+
+        # 清理资源
+        self.browser.quit()
+
+        # 导出Excel
+        if self.args.excel:
+            generate_path_excel("./result/scanInfo.json", self.args.excel)
+            print(f"{Fore.GREEN}结果已导出到: {self.args.excel}{Fore.RESET}")
+
+        # 输出耗时
+        end_time = time.time()
+        print(f"{Fore.CYAN}总耗时: {end_time - start_time:.2f}秒{Fore.RESET}")
 
 
 if __name__ == '__main__':
-    # init colorama，
-    init()
-
-    # get user args
+    init(autoreset=True)
     args = parse_args()
-
-    # 初始化浏览器
-    co = (ChromiumOptions()
-          .auto_port()
-          .ignore_certificate_errors()
-          .no_imgs()
-          .headless(False))
-
-    co.set_download_path("./download_file")
-    co.set_proxy(args.proxy)
-
-    # init page
-    page = ChromiumPage(co)
-
-    # 自动取消弹窗
-    page.set.auto_handle_alert(on_off=True, accept=False)
-
-    # 全局已访问URL集合，用于避免重复爬取
-    visited_urls = set()
-    # 全局已访问源代码哈希值集合，用于避免重复处理
-    hashed_source_codes = set()
-
-    # 创建文件并清空内容，scanInfo.json和sensitiveInfo.json
-    clear_or_create_file("./result/scanInfo.json")
-    clear_or_create_file("./result/sensitiveInfo.json")
-
-    # read url info
-    if args.batch:
-        read_url_from_file = read(args.batch)
-
-    else:
-        read_url_from_file = [args.url]
-
-    start = time.time()
-
-    for urls in read_url_from_file:
-        main(page,[urls],0)
-
-    page.close()
-
-    if args.excel:
-        generate_path_excel("./result/scanInfo.json",args.excel)
-
-    end = time.time()
-    print(f"耗时：{end - start}")
+    scanner = Scanner(args)
+    scanner.run()
