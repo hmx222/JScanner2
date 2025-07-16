@@ -42,6 +42,13 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
 
             # 获取源码和状态码
             html = tab.html
+
+
+            if "<input" in html:
+                # print(f"我们在{url}发现了一个input标签")
+                pass
+
+
             status = response.status_code if response else None
             if not status:
                 status = requests.get(url, timeout=3, verify=False).status_code
@@ -70,15 +77,12 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
     progress_bar.close()
 
     # 处理结果
-    url_source_code = []
     scan_info_list = []
     for html, url, status in results:
         if not html:
             continue
 
         js_params = extract_js_api_params(html)
-        url_source_code.append((url, html, status, js_params))
-
         parsed = urlparse(url)
         scan_info = {
             "domain": parsed.hostname,
@@ -90,12 +94,13 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
             "length": len(html),
             "params": list(js_params.values())
         }
+        write2json("./result/scanInfo.json", json.dumps(scan_info))
+
+        # 加入源代码返回
+        scan_info["source_code"] = html
         scan_info_list.append(scan_info)
 
-    if scan_info_list:
-        write2json("./result/scanInfo.json", json.dumps(scan_info_list))
+    for scan_info_ in scan_info_list:
+        print(f"{Fore.BLUE}url:{scan_info_['url']}\n\tstatus:{scan_info_['status']}\n\ttitle:{scan_info_['title']}{Fore.RESET}\n\tlength:{scan_info_['length']}\n\tparams:{scan_info_['params']}\n")
 
-    for item in url_source_code:
-        print(f"{Fore.BLUE}url:{item[0]}\n\tstatus:{item[2]}\n\ttitle:{get_webpage_title(item[1])}{Fore.RESET}")
-
-    return url_source_code
+    return scan_info_list
