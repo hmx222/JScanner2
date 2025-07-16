@@ -1,16 +1,19 @@
 import json
-import time
 import os
 import threading
+import time
+import traceback
 from urllib.parse import urlparse
-from DrissionPage import ChromiumOptions, ChromiumPage, WebPage
+
+from DrissionPage import ChromiumOptions, WebPage
 from colorama import init, Fore
 from user_agent import generate_user_agent
 
-from filerw import write2json, clear_or_create_file, generate_path_excel
 from HttpHandle.httpSend import get_source  # 后续需同步优化此模块
-from JsHandle.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
+from JsHandle.Similarity_HTML import compare_html_similarity, similarity, get_simhash
+from JsHandle.pathScan import analysis_by_rex, data_clean, read, get_root_domain
 from JsHandle.sensitiveInfoScan import find_all_info_by_rex
+from filerw import write2json, clear_or_create_file, generate_path_excel
 from parse_args import parse_args
 
 
@@ -20,11 +23,16 @@ class Scanner:
         self.args = args
         self.visited_urls = set()
         self.hashed_source_codes = set()
-        self.title_visited_urls = set()
+        self.simhash_dict = dict()
+        self.title_visited_urls = dict()
         self.read_url_from_file = []
+        self.length_visited_urls = dict()
         # 线程锁（解决多线程资源竞争）
         self.url_lock = threading.Lock()
         self.hash_lock = threading.Lock()
+        self.simhash_lock = threading.Lock()
+        self.title_lock = threading.Lock()
+        self.length_lock = threading.Lock()
         # 初始化浏览器
         self.browser = self._init_browser()
 
@@ -83,7 +91,7 @@ class Scanner:
 
     def check_and_add_title(self, title, url):
         """线程安全地检查并添加标题，且标题一样的前提是域名一样"""
-        if title is None or title == "" or title == " " or "Index" in title:
+        if title is None or title == "" or title == " ":
             return True
 
         parsed_url = urlparse(url)
@@ -123,7 +131,7 @@ class Scanner:
 
             try:
                 # 获取页面源码（后续需优化get_source使其线程安全）
-                source_code_list = get_source(
+                source_code_dict = get_source(
                     self.browser,
                     current_urls,
                     header,
@@ -132,51 +140,93 @@ class Scanner:
                 )
                 next_urls = set()
 
-                for url_info in source_code_list:
-                    if len(url_info) < 3:
-                        continue
-                    url, page_html, status = url_info[0], url_info[1], url_info[2]
+                for scan_info in source_code_dict:
+                    # if len(url_info) < 3:
+                    #     continue
 
                     # 检查URL有效性
-                    if not self.is_valid_url(url):
+                    if not self.is_valid_url(scan_info['url']):
                         continue
 
                     # 过滤错误状态码
-                    if status and status >= 404:
+                    if scan_info['status'] and scan_info['status'] >= 404:
                         continue
 
                     # 过滤过短源码
-                    if not page_html or len(page_html) < 300:
+                    if not scan_info['source_code'] or scan_info['length'] < 300:
                         # print(f"{Fore.YELLOW}跳过短内容URL: {url}{Fore.RESET}")
                         continue
 
                     if args.de_duplication_hash:
                         # 检查源码哈希
-                        if not self.check_and_add_hash(page_html):
+                        if not self.check_and_add_hash(scan_info['source_code']):
                             # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
                             continue
 
                     if args.de_duplication_title:
-                        # 检查标题去重
-                        if not self.check_and_add_title(url_info[2], url_info[0]):
-                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
-                            continue
+                        # 检擦标题去重也要考虑域名，像simhash一样
+                        with self.title_lock:  # 添加线程锁
+                            # 初始化域名对应的集合
+                            if scan_info['domain'] not in self.title_visited_urls:
+                                self.title_visited_urls[scan_info['domain']] = set()
+                            # 检查相似度前先检查是否重复
+                            if scan_info['title'] in self.title_visited_urls[scan_info['domain']]:
+                                # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                                continue
+                            # 添加新标题
+                            self.title_visited_urls[scan_info['domain']].add(scan_info['title'])
+
+
+                    # 按照返回值长度进行去重
+                    if args.de_duplication_length:
+                        # 检查源码长度
+                        with self.length_lock:  # 添加线程锁
+                            # 初始化域名对应的集合
+                            if scan_info['domain'] not in self.length_visited_urls:
+                                self.length_visited_urls[scan_info['domain']] = set()
+                            # 检查相似度前先检查是否重复
+                            if scan_info['length'] in self.length_visited_urls[scan_info['domain']]:
+                                # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                                continue
+                            # 添加新长度
+                            self.length_visited_urls[scan_info['domain']].add(scan_info['length'])
+
+                    # 按照simhash进行去重
+                    if args.de_duplication_similarity:
+                        # 判断是不是html页面，非JavaScript页面
+                        if scan_info['source_code'].startswith("<!DOCTYPE html>"):
+                            # 计算simhash
+                            simhash = get_simhash(scan_info['source_code'])
+
+                            with self.hash_lock:  # 添加线程锁
+                                # 初始化域名对应的集合
+                                if scan_info['domain'] not in self.simhash_dict:
+                                    self.simhash_dict[scan_info['domain']] = set()
+
+                                # 检查相似度前先检查是否重复
+                                if any(similarity(simhash, h) > float(args.de_duplication_similarity)
+                                      for h in self.simhash_dict[scan_info['domain']]):
+                                    print(f"{Fore.YELLOW}跳过重复URL: {scan_info['url']}{Fore.RESET}")
+                                    continue
+
+                                # 添加新simhash
+                                self.simhash_dict[scan_info['domain']].add(simhash)
 
                     # 标记为已访问
-                    self.add_visited_url(url)
+                    self.add_visited_url(scan_info['url'])
 
                     # 处理JS文件和初始URL
-                    if ".js" in url or url in self.read_url_from_file:
-                        dirty_data = analysis_by_rex(page_html)
-                        import_info = find_all_info_by_rex(page_html)
-                        clean_data = data_clean(url, dirty_data)
+                    if ".js" in scan_info['url'] or scan_info['url'] in self.read_url_from_file:
+                        dirty_data = analysis_by_rex(scan_info['source_code'])
+                        import_info = find_all_info_by_rex(scan_info['source_code'])
+                        clean_data = data_clean(scan_info['url'], dirty_data)
 
                         # 写入敏感信息
                         write2json("./result/sensitiveInfo.json", json.dumps({
-                            "url": url,
+                            "url": scan_info['url'],
                             "sensitive_info": import_info
                         }))
-                        print(f"{Fore.RED}url:{url}\n\tsensitive_info:{import_info}{Fore.RESET}\n")
+                        print(f"{Fore.RED}url:{scan_info['url']}\n\tsensitive_info:{import_info}{Fore.RESET}\n")
 
                         if clean_data:
                             next_urls.update(clean_data)
@@ -187,6 +237,8 @@ class Scanner:
 
             except Exception as e:
                 print(f"{Fore.RED}扫描出错: {str(e)}{Fore.RESET}")
+                stack_trace = traceback.format_exc()
+                print(stack_trace)
                 # 出错时尝试重启浏览器恢复
                 self.browser.quit()
                 self.browser = self._init_browser()

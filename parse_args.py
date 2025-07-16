@@ -28,7 +28,15 @@ def parse_args():
 
     # 对于重复的结果，是否使用hash的去重
     parser.add_argument('-s', '--de_duplication_hash', action='store_true', default=True,
-                        help="对于重复的结果，是否使用对url的去重（默认：True）")
+                        help="对于重复的结果，是否使用对hash的去重（默认：True）")
+
+    # 对于重复的结果，是否使用返回值长度的去重
+    parser.add_argument('-l', '--de_duplication_length', action='store_true', default=True,
+                        help="对于重复的结果，是否使用对返回值长度的去重（默认：True）")
+
+    # 对于重复的结果，是否使用对返回值相似度的去重
+    parser.add_argument('-f', '--de_duplication_similarity', type=str, default=0.7,
+                        help="对于重复的结果，是否使用对返回值相似度的去重（默认：0.7）")
 
     # 隐藏的header参数
     # parser.add_argument(
