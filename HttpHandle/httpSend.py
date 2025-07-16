@@ -2,21 +2,22 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-from colorama import Fore
-from DrissionPage import ChromiumPage
-import requests
-from urllib3.exceptions import InsecureRequestWarning
-from tqdm import tqdm  # 导入tqdm库用于进度条显示
 
-from filerw import write2json
+import requests
+from DrissionPage import ChromiumPage
+from colorama import Fore
+from tqdm import tqdm  # 导入tqdm库用于进度条显示
+from urllib3.exceptions import InsecureRequestWarning
+
 from HttpHandle.responseHandler import get_webpage_title
 from JsHandle.pathScan import extract_js_api_params
-from main import Scanner, args
+from filerw import write2json
+
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
-def get_source(browser: ChromiumPage, urls, headers, thread_num):
+def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
     """线程安全的页面源码获取"""
     # 创建一个线程安全的锁，用于更新进度条
     progress_lock = threading.Lock()

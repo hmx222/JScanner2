@@ -16,13 +16,21 @@ def parse_args():
 
     # 网络与浏览器参数
     parser.add_argument('-p', '--proxy', type=str,
-                        help="是否启用代理服务器(Y/N)")
-    parser.add_argument('-v', '--visible', action='store_true', default=True ,help="显示浏览器窗口（默认：无头模式，不显示窗口）")
+                        help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
+    parser.add_argument('-v', '--visible', action='store_true', default=False ,help="显示浏览器窗口（默认：无头模式，不显示窗口）")
 
     # 结果导出参数
     parser.add_argument('-e', '--excel', type=str, help="导出结果到Excel文件（如：./result.xlsx）")
 
-    # 隐藏的header参数（如需启用可取消注释）
+    # 对于重复的结果，是否使用对title的去重
+    parser.add_argument('-d', '--de_duplication_title', action='store_true', default=True,
+                        help="对于重复的结果，是否使用对title的去重（默认：True）")
+
+    # 对于重复的结果，是否使用hash的去重
+    parser.add_argument('-s', '--de_duplication_hash', action='store_true', default=True,
+                        help="对于重复的结果，是否使用对url的去重（默认：True）")
+
+    # 隐藏的header参数
     # parser.add_argument(
     #     '-r', '--header',
     #     type=ast.literal_eval,

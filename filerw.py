@@ -96,7 +96,7 @@ def generate_path_excel(json_file, output_file):
     max_depth = max(len(item['path'].strip("/").split("/")) if item['path'] else 0 for item in data)
 
     # 设置表头
-    headers = ["id", "Domain", "url", "path", "Status", "Length", "Title"] + [f"第{i}级路径" for i in range(1, max_depth + 1)]
+    headers = ["id", "Domain", "url", "path", "Status", "Length", "Title", "Params"] + [f"第{i}级路径" for i in range(1, max_depth + 1)]
     ws.append(headers)
 
     # 样式设置
@@ -126,6 +126,7 @@ def generate_path_excel(json_file, output_file):
             item['status'],
             item['length'],
             item['title'],
+            item['params']
             *path_parts
         ]
         ws.append(row)

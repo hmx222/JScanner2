@@ -13,14 +13,14 @@ from JsHandle.pathScan import analysis_by_rex, data_clean, read, get_root_domain
 from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 from parse_args import parse_args
 
-args = parse_args()
 
 class Scanner:
-    def __init__(self):
+    def __init__(self, args):
         # 初始化配置
         self.args = args
         self.visited_urls = set()
         self.hashed_source_codes = set()
+        self.title_visited_urls = set()
         self.read_url_from_file = []
         # 线程锁（解决多线程资源竞争）
         self.url_lock = threading.Lock()
@@ -81,9 +81,37 @@ class Scanner:
             self.hashed_source_codes.add(source_hash)
         return True
 
+    def check_and_add_title(self, title, url):
+        """线程安全地检查并添加标题，且标题一样的前提是域名一样"""
+        if title is None or title == "" or title == " " or "Index" in title:
+            return True
+
+        parsed_url = urlparse(url)
+        current_domain = parsed_url.netloc
+
+        with self.url_lock:  # 使用url_lock保证visited_urls遍历安全
+            # 检查同域名URL时需要先获取锁
+            same_domain_urls = [
+                d_url for d_url in self.visited_urls
+                if urlparse(d_url).netloc == current_domain
+            ]
+
+        # 仅在发现同域名URL时检查标题重复
+        if same_domain_urls:
+            with self.hash_lock:  # 复用hash_lock保证标题集合操作安全
+                if title in self.title_visited_urls:
+                    # print("跳过重复URL: ", url, " 标题: ", title, " 原因: 标题重复")
+                    return False
+                self.title_visited_urls.add(title)
+        else:
+            with self.hash_lock:
+                self.title_visited_urls.add(title)
+
+        return True
+
+
 
     def scan(self, urls, depth):
-        """迭代替代递归，避免栈溢出"""
         stack = [(urls, depth)]
         while stack:
             current_urls, current_depth = stack.pop()
@@ -99,7 +127,8 @@ class Scanner:
                     self.browser,
                     current_urls,
                     header,
-                    self.args.thread_num
+                    self.args.thread_num,
+                    self.args
                 )
                 next_urls = set()
 
@@ -118,13 +147,20 @@ class Scanner:
 
                     # 过滤过短源码
                     if not page_html or len(page_html) < 300:
-                        print(f"{Fore.YELLOW}跳过短内容URL: {url}{Fore.RESET}")
+                        # print(f"{Fore.YELLOW}跳过短内容URL: {url}{Fore.RESET}")
                         continue
 
-                    # 检查源码哈希
-                    if not self.check_and_add_hash(page_html):
-                        print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
-                        continue
+                    if args.de_duplication_hash:
+                        # 检查源码哈希
+                        if not self.check_and_add_hash(page_html):
+                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                            continue
+
+                    if args.de_duplication_title:
+                        # 检查标题去重
+                        if not self.check_and_add_title(url_info[2], url_info[0]):
+                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                            continue
 
                     # 标记为已访问
                     self.add_visited_url(url)
@@ -196,5 +232,6 @@ class Scanner:
 
 if __name__ == '__main__':
     init(autoreset=True)
-    scanner = Scanner()
+    args = parse_args()
+    scanner = Scanner(args)
     scanner.run()
