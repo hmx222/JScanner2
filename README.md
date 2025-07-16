@@ -87,7 +87,6 @@ python main.py -u "http://example.com" -H 3 -t 10 -p 127.0.0.1:12334 -d -l -f 0.
 结果预览：
 
 <img width="1770" height="1281" alt="1752678149504" src="https://github.com/user-attachments/assets/cca2e742-a084-4f56-b077-54ea2b6641f1" />
-<img width="2660" height="708" alt="1752677896841" src="https://github.com/user-attachments/assets/3eda34dd-e9f2-4e5c-8d0e-f63f8347b1d1" />
 
 
 #### 单 URL 扫描
