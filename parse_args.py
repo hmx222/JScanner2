@@ -16,7 +16,7 @@ def parse_args():
 
     # 网络与浏览器参数
     parser.add_argument('-p', '--proxy', type=str,
-                        help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
+                        help="是否启用代理服务器(Y/N)")
     parser.add_argument('-v', '--visible', action='store_true', default=True ,help="显示浏览器窗口（默认：无头模式，不显示窗口）")
 
     # 结果导出参数

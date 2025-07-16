@@ -8,14 +8,15 @@ from colorama import init, Fore
 from user_agent import generate_user_agent
 
 from filerw import write2json, clear_or_create_file, generate_path_excel
-from httpHandler.httpSend import get_source  # 后续需同步优化此模块
-from jsHandler.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
-from jsHandler.sensitiveInfoScan import find_all_info_by_rex
+from HttpHandle.httpSend import get_source  # 后续需同步优化此模块
+from JsHandle.pathScan import analysis_by_rex, data_clean, read, get_root_domain, extract_js_api_params
+from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 from parse_args import parse_args
 
+args = parse_args()
 
 class Scanner:
-    def __init__(self, args):
+    def __init__(self):
         # 初始化配置
         self.args = args
         self.visited_urls = set()
@@ -195,6 +196,5 @@ class Scanner:
 
 if __name__ == '__main__':
     init(autoreset=True)
-    args = parse_args()
-    scanner = Scanner(args)
+    scanner = Scanner()
     scanner.run()

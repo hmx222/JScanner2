@@ -9,8 +9,9 @@ from urllib3.exceptions import InsecureRequestWarning
 from tqdm import tqdm  # 导入tqdm库用于进度条显示
 
 from filerw import write2json
-from httpHandler.responseHandler import get_webpage_title
-from jsHandler.pathScan import extract_js_api_params
+from HttpHandle.responseHandler import get_webpage_title
+from JsHandle.pathScan import extract_js_api_params
+from main import Scanner, args
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -36,7 +37,7 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num):
             tab.wait.doc_loaded(timeout=2)
 
             # 暂时使用了requests库，后续考虑使用DrissionPage的方法
-            response = requests.get(url, timeout=3, verify=False)
+            response = requests.head(url, timeout=3, verify=False,proxies={"http":args.proxy,"https":args.proxy})
 
             # 获取源码和状态码
             html = tab.html
