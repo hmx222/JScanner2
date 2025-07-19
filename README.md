@@ -171,6 +171,7 @@ python main.py -u "http://example.com" -v
 ## 后续计划
 
 - 有价值页面的tag标记
+- 网页截图后，让ai进行判断
 
 
 ## 敏感信息正则来源
