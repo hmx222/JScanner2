@@ -1,5 +1,6 @@
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import lru_cache
+from multiprocessing import Pool
 
 import regex as re
 
@@ -13,6 +14,34 @@ def find_id_cards(text)->list:
     # 身份证号码正则表达式
     pattern = r'[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]'
     return re.findall(pattern, text)
+
+
+import re
+
+
+def find_comments_sensitive_info(text) -> list:
+    """
+    提取HTML/JavaScript注释中的敏感信息
+    :param text: 待提取的HTML/JavaScript源码
+    :return: 包含敏感信息的注释列表
+    """
+    # 匹配HTML注释 <!-- ... --> 和JS注释 // ... 或 /* ... */
+    comment_pattern = r'<!--[\s\S]*?-->|//.*?$|/\*[\s\S]*?\*/'
+
+    # 敏感信息关键词（合并之前的注释关键词）
+    sensitive_keywords = [
+        'TODO:', 'FIXME:', 'debug', '开发环境', '测试账号', '密码',
+        '数据库', 'admin', 'root', '不要删除', '临时解决方案', '未完成',
+        'username', 'password', 'secret', 'key', 'token', 'api', 'database',
+        'host', 'port', 'url', 'email', 'sql', 'query', 'auth'
+    ]
+
+    # 构建敏感信息模式（关键词不区分大小写）
+    sensitive_pattern = r'(?i)(' + '|'.join(re.escape(word) for word in sensitive_keywords) + ')'
+
+    # 提取所有注释并筛选包含敏感信息的注释
+    comments = re.findall(comment_pattern, text, re.MULTILINE)
+    return [comment for comment in comments if re.search(sensitive_pattern, comment)]
 
 def find_phone_numbers(text)->list:
     """
@@ -1002,15 +1031,22 @@ def check_available(import_info):
     return import_info
 
 
-def find_all_info_by_rex(text) -> list:
+def find_all_info_by_rex(text:str) -> list:
     """
     多线程敏感信息提取
     :param text: 待扫描文本
     :return: 敏感信息列表
     """
+    if text is None:
+        return []
+    text = text.lower()
+    if text.startswith("<!doctype html>"):
+        return []
+
     # 定义需要并行执行的函数列表
     scan_functions = [
         find_id_cards,
+        find_comments_sensitive_info,
         find_phone_numbers,
         find_email_addresses,
         find_access_keys,
@@ -1029,17 +1065,25 @@ def find_all_info_by_rex(text) -> list:
 
     import_info = []
 
-    # 使用线程池并行执行扫描函数
-    with ThreadPoolExecutor(max_workers=14) as executor:
-        # 提交所有任务
-        futures = [executor.submit(func, text) for func in scan_functions]
-
-        # 收集所有结果
-        for future in futures:
-            try:
-                result = future.result()
-                import_info.extend(result)
-            except Exception as e:
-                print(f"Error in scanning function: {e}")
-
+    # 使用多进程池并行执行函数
+    with Pool(processes=len(scan_functions)) as pool:
+        results = pool.map(lambda func: func(text), scan_functions)
+        for result in results:
+            import_info.extend(result)
     return check_available(import_info)
+
+
+    # # 使用线程池并行执行扫描函数
+    # with ThreadPoolExecutor(max_workers=14) as executor:
+    #     # 提交所有任务
+    #     futures = [executor.submit(func, text) for func in scan_functions]
+    #
+    #     # 收集所有结果
+    #     for future in futures:
+    #         try:
+    #             result = future.result()
+    #             import_info.extend(result)
+    #         except Exception as e:
+    #             print(f"Error in scanning function: {e}")
+    #
+    # return check_available(import_info)

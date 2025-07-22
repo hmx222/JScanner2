@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -41,10 +42,19 @@ class Scanner:
         """初始化浏览器配置，优化稳定性"""
         co = (ChromiumOptions()
               .auto_port()  # 自动选择端口，避免冲突
-              .ignore_certificate_errors()  # 忽略证书错误
-              .no_imgs()  # 禁止加载图片，提升速度
               .headless(not self.args.visible)  # 控制无头模式
-              .set_user_agent(generate_user_agent())  # 随机UA
+              .set_argument('--blink-settings=imagesEnabled=false,stylesheetEnabled=false,fontEnabled=false')
+              .set_argument('--disable-gpu')
+              .set_argument('--disable-software-rasterizer')
+              .set_argument('--disable-notifications')
+              .set_argument('--disable-popup-blocking')
+              .set_argument("--ignore-certificate-errors")
+              # .set_argument("--blink-settings=stylesheetEnabled=false")
+              # .set_argument("--blink-settings=imagesEnabled=false")
+              # .set_argument("--blink-settings=fontEnabled=false")
+              # .set_user_agent(generate_user_agent())  # 随机UA
+              # .ignore_certificate_errors()  # 忽略证书错误
+              # .no_imgs(True)  # 禁止加载图片，提升速度
               )
 
         # 配置代理
@@ -53,7 +63,6 @@ class Scanner:
 
         # 配置下载
         co.set_download_path("./download_file")
-        # co.set_download_policy('skip')  # 同名文件跳过
 
         # 创建浏览器实例（使用WebPage更灵活）
         browser = WebPage(chromium_options=co)
@@ -130,7 +139,7 @@ class Scanner:
             header = {"User-Agent": generate_user_agent()}
 
             try:
-                # 获取页面源码（后续需优化get_source使其线程安全）
+                # 获取页面源码
                 source_code_dict = get_source(
                     self.browser,
                     current_urls,
@@ -157,69 +166,77 @@ class Scanner:
                         # print(f"{Fore.YELLOW}跳过短内容URL: {url}{Fore.RESET}")
                         continue
 
-                    if args.de_duplication_hash:
-                        # 检查源码哈希
-                        if not self.check_and_add_hash(scan_info['source_code']):
-                            # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
-                            continue
+                    if scan_info['source_code'].lower().startswith("<!doctype html>"):
 
-                    if args.de_duplication_title:
-                        # 检擦标题去重也要考虑域名，像simhash一样
-                        with self.title_lock:  # 添加线程锁
-                            # 初始化域名对应的集合
-                            if scan_info['domain'] not in self.title_visited_urls:
-                                self.title_visited_urls[scan_info['domain']] = set()
-                            # 检查相似度前先检查是否重复
-                            if scan_info['title'] in self.title_visited_urls[scan_info['domain']]:
+                        if args.de_duplication_hash:
+                            # 检查源码哈希
+                            if not self.check_and_add_hash(scan_info['source_code']):
                                 # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
                                 continue
-                            # 添加新标题
-                            self.title_visited_urls[scan_info['domain']].add(scan_info['title'])
 
-
-                    # 按照返回值长度进行去重
-                    if args.de_duplication_length:
-                        # 检查源码长度
-                        with self.length_lock:  # 添加线程锁
-                            # 初始化域名对应的集合
-                            if scan_info['domain'] not in self.length_visited_urls:
-                                self.length_visited_urls[scan_info['domain']] = set()
-                            # 检查相似度前先检查是否重复
-                            if scan_info['length'] in self.length_visited_urls[scan_info['domain']]:
-                                # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
-                                continue
-                            # 添加新长度
-                            self.length_visited_urls[scan_info['domain']].add(scan_info['length'])
-
-                    # 按照simhash进行去重
-                    if args.de_duplication_similarity:
-                        # 判断是不是html页面，非JavaScript页面
-                        if scan_info['source_code'].startswith("<!DOCTYPE html>"):
-                            # 计算simhash
-                            simhash = get_simhash(scan_info['source_code'])
-
-                            with self.hash_lock:  # 添加线程锁
+                        if args.de_duplication_title:
+                            # 检擦标题去重也要考虑域名，像simhash一样
+                            with self.title_lock:  # 添加线程锁
                                 # 初始化域名对应的集合
-                                if scan_info['domain'] not in self.simhash_dict:
-                                    self.simhash_dict[scan_info['domain']] = set()
-
+                                if scan_info['domain'] not in self.title_visited_urls:
+                                    self.title_visited_urls[scan_info['domain']] = set()
                                 # 检查相似度前先检查是否重复
-                                if any(similarity(simhash, h) > float(args.de_duplication_similarity)
-                                      for h in self.simhash_dict[scan_info['domain']]):
-                                    print(f"{Fore.YELLOW}跳过重复URL: {scan_info['url']}{Fore.RESET}")
+                                if scan_info['title'] in self.title_visited_urls[scan_info['domain']]:
+                                    # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
                                     continue
+                                # 添加新标题
+                                self.title_visited_urls[scan_info['domain']].add(scan_info['title'])
 
-                                # 添加新simhash
-                                self.simhash_dict[scan_info['domain']].add(simhash)
+
+                        # 按照返回值长度进行去重
+                        if args.de_duplication_length:
+                            # 检查源码长度
+                            with self.length_lock:  # 添加线程锁
+                                # 初始化域名对应的集合
+                                if scan_info['domain'] not in self.length_visited_urls:
+                                    self.length_visited_urls[scan_info['domain']] = set()
+                                # 检查相似度前先检查是否重复
+                                if scan_info['length'] in self.length_visited_urls[scan_info['domain']]:
+                                    # print(f"{Fore.YELLOW}跳过重复URL: {url}{Fore.RESET}")
+                                    continue
+                                # 添加新长度
+                                self.length_visited_urls[scan_info['domain']].add(scan_info['length'])
+
+                        # 按照simhash进行去重
+                        if args.de_duplication_similarity:
+                            # 判断是不是html页面，非JavaScript页面
+                            if scan_info['source_code'].startswith("<!DOCTYPE html>"):
+                                # 计算simhash
+                                simhash = get_simhash(scan_info['source_code'])
+
+                                with self.hash_lock:  # 添加线程锁
+                                    # 初始化域名对应的集合
+                                    if scan_info['domain'] not in self.simhash_dict:
+                                        self.simhash_dict[scan_info['domain']] = set()
+
+                                    # 检查相似度前先检查是否重复
+                                    if any(similarity(simhash, h) > float(args.de_duplication_similarity)
+                                          for h in self.simhash_dict[scan_info['domain']]):
+                                        print(f"{Fore.YELLOW}跳过重复URL: {scan_info['url']}{Fore.RESET}")
+                                        continue
+
+                                    # 添加新simhash
+                                    self.simhash_dict[scan_info['domain']].add(simhash)
 
                     # 标记为已访问
                     self.add_visited_url(scan_info['url'])
 
+
+
                     # 处理JS文件和初始URL
                     if ".js" in scan_info['url'] or scan_info['url'] in self.read_url_from_file:
                         dirty_data = analysis_by_rex(scan_info['source_code'])
-                        import_info = find_all_info_by_rex(scan_info['source_code'])
+                        # import_info = find_all_info_by_rex(scan_info['source_code'])
                         clean_data = data_clean(scan_info['url'], dirty_data)
+                        if ".js" in scan_info['url']:
+                            import_info = find_all_info_by_rex(scan_info['source_code'])
+                        else:
+                            import_info = []
 
                         # 写入敏感信息
                         write2json("./result/sensitiveInfo.json", json.dumps({

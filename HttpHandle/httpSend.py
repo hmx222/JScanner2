@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -10,9 +11,8 @@ from tqdm import tqdm  # 导入tqdm库用于进度条显示
 from urllib3.exceptions import InsecureRequestWarning
 
 from HttpHandle.responseHandler import get_webpage_title
-from JsHandle.pathScan import extract_js_api_params
+from JsHandle.valid_page import check_valid_page
 from filerw import write2json
-
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -43,15 +43,10 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
             # 获取源码和状态码
             html = tab.html
 
-
-            if "<input" in html:
-                # print(f"我们在{url}发现了一个input标签")
-                pass
-
-
             status = response.status_code if response else None
             if not status:
                 status = requests.get(url, timeout=3, verify=False).status_code
+            tab.stop_loading()
             return html, url, status
 
         except Exception as e:
@@ -82,7 +77,8 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
         if not html:
             continue
 
-        js_params = extract_js_api_params(html)
+        # js_params = extract_js_api_params(html)
+        valid_page_info = check_valid_page(url, html)
         parsed = urlparse(url)
         scan_info = {
             "domain": parsed.hostname,
@@ -92,7 +88,8 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
             "status": status,
             "title": get_webpage_title(html),
             "length": len(html),
-            "params": list(js_params.values())
+            "valid_Element":valid_page_info
+            # "params": list(js_params.values())
         }
         write2json("./result/scanInfo.json", json.dumps(scan_info))
 
@@ -101,6 +98,6 @@ def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
         scan_info_list.append(scan_info)
 
     for scan_info_ in scan_info_list:
-        print(f"{Fore.BLUE}url:{scan_info_['url']}\n\tstatus:{scan_info_['status']}\n\ttitle:{scan_info_['title']}{Fore.RESET}\n\tlength:{scan_info_['length']}\n\tparams:{scan_info_['params']}\n")
+        print(f"{Fore.BLUE}url:{scan_info_['url']}\n\tstatus:{scan_info_['status']}\n\ttitle:{scan_info_['title']}{Fore.RESET}\n\tlength:{scan_info_['length']}\n\tvalidElement:{scan_info_['valid_Element']}\n")
 
     return scan_info_list
