@@ -41,7 +41,7 @@ class Scanner:
     def _init_browser(self):
         """初始化浏览器配置，优化稳定性"""
         co = (ChromiumOptions()
-              .auto_port()  # 自动选择端口，避免冲突
+              .auto_port()
               .headless(not self.args.visible)  # 控制无头模式
               .set_argument('--blink-settings=imagesEnabled=false,stylesheetEnabled=false,fontEnabled=false')
               .set_argument('--disable-gpu')
@@ -176,7 +176,7 @@ class Scanner:
 
                         if args.de_duplication_title:
                             # 检擦标题去重也要考虑域名，像simhash一样
-                            with self.title_lock:  # 添加线程锁
+                            with self.title_lock:
                                 # 初始化域名对应的集合
                                 if scan_info['domain'] not in self.title_visited_urls:
                                     self.title_visited_urls[scan_info['domain']] = set()
@@ -191,7 +191,7 @@ class Scanner:
                         # 按照返回值长度进行去重
                         if args.de_duplication_length:
                             # 检查源码长度
-                            with self.length_lock:  # 添加线程锁
+                            with self.length_lock:
                                 # 初始化域名对应的集合
                                 if scan_info['domain'] not in self.length_visited_urls:
                                     self.length_visited_urls[scan_info['domain']] = set()
@@ -209,7 +209,7 @@ class Scanner:
                                 # 计算simhash
                                 simhash = get_simhash(scan_info['source_code'])
 
-                                with self.hash_lock:  # 添加线程锁
+                                with self.hash_lock:
                                     # 初始化域名对应的集合
                                     if scan_info['domain'] not in self.simhash_dict:
                                         self.simhash_dict[scan_info['domain']] = set()
@@ -225,8 +225,6 @@ class Scanner:
 
                     # 标记为已访问
                     self.add_visited_url(scan_info['url'])
-
-
 
                     # 处理JS文件和初始URL
                     if ".js" in scan_info['url'] or scan_info['url'] in self.read_url_from_file:

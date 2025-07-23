@@ -1,6 +1,6 @@
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import lru_cache
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
 import regex as re
 
@@ -1031,9 +1031,15 @@ def check_available(import_info):
     return import_info
 
 
-def find_all_info_by_rex(text:str) -> list:
+# 定义在模块顶层（函数外部），确保可以被序列化
+def call_scan_function(func, text):
+    """用于多进程调用的包装函数"""
+    return func(text)
+
+
+def find_all_info_by_rex(text: str) -> list:
     """
-    多线程敏感信息提取
+    多进程敏感信息提取
     :param text: 待扫描文本
     :return: 敏感信息列表
     """
@@ -1065,13 +1071,17 @@ def find_all_info_by_rex(text:str) -> list:
 
     import_info = []
 
-    # 使用多进程池并行执行函数
-    with Pool(processes=len(scan_functions)) as pool:
-        results = pool.map(lambda func: func(text), scan_functions)
+    # 使用顶层函数而非lambda，避免序列化问题
+    with Pool(processes=cpu_count()) as pool:
+        # 构建任务列表：(函数, 文本)
+        tasks = [(func, text) for func in scan_functions]
+        # 使用starmap调用顶层包装函数
+        results = pool.starmap(call_scan_function, tasks)
+
         for result in results:
             import_info.extend(result)
-    return check_available(import_info)
 
+    return check_available(import_info)
 
     # # 使用线程池并行执行扫描函数
     # with ThreadPoolExecutor(max_workers=14) as executor:
