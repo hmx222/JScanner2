@@ -130,11 +130,6 @@ def analysis_by_rex(source)->list:
 
     return list(set(relist))
 
-def analysis_by_ollama(source)->list:
-    """
-    wait developer graduated from university, we will use ollama to analysis the source code
-    """
-
 
 def data_clean(url, dirty_data)->list:
     """
@@ -180,7 +175,7 @@ def check_url(original_url,splicing_url):
     """check the url,and it is a blacklist of url"""
     urlparse2 = urlparse(splicing_url)
 
-    if urlparse2.path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','ttf','.css','.svg','.m4v','.aac','.woff','.woff2','.ttf','.eot','.otf','.apk')):
+    if urlparse2.path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','ttf','.css','.svg','.m4v','.aac','.woff','.woff2','.ttf','.eot','.otf','.apk','.exe')):
         return False
 
     if "jquery" in urlparse2.path:
