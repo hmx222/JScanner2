@@ -1,9 +1,18 @@
 import argparse
-import ast
+
+
+def str_to_float(value):
+    """将字符串转为浮点数，并验证范围 (0.0-1.0)"""
+    try:
+        val = float(value)
+        if not 0.0 <= val <= 1.0:
+            raise argparse.ArgumentTypeError("阈值必须在 0.0 到 1.0 之间")
+        return val
+    except ValueError:
+        raise argparse.ArgumentTypeError("必须输入有效的浮点数")
 
 
 def parse_args():
-    """解析用户输入的命令行参数"""
     parser = argparse.ArgumentParser(description="网站扫描工具 - 支持URL扫描、批量处理及结果导出")
 
     # 核心目标参数（必选其一）
@@ -17,37 +26,31 @@ def parse_args():
     # 网络与浏览器参数
     parser.add_argument('-p', '--proxy', type=str,
                         help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
-    parser.add_argument('-v', '--visible', action='store_true', default=False ,help="显示浏览器窗口（默认：无头模式，不显示窗口）")
+    parser.add_argument('-v', '--visible', action='store_true', default=False,
+                        help="显示浏览器窗口（默认：无头模式，不显示窗口）")
 
     # 结果导出参数
     parser.add_argument('-e', '--excel', type=str, help="导出结果到Excel文件（如：./result.xlsx）")
 
-    # 对于重复的结果，是否使用对title的去重
-    parser.add_argument('-d', '--de_duplication_title', action='store_true', default=True,
-                        help="对于重复的结果，是否使用对title的去重（默认：True）")
+    # 去重参数优化方案
+    parser.add_argument('-d', '--de_duplication_title', action='store_true', default=False,
+                        help="启用标题去重（默认关闭）")
 
-    # 对于重复的结果，是否使用hash的去重
-    parser.add_argument('-s', '--de_duplication_hash', type=str, default=0.90,
-                        help="对于重复的结果，是否使用对DOM SimHash的去重（默认：0.90）")
+    parser.add_argument('-s', '--de_duplication_hash', type=str_to_float, default=None,  # 关键修改
+                        help="启用DOM SimHash去重并设置阈值（默认关闭，启用示例：-s 0.8）")
 
-    # 对于重复的结果，是否使用返回值长度的去重
-    parser.add_argument('-l', '--de_duplication_length', action='store_true', default=True,
-                        help="对于重复的结果，是否使用对返回值长度的去重（默认：True）")
+    parser.add_argument('-l', '--de_duplication_length', action='store_true', default=False,
+                        help="启用长度去重（默认关闭）")
 
-    # 对于重复的结果，是否使用对返回值相似度的去重
-    parser.add_argument('-f', '--de_duplication_similarity', type=str, default=0.65,
-                        help="对于重复的结果，是否使用对返回值相似度的去重（默认：0.65）")
+    parser.add_argument('-f', '--de_duplication_similarity', type=str_to_float, default=None,  # 关键修改
+                        help="启用文本相似度去重并设置阈值（默认关闭，启用示例：-f 0.7）")
 
-    # 隐藏的header参数
-    # parser.add_argument(
-    #     '-r', '--header',
-    #     type=ast.literal_eval,
-    #     default="{'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/114.0.0.0 Safari/537.36'}",
-    #     help="自定义请求头（格式：\"{'Cookie':'xxx','User-Agent':'xxx'}\"）"
-    # )
-
-    # 检查参数合法性（确保url和batch不同时为空）
     args = parser.parse_args()
+
+    # 动态开启去重功能（当用户指定阈值时启用）
+    args.enable_hash_dedup = args.de_duplication_hash is not None
+    args.enable_similarity_dedup = args.de_duplication_similarity is not None
+
     if not args.url and not args.batch:
         parser.error("必须指定 -u/--url（单个URL）或 -b/--batch（批量文件）中的一个")
 

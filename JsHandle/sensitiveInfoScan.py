@@ -1,5 +1,5 @@
-from concurrent.futures.thread import ThreadPoolExecutor
 from functools import lru_cache
+from itertools import chain
 from multiprocessing import Pool, cpu_count
 
 import regex as re
@@ -1028,7 +1028,7 @@ def check_available(import_info):
     # 去重
     import_info = list(set(import_info))
 
-    return import_info
+    return [item for item in import_info if len(item) <= 500]
 
 
 # 定义在模块顶层（函数外部），确保可以被序列化
@@ -1069,8 +1069,6 @@ def find_all_info_by_rex(text: str) -> list:
         find_sensitive_info_9
     ]
 
-    import_info = []
-
     # 使用顶层函数而非lambda，避免序列化问题
     with Pool(processes=cpu_count()) as pool:
         # 构建任务列表：(函数, 文本)
@@ -1078,22 +1076,8 @@ def find_all_info_by_rex(text: str) -> list:
         # 使用starmap调用顶层包装函数
         results = pool.starmap(call_scan_function, tasks)
 
-        for result in results:
-            import_info.extend(result)
+        flattened_list = list(chain.from_iterable(results))
 
-    return check_available(import_info)
+    return check_available(flattened_list)
 
-    # # 使用线程池并行执行扫描函数
-    # with ThreadPoolExecutor(max_workers=14) as executor:
-    #     # 提交所有任务
-    #     futures = [executor.submit(func, text) for func in scan_functions]
-    #
-    #     # 收集所有结果
-    #     for future in futures:
-    #         try:
-    #             result = future.result()
-    #             import_info.extend(result)
-    #         except Exception as e:
-    #             print(f"Error in scanning function: {e}")
-    #
-    # return check_available(import_info)
+

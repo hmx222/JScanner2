@@ -72,7 +72,7 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
             (args.de_duplication_length and checker.check_duplicate_by_length(length, url)) or \
             (args.de_duplication_similarity and checker.check_duplicate_by_simhash(
                 source, url, float(args.de_duplication_similarity))):
-        print("跳过重复URL: ", url, "")
+
         return False, set()  # 触发去重，不继续处理
 
     # 标记为已访问
