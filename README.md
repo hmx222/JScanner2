@@ -1,185 +1,158 @@
-# JScanner2
+# 🛡️ JScanner2 - 递归式敏感信息扫描工具
 
-JScanner2 是敏感信息扫描工具 JScanner 的升级版本，支持扩散式扫描、动态加载、批量扫描等功能。它能够通过正则表达式从网页源码和 JavaScript 文件中提取敏感信息，如身份证号、手机号、邮箱地址等，并可将结果输出到 Excel 文件中。
+> **升级重点**：新增扩散式扫描引擎、智能去重系统与动态加载支持
+
+https://img.shields.io/badge/Python-3.8%2B-blue](https://www.python.org/) https://img.shields.io/badge/License-Apache_2.0-green](https://opensource.org/licenses/Apache-2.0) https://img.shields.io/badge/Release-Beta-orange](https://github.com/hmx222/JScanner2/releases)
+
+## 📜 目录
+- 核心功能  
+- 新增特性  
+- 安装指南  
+- 使用指南  
+- 智能去重系统  
+- 最佳实践  
+- 免责声明  
+- 开发路线
 
 
-## 工具特性
 
-- **扩散式扫描**：能够从初始 URL 开始，递归地扫描相关页面，扩大扫描范围。
+## 🌟 核心功能
+1. **递归路径探测**  
+   - 自动解析网页源码发现JS文件 
+   - 深度提取JS中的隐藏路径与接口（支持自定义状态码过滤）
 
-- **动态加载**：支持动态加载内容，确保能够扫描到通过 JavaScript 动态生成的页面元素。
+2. **多维度扫描控制**  
 
-- **批量扫描**：可以同时对多个目标 URL 进行扫描，提高扫描效率。
+   - 目录递减访问（`-l`参数控制遍历深度）
+   - 可调扫描深度（`-H`参数，建议≤2）
+   - 多URL批量扫描（`-b`文件输入）
 
-- **自定义深度查找**：用户可以根据需要设置扫描的深度，控制扫描的范围。
+3. **多种页面相似度检测**  
 
-- **白名单支持**：通过配置白名单文件，可以排除不需要扫描的 URL。
+   - 使用SimHash配合DOM骨架去重
+   - 使用SimHash配合jieba去重
+   - 使用title，length去重
 
-- **多线程处理**：采用多线程技术，加速扫描过程。
+4. **页面重点信息标记**
 
-- **Excel 输出**：扫描结果可以方便地导出到 Excel 文件中，便于查看和分析。
+   - 多维度评估页面可用点
+   - 助力漏洞挖掘
 
-- **灵活的参数配置**：支持代理设置、浏览器窗口显示控制、结果去重等多种参数配置，满足不同场景需求。
+---
 
-## 安装方法
+## 🚀 新增特性
+### 1. 智能去重系统
+| 去重方式                | 适用场景                          | 参数开关          |
+|-------------------------|---------------------------------|-------------------|
+| DOM骨架SimHash (推荐)   | 同模板页面（如电商列表页）        | `-s <阈值>`       |
+| 标题去重                | 同标题不同参数页                  | `-d`              |
+| 返回值长度去重          | 静态资源重复                      | `-l`              |
+| 文本相似度去重          | 内容农场文章                      | `-f <阈值>`       |
 
-1. 克隆项目仓库：
+### 2. 采用PlayWright作为爬虫框架
 
-```
-git clone https://github.com/hmx222/JScanner2.git
-```
+- 弃用了DrissionPage，采用PlayWright异步请求
+- 后续会合并master分支为Playwright版本
 
-1. 注意此工具有 beta 版本与 stable 版本。克隆完成后，进入项目目录：
+---
 
-```
+## ⚙️ 安装指南
+```bash
+# 克隆仓库（含beta/stable分支）
+git clone https://github.com/hmx222/JScanner2.git 
+
+# 安装依赖
 cd JScanner2
-```
-
-1. 安装依赖：
-
-```
 pip install -r requirements.txt
 ```
 
-## 使用方法
+> **环境要求**：Python 3.8+，Chromium内核浏览器
 
-### 命令行参数说明
+---
 
-| 参数 | 全称                        | 说明                                                         |
-| ---- | --------------------------- | ------------------------------------------------------------ |
-| -u   | --url                       | 输入带有 http/https 的单个网站 URL（如：https://example.com），与-b参数必选其一 |
-| -b   | --batch                     | 批量扫描的 URL 文件绝对路径（每行一个 URL），与-u参数必选其一 |
-| -H   | --height                    | 扫描深度（默认：2）                                          |
-| -t   | --thread_num                | 并发线程数（默认：10）                                       |
-| -p   | --proxy                     | 代理服务器（格式：[http://127.0.0.1](http://127.0.0.1:12335)[:1233](http://127.0.0.1:12335)[5](http://127.0.0.1:12335) 或 socks5://127.0.0.1:1080） |
-| -v   | --visible                   | 显示浏览器窗口（默认：无头模式，不显示窗口）                 |
-| -e   | --excel                     | 导出结果到 Excel 文件（如：./result.xlsx）                   |
-| -d   | --de_duplication_title      | 对于重复的结果，是否使用对 title 的去重（默认：True）        |
-| -l   | --de_duplication_length     | 对于重复的结果，是否使用对 length 的去重（默认：True）       |
-| -f   | --de_duplication_similarity | 对于重复的结果，使用文本相似度去重的阈值（默认：0.65）       |
-| -s   | --de_duplication_hash       | 对于重复的结果，是否使用对 普通hash 的去重（默认：True）     |
-
+## 🔧 使用指南
+### 命令行参数
+| 参数 | 全称                  | 说明                                 |
+|------|-----------------------|--------------------------------------|
+| `-u` | `--url`               | 目标URL（http/https）               |
+| `-b` | `--batch`             | 批量扫描文件路径                    |
+| `-H` | `--height`            | 扫描深度（默认：2）                 |
+| `-t` | `--thread_num`        | 并发线程数（默认：10）              |
+| `-p` | `--proxy`             | 代理设置                            |
+| `-v` | `--visible`           | 显示浏览器窗口                      |
+| `-e` | `--excel`             | Excel输出路径（如：results.xlsx）   |
+| `-s` | `--simhash_threshold` | DOM相似度阈值（默认0.8）           |
 
 
-### 示例
+---
 
-#### 常用的方法
-
-对于单文件：
-
+## 🧠 智能去重系统
+### DOM骨架SimHash技术
+```python
+def extract_dom_skeleton(element):
+    """ 提取标签层级结构（剔除动态内容） """
+    skeleton = f"<{element.tag}>"
+    for child in element:
+        if not isinstance(child, str): 
+            skeleton += extract_dom_skeleton(child)
+    skeleton += f"</{element.tag}>"
+    return skeleton
 ```
-python main.py -u "http://example.com" -H 3 -t 10 -p 127.0.0.1:12334 -d -l -s
+**处理效果**：  
 ```
-
-对于多文件：
-
-```
-python main.py -b "./" -H 3 -t 5 -p 127.0.0.1:12334 -d -l -s
-```
-
-对于需要高价值的页面：
-
-```
-python main.py -u "http://example.com" -H 3 -t 10 -p 127.0.0.1:12334 -d -l -f 0.7 -s
+https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/?spm=a2c4g.11186623.nav-v2-dropdown-menu-3.d_main_0_7.e0f45630AW7XNc&scm=20140722.M_10247527._.V_1
+与
+https://market.aliyun.com/xinxuan/application/miniapps?spm=a2c4g.11186623.nav-v2-dropdown-menu-6.d_main_0_1.4c47293as877sK&scm=20140722.M_10215511._.V_1
+→ 76%相似度 → 标记为重复页面 
 ```
 
-最后只需要查看**result目录下的两个json**即可。
-结果预览：
 
-<img width="1770" height="1281" alt="1752678149504" src="https://github.com/user-attachments/assets/cca2e742-a084-4f56-b077-54ea2b6641f1" />
+### 多维度去重策略
+1. **标题去重**：同域名下标题完全一致则去重
+2. **长度去重**：响应体长度差值<5%视为重复
+3. **文本相似度**：Jieba分词+SimHash计算（适合文章类）
 
+---
 
-#### 单 URL 扫描
+## ⚡ 最佳实践
 
-```
-python main.py -u "http://example.com" -H 3
-```
+   ```bash
+    # 不推荐
+    python main.py -u "https://xxxxx.com" -H 3
+   ```
+   ```bash
+   # 使用title与length去重（不推荐）
+   python main.py -u "https://target.com" -H 3 -d -l
+   ```
+   ```bash
+   # 平衡去重与效率（最最最推荐）
+   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l
+   ```
+   ```bash
+   # 效率最慢（次之）
+   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -f 0.65
+   ```
+   ```bash
+   # 多URL扫描，建议在config/whiteList 添加白名单，让扫描更充分
+   python main.py -b xxxx.txt -H 3 -d -s 0.8 -l
+   ```
 
-该命令表示对http://example.com这个 URL 进行扫描，扫描深度设置为 3。
+---
 
-#### 批量扫描
+## ⚠️ 免责声明
+> **重要**：本工具仅限**合法授权**的安全评估使用，禁止未授权扫描。使用者需自行承担法律责任，开发者不承担任何连带责任。
 
-```
-python main.py -b "urls.txt" -t 15
-```
+---
 
-此命令会批量扫描urls.txt文件中的所有 URL，并发线程数设置为 15。
+## 🛣️ 开发路线
+- [ ] AI辅助页面价值分析（引入BERT辅助检测）
+- [ ] Docker容器化部署支持 
 
-#### 带代理扫描并导出结果
+---
 
-```
-python main.py -u "https://example.com" -p "http://127.0.0.1:12335" -e "output.xlsx"
-```
+## 📚 参考资源
+1. 正则表达式库：https://github.com/GerbenJavado/LinkFinder 
+2. 敏感信息规则：https://github.com/momosecurity/FindSomething
+3. 使用问题反馈：https://github.com/hmx222/JScanner2/issues
 
-该命令以http://127.0.0.1:12335作为代理服务器，对https://example.com进行扫描，并将结果导出到output.xlsx文件中。
-
-#### 显示浏览器窗口扫描
-
-```
-python main.py -u "http://example.com" -v
-```
-
-执行该命令会在扫描时显示浏览器窗口，默认情况下为无头模式不显示窗口。
-
-#### 去重
-
-为什么要进行去重？
-
-相似的页面太多，对于SRC挖掘来说，以下的两个页面几乎相似：
-
-- https://www.aliyun.com/benefit?scm=20140722.M_10776205._.V_1
-- https://www.aliyun.com/activity/superproducts/discount?scm=20140722.M_10798717._.V_1
-
-对于漏洞挖掘来将，实在是没有必要进行两个页面都进行分析，对于代码来将，识别页面有没有用便是难题，一个页面到底有没有价值去进行细致的测试，倘若我们逐个查看，便是特别大的工作量，特别是资产量特别大的时候，便更加消耗时间，于是我采用了下面的几种方法来进行去重，可以自行选择.
-
-##### Hash去重
-
-取出每个前端代码的前400位数，计算hash。
-
-##### 标题去重
-
-防止重复标题的出现，检查并添加标题，且标题一样的前提是域名一样
-
-##### 返回值长度去重
-
-按照返回值长度进行去重。
-
-##### 文本相似度检测
-
-使用bs4去除标签与simhash计算求汉明距离
-
-
-
-## 配置说明
-
-- **白名单文件**：config/whiteList 文件中放置的请求的范围，防止误伤其他网站。（此处最好是直接使用测绘引擎等导出excel表格后，可以将子域名列信息填入）
-
-- **输出目录**：所有的输出信息都位于 output 目录下，扫描结果会以 JSON 和 Excel 文件的形式保存。
-
-- **下载文件目录**：download_files 目录下存放下载的文件。
-
-## 注意事项
-
-- 请确保在合法合规的前提下使用本工具，避免对未经授权的网站进行扫描。
-
-- 扫描过程可能会消耗较多的系统资源和网络带宽，请根据实际情况合理设置扫描参数。
-
-- 使用代理时，需确保代理服务器可用，否则可能导致扫描失败。
-
-- 批量扫描时，URL 文件需保证每行一个 URL，且格式正确。
-
-## 后续计划
-
-- 有价值页面的tag标记
-- 网页截图后，让ai进行判断
-
-
-## 敏感信息正则来源
-
-- 敏感信息的正则表达式部分来自于： https://github.com/momosecurity/FindSomething。
-
-- 部分正则表达式来自于：https://github.com/GerbenJavado/LinkFinder
-
-## 写于
-
-2024.12.28
+---
