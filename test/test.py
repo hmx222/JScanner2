@@ -60,8 +60,8 @@ def compare_html_similarity(html1, html2):
 
 
 if __name__ == '__main__':
-    h1 = requests.get("https://www.xiaohongshu.com/explore?language=zh-CN",proxies={"http":"127.0.0.1:12334","https":"127.0.0.1:12334"}).text
-    h2 = requests.get("https://www.xiaohongshu.com/explore?channel_id=homefeed.fashion_v3",proxies={"http":"127.0.0.1:12334","https":"127.0.0.1:12334"}).text
+    h1 = requests.get("https://market.aliyun.com/xinxuan/application/miniapps?spm=a2c4g.11186623.nav-v2-dropdown-menu-6.d_main_0_1.4c47293as877sK&scm=20140722.M_10215511._.V_1").text
+    h2 = requests.get("https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/?spm=a2c4g.11186623.nav-v2-dropdown-menu-3.d_main_0_7.e0f45630AW7XNc&scm=20140722.M_10247527._.V_1").text
 
     # print("直接计算",html_similarity(h1,h2))
     # print("dom:",dom_similarity(h1,h2))
