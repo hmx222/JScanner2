@@ -76,6 +76,8 @@ class DuplicateChecker:
             return ""  # 异常HTML返回空骨架
 
     def check_duplicate_by_DOM_simhash(self, source: str, threshold:str) -> bool:
+        if threshold is None:
+            return True
         if not source.lower().startswith("<!doctype html>"):
             return False  # 仅对HTML页面进行DOM去重
         # 提取DOM骨架
@@ -129,6 +131,8 @@ class DuplicateChecker:
 
     def check_duplicate_by_simhash(self, source: str, url: str, similarity_threshold: float) -> bool:
         """按“域名+SimHash”去重（内容相似度超过阈值视为重复）"""
+        if similarity_threshold is None:
+            return True
         # 只对HTML页面做SimHash去重
         if not source.lower().startswith("<!doctype html>"):
             return False
