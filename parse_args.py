@@ -1,4 +1,5 @@
 import argparse
+import re
 
 
 def str_to_float(value):
@@ -10,6 +11,19 @@ def str_to_float(value):
         return val
     except ValueError:
         raise argparse.ArgumentTypeError("必须输入有效的浮点数")
+
+
+def parse_headers(header_str):
+    """解析请求头字符串为字典"""
+    # 支持单引号/双引号包裹的键值对，格式如'key':'value'或"key":"value"
+    pattern = r"['\"]([^'\"]+)['\"]:['\"]([^'\"]+)['\"]"
+    matches = re.findall(pattern, header_str)
+
+    headers = {}
+    for key, value in matches:
+        headers[key.strip()] = value.strip()
+
+    return headers
 
 
 def parse_args():
@@ -28,6 +42,9 @@ def parse_args():
                         help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
     parser.add_argument('-v', '--visible', action='store_true', default=False,
                         help="显示浏览器窗口（默认：无头模式，不显示窗口）")
+
+    parser.add_argument('-c', '--headers', type=str, default=None,
+                        help='user_agent已经随机，请求头字符串，格式如：\'cookie\':\'session=123\';\'Referer\':\'https://example.com\'')
 
     # 结果导出参数
     parser.add_argument('-e', '--excel', type=str, help="导出结果到Excel文件（如：./result.xlsx）")

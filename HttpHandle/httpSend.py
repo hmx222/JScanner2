@@ -15,6 +15,7 @@ from user_agent import generate_user_agent
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from JsHandle.valid_page import check_valid_page
 from filerw import write2json
+from parse_args import parse_headers
 
 # 忽略SSL警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -30,11 +31,13 @@ async def get_playwright_page(browser: Browser):
         await page.close()
 
 
-async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio):
+async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers_: dict):
     """异步获取单个页面源码（核心请求逻辑）"""
     try:
+        headers = {"User-Agent": generate_user_agent()}
+        headers.update(parse_headers(headers_))
         # 设置请求头
-        await page.set_extra_http_headers({"User-Agent": generate_user_agent()})
+        await page.set_extra_http_headers(headers)
         # 拦截非必要资源（加速加载）
         await page.route("**/*.{png,jpg,jpeg,gif,css,font,ico}", lambda route: route.abort())
 
@@ -67,7 +70,7 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         return False, set()
 
     # 去重检查（按配置的策略执行）
-    if (args.de_duplication_hash and checker.check_duplicate_by_DOM_simhash(source,args.de_duplication_similarity)) or \
+    if (args.de_duplication_hash and checker.check_duplicate_by_DOM_simhash(source,args.de_duplication_hash)) or \
             (args.de_duplication_title and checker.check_duplicate_by_title(title, url)) or \
             (args.de_duplication_length and checker.check_duplicate_by_length(length, url)) or \
             (args.de_duplication_similarity and checker.check_duplicate_by_simhash(
@@ -116,7 +119,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             async def bounded_fetch(url):
                 async with semaphore:
                     async with get_playwright_page(browser) as page:
-                        return await fetch_page_async(page, url, progress)
+                        return await fetch_page_async(page, url, progress, args.headers)
 
             # 批量请求
             results = await asyncio.gather(*[bounded_fetch(url) for url in urls])
@@ -145,12 +148,13 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "valid_Element": check_valid_page(html),
             # "source_code": html
         }
-                # 写入基础扫描信息
-        write2json("./result/scanInfo.json", json.dumps(scan_info))
-        scan_info["source_code"] = html
+
         # 去重并提取下一层URL
         is_valid, next_urls = await process_scan_result(scan_info, checker, args)
         if is_valid:
+            # 写入基础扫描信息
+            write2json("./result/scanInfo.json", json.dumps(scan_info))
+            scan_info["source_code"] = html
             print(
                 f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
 
