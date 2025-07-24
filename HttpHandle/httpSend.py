@@ -1,103 +1,161 @@
+# 导入必要依赖
+import asyncio
 import json
-import re
-import threading
-from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import requests
-from DrissionPage import ChromiumPage
+from bs4 import BeautifulSoup
 from colorama import Fore
-from tqdm import tqdm  # 导入tqdm库用于进度条显示
+from playwright.async_api import async_playwright, Page, Browser
+from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
+from user_agent import generate_user_agent
 
-from HttpHandle.responseHandler import get_webpage_title
+from HttpHandle.DuplicateChecker import DuplicateChecker
 from JsHandle.valid_page import check_valid_page
 from filerw import write2json
 
+# 忽略SSL警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
-def get_source(browser: ChromiumPage, urls, headers, thread_num, args):
-    """线程安全的页面源码获取"""
-    # 创建一个线程安全的锁，用于更新进度条
-    progress_lock = threading.Lock()
-    progress_bar = tqdm(total=len(urls), desc="请求进度", unit="url", ncols=100)
+@asynccontextmanager
+async def get_playwright_page(browser: Browser):
+    """异步上下文管理器：创建和自动关闭页面"""
+    page = await browser.new_page()
+    try:
+        yield page
+    finally:
+        await page.close()
 
-    # 每个线程使用独立的标签页
-    def fetch_page(url):
-        tab = None
+
+async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio):
+    """异步获取单个页面源码（核心请求逻辑）"""
+    try:
+        # 设置请求头
+        await page.set_extra_http_headers({"User-Agent": generate_user_agent()})
+        # 拦截非必要资源（加速加载）
+        await page.route("**/*.{png,jpg,jpeg,gif,css,font,ico}", lambda route: route.abort())
+
+        # 导航到页面
+        response = await page.goto(url, timeout=15000)
+        status = response.status if response else 500
+        html = await page.content()  # 获取源码
+        return html, url, status
+
+    except Exception:
+        return None, url, None
+    finally:
+        progress.update(1)
+
+
+async def process_scan_result(scan_info, checker: DuplicateChecker, args):
+    """处理扫描结果（去重+提取下一层URL）"""
+    url = scan_info["url"]
+    source = scan_info["source_code"]
+    status = scan_info["status"]
+    title = scan_info["title"]
+    length = scan_info["length"]
+
+    # 基础过滤（无效URL/错误状态码/过短源码）
+    if not checker.is_valid_url(url):
+        return False, set()
+    if status and status >= 404:
+        return False, set()
+    if not source or length < 300:
+        return False, set()
+
+    # 去重检查（按配置的策略执行）
+    if (args.de_duplication_hash and checker.check_duplicate_by_DOM_simhash(source,args.de_duplication_similarity)) or \
+            (args.de_duplication_title and checker.check_duplicate_by_title(title, url)) or \
+            (args.de_duplication_length and checker.check_duplicate_by_length(length, url)) or \
+            (args.de_duplication_similarity and checker.check_duplicate_by_simhash(
+                source, url, float(args.de_duplication_similarity))):
+        print("跳过重复URL: ", url, "")
+        return False, set()  # 触发去重，不继续处理
+
+    # 标记为已访问
+    checker.mark_url_visited(url)
+
+    # 提取下一层URL（仅JS文件或初始URL需要）
+    next_urls = set()
+    if ".js" in url or url in args.initial_urls:
+        from JsHandle.pathScan import analysis_by_rex, data_clean  # 延迟导入，避免循环依赖
+        dirty_data = analysis_by_rex(source)
+        next_urls = set(data_clean(url, dirty_data))
+
+    return True, next_urls
+
+def get_webpage_title(html_source):
+    """
+    get webpage title
+    """
+    soup = BeautifulSoup(html_source, 'html.parser')
+    title_tag = soup.find('title')
+    if title_tag:
+        return title_tag.text
+    return "NULL"
+
+
+async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
+    """Playwright异步批量请求+去重处理入口"""
+    progress = tqdm_asyncio(total=len(urls), desc="Process", unit="url", ncols=100)
+
+    async with async_playwright() as p:
+        # 启动浏览器
+        browser = await p.chromium.launch(
+            headless=not args.visible,
+            proxy={"server": args.proxy} if args.proxy else None,
+            args=["--disable-gpu", "--no-sandbox"]
+        )
+
         try:
-            # 新建标签页（线程内独立）
-            tab = browser.new_tab()
-            tab.set.headers(headers)
-            tab.get(url, timeout=5)
+            # 并发控制
+            semaphore = asyncio.Semaphore(thread_num)
+            async def bounded_fetch(url):
+                async with semaphore:
+                    async with get_playwright_page(browser) as page:
+                        return await fetch_page_async(page, url, progress)
 
-            # 处理证书错误
-            if '证书' in tab.title or '私密连接' in tab.title:
-                tab.ele('text:继续访问').click()
-            tab.wait.doc_loaded(timeout=2)
-
-            # 暂时使用了requests库，后续考虑使用DrissionPage的方法
-            response = requests.head(url, timeout=3, verify=False,proxies={"http":args.proxy,"https":args.proxy})
-
-            # 获取源码和状态码
-            html = tab.html
-
-            status = response.status_code if response else None
-            if not status:
-                status = requests.get(url, timeout=3, verify=False).status_code
-            tab.stop_loading()
-            return html, url, status
-
-        except Exception as e:
-            # print(f"{Fore.RED}获取 {url} 失败: {str(e)}{Fore.RESET}")
-            return None, url, None
+            # 批量请求
+            results = await asyncio.gather(*[bounded_fetch(url) for url in urls])
 
         finally:
-            # 确保标签页关闭（线程安全）
-            if tab:
-                try:
-                    tab.close()
-                except:
-                    pass
-            # 更新进度条（线程安全）
-            with progress_lock:
-                progress_bar.update(1)
+            await browser.close()
+            progress.close()
 
-    # 线程池控制（限制并发）
-    with ThreadPoolExecutor(max_workers=thread_num) as executor:
-        results = list(executor.map(fetch_page, urls))
-
-    # 关闭进度条
-    progress_bar.close()
-
-    # 处理结果
+    # 处理请求结果（生成scan_info并去重）
     scan_info_list = []
+    all_next_urls = set()
     for html, url, status in results:
         if not html:
             continue
 
-        # js_params = extract_js_api_params(html)
-        valid_page_info = check_valid_page(url, html)
+        # 生成基础扫描信息
         parsed = urlparse(url)
         scan_info = {
             "domain": parsed.hostname,
             "url": url,
             "path": parsed.path,
-            "port": parsed.port or (443 if parsed.scheme == 'https' else 80),
+            "port": parsed.port or (443 if parsed.scheme == "https" else 80),
             "status": status,
             "title": get_webpage_title(html),
             "length": len(html),
-            "valid_Element":valid_page_info
-            # "params": list(js_params.values())
+            "valid_Element": check_valid_page(html),
+            # "source_code": html
         }
+                # 写入基础扫描信息
         write2json("./result/scanInfo.json", json.dumps(scan_info))
-
-        # 加入源代码返回
         scan_info["source_code"] = html
-        scan_info_list.append(scan_info)
+        # 去重并提取下一层URL
+        is_valid, next_urls = await process_scan_result(scan_info, checker, args)
+        if is_valid:
+            print(
+                f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
 
-    for scan_info_ in scan_info_list:
-        print(f"{Fore.BLUE}url:{scan_info_['url']}\n\tstatus:{scan_info_['status']}\n\ttitle:{scan_info_['title']}{Fore.RESET}\n\tlength:{scan_info_['length']}\n\tvalidElement:{scan_info_['valid_Element']}\n")
+        if is_valid:
+            scan_info_list.append(scan_info)
+            all_next_urls.update(next_urls)
 
-    return scan_info_list
+    return scan_info_list, all_next_urls

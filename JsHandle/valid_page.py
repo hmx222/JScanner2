@@ -1,7 +1,7 @@
 import re
 
 
-def check_valid_page(url, source):
+def check_valid_page(source):
     """
     检查页面是否有高价值的利用点，仅返回匹配到的风险标签
     """

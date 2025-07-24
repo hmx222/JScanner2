@@ -27,8 +27,8 @@ def parse_args():
                         help="对于重复的结果，是否使用对title的去重（默认：True）")
 
     # 对于重复的结果，是否使用hash的去重
-    parser.add_argument('-s', '--de_duplication_hash', action='store_true', default=True,
-                        help="对于重复的结果，是否使用对hash的去重（默认：True）")
+    parser.add_argument('-s', '--de_duplication_hash', type=str, default=0.90,
+                        help="对于重复的结果，是否使用对DOM SimHash的去重（默认：0.90）")
 
     # 对于重复的结果，是否使用返回值长度的去重
     parser.add_argument('-l', '--de_duplication_length', action='store_true', default=True,
