@@ -2,7 +2,9 @@
 
 > **升级重点**：新增扩散式扫描引擎、智能去重系统与动态加载支持
 
-https://img.shields.io/badge/Python-3.8%2B-blue](https://www.python.org/) https://img.shields.io/badge/License-Apache_2.0-green](https://opensource.org/licenses/Apache-2.0) https://img.shields.io/badge/Release-Beta-orange](https://github.com/hmx222/JScanner2/releases)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue)]()
+[![License](https://img.shields.io/badge/License-Apache_2.0-green)]()
+[![Release](https://img.shields.io/badge/Release-Beta-orange)]()
 
 ## 📜 目录
 - 核心功能  
