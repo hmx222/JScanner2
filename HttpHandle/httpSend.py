@@ -2,6 +2,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from traceback import print_exception
 from urllib.parse import urlparse
 
 import requests
@@ -35,7 +36,8 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
     """异步获取单个页面源码（核心请求逻辑）"""
     try:
         headers = {"User-Agent": generate_user_agent()}
-        headers.update(parse_headers(headers_))
+        if headers_ is not None:
+            headers.update(parse_headers(headers_))
         # 设置请求头
         await page.set_extra_http_headers(headers)
         # 拦截非必要资源（加速加载）
@@ -47,7 +49,8 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
         html = await page.content()  # 获取源码
         return html, url, status
 
-    except Exception:
+    except Exception as e:
+        print_exception(e)
         return None, url, None
     finally:
         progress.update(1)
@@ -145,19 +148,20 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "title": get_webpage_title(html),
             "length": len(html),
             "valid_Element": check_valid_page(html),
-            # "source_code": html
+            "source_code": html
         }
 
         # 去重并提取下一层URL
         is_valid, next_urls = await process_scan_result(scan_info, checker, args)
+        # TODO 此处写入Excel
+        print(next_urls)
         if is_valid:
+            scan_info.pop("source_code")
             # 写入基础扫描信息
             write2json("./result/scanInfo.json", json.dumps(scan_info))
-            scan_info["source_code"] = html
             print(
                 f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
-
-        if is_valid:
+            scan_info["source_code"] = html
             scan_info_list.append(scan_info)
             all_next_urls.update(next_urls)
 
