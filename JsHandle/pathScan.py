@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from esprima import esprima
 from tldextract import tldextract
 
-from filerw import read
+from FileIO.filerw import read
 
 # load whiteList
 whiteList = read("./config/whiteList")
@@ -17,7 +17,6 @@ def extract_js_api_params(js_code):
     """
     results = {}
 
-    # 1. 正则表达式匹配基础传参模式
     patterns = [
         # 匹配Fetch API
         (r"fetch\(['\"]([^'\"]+)['\"][^)]*body:\s*([\w$]+)", "FETCH"),
@@ -35,10 +34,8 @@ def extract_js_api_params(js_code):
         (r"new\s+WebSocket\(['\"]([^'\"]+)['\"]\)", "WEBSOCKET")
     ]
 
-    # 执行正则匹配
     for pattern, method in patterns:
         for match in re.finditer(pattern, js_code, re.DOTALL):
-            # 提取URL和参数
             groups = [g for g in match.groups() if g]
             if len(groups) >= 2:
                 url, param = groups[0], groups[1]
@@ -46,11 +43,9 @@ def extract_js_api_params(js_code):
                     results[url] = set()
                 results[url].add(param)
 
-    # 2. AST解析获取深层调用 (当esprima可用时)
     try:
         ast = esprima.parseScript(js_code, {'jsx': True})
 
-        # 递归遍历AST节点
         def traverse(node):
             # 处理Fetch调用
             if (node.type == 'CallExpression' and
@@ -93,7 +88,6 @@ def extract_js_api_params(js_code):
     except Exception as e:
         pass
 
-    # 转换为标准字典格式
     return {url: list(params) for url, params in results.items()}
 
 

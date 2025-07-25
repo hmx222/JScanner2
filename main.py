@@ -5,13 +5,15 @@ import time
 
 from colorama import init, Fore
 
+from FileIO.Excelrw import SafePathExcelGenerator
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from HttpHandle.httpSend import get_source_async
+from HttpHandle.httpSend import get_source_async, fail_url
 from JsHandle.pathScan import get_root_domain
-from filerw import write2json, clear_or_create_file, generate_path_excel
+from FileIO.filerw import write2json, clear_or_create_file
 from parse_args import parse_args
 from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 
+excel_handler = SafePathExcelGenerator('./result/result.xlsx')
 
 # Scanner类核心修改
 class Scanner:
@@ -23,29 +25,23 @@ class Scanner:
 
     def run(self):
         """主运行逻辑"""
-        # 初始化结果目录
         os.makedirs("./result", exist_ok=True)
         clear_or_create_file("./result/scanInfo.json")
         clear_or_create_file("./result/sensitiveInfo.json")
 
-        # 读取初始URL
         self.initial_urls = self._load_initial_urls()
         if not self.initial_urls:
             print(f"{Fore.RED}未找到初始URL{Fore.RESET}")
             return
 
-        # 初始化去重管理器（传入目标根域名）
         target_root = get_root_domain(self.initial_urls[0])
         self.checker = DuplicateChecker(initial_root_domain=target_root)
-        self.args.initial_urls = self.initial_urls  # 传递初始URL到args，供后续使用
+        self.args.initial_urls = self.initial_urls
 
         # 开始扫描
         start_time = time.time()
         self._scan_recursive(self.initial_urls, 0)
 
-        # 导出结果
-        if self.args.excel:
-            generate_path_excel("./result/scanInfo.json", self.args.excel)
         print(f"{Fore.CYAN}总耗时: {time.time() - start_time:.2f}秒{Fore.RESET}")
 
 
@@ -60,14 +56,12 @@ class Scanner:
                 urls=urls,
                 thread_num=self.args.thread_num,
                 args=self.args,
-                checker=self.checker  # 传递去重管理器
+                checker=self.checker
             )
         )
 
-        # 提取敏感信息（单独处理，与请求逻辑解耦）
+        excel_handler.append_data(scan_info_list)
         self._extract_sensitive_info(scan_info_list)
-
-        # 扫描下一层
         if next_urls:
             self._scan_recursive(next_urls, depth + 1)
 
@@ -77,7 +71,7 @@ class Scanner:
         for scan_info in scan_info_list:
             url = scan_info["url"]
             source = scan_info["source_code"]
-            if ".js" in url or url in self.initial_urls:
+            if scan_info["is_valid"] == 1 or url in self.initial_urls:
 
                 sensitive_info = find_all_info_by_rex(source)
                 write2json(
@@ -101,3 +95,5 @@ if __name__ == '__main__':
     args = parse_args()
     scanner = Scanner(args)
     scanner.run()
+    excel_handler.save()
+    print("请求失败的url：",str(fail_url))

@@ -47,25 +47,20 @@ def check_valid_page(source):
         ]
     }
 
-    # 编译正则表达式
     compiled_patterns = {}
     for category, keywords in keyword_categories.items():
         pattern = r'(?i)(' + '|'.join(re.escape(kw) for kw in keywords) + ')'
         compiled_patterns[category] = re.compile(pattern)
 
-    # 收集匹配到的风险标签（去重）
     risk_tags = set()
 
-    # 检查每个类别
     for category, pattern in compiled_patterns.items():
         if pattern.search(source):
             risk_tags.add(category)
 
-    # 检查表单详情（如果有表单标签）
     if 'html_form' in risk_tags:
         form_pattern = re.compile(r'<form[^>]*>(.*?)</form>', re.DOTALL | re.IGNORECASE)
         if form_pattern.search(source):
             risk_tags.add('html_form_detail')
 
-    # 转换为列表并返回
     return list(risk_tags)

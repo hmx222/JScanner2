@@ -48,20 +48,17 @@ class DuplicateChecker:
 
     def extract_dom_skeleton(self, element: _Element) -> str:
         """抽取DOM骨架（保留标签和层级，剔除动态内容）"""
-        # 1. 处理当前节点：只保留标签名，剔除所有属性值
-        skeleton = f"<{element.tag}>"  # 如 <div>（剔除class、id等属性）
+        # 只保留标签名，剔除所有属性值
+        skeleton = f"<{element.tag}>"
 
-        # 2. 递归处理子节点（保留层级关系）
         for child in element:
-            # 跳过文本节点（动态内容，如商品描述、用户评论）
-            if child.tag is etree.Comment:  # 跳过注释
+            # 跳过文本节点
+            if child.tag is etree.Comment:
                 continue
-            if isinstance(child, str):  # 跳过文本
+            if isinstance(child, str):
                 continue
-            # 递归生成子节点骨架
             skeleton += self.extract_dom_skeleton(child)
 
-        # 3. 闭合标签（保持层级完整性）
         skeleton += f"</{element.tag}>"
         return skeleton
 
@@ -69,11 +66,11 @@ class DuplicateChecker:
     def get_skeleton_from_html(self, html: str) -> str:
         try:
             tree = etree.HTML(html)
-            # 以<body>为根节点（忽略<head>中可能的动态脚本）
+            # 以<body>为根节点
             body = tree.xpath("//body")[0]
             return self.extract_dom_skeleton(body)
         except Exception:
-            return ""  # 异常HTML返回空骨架
+            return ""
 
     def check_duplicate_by_DOM_simhash(self, source: str, threshold:str) -> bool:
         if threshold is None:
@@ -83,12 +80,9 @@ class DuplicateChecker:
         # 提取DOM骨架
         skeleton = self.get_skeleton_from_html(source)
         if not skeleton:
-            return False  # 无法提取骨架，不参与去重
-        # 计算骨架的SimHash
+            return False
         simhash = get_simhash(skeleton)
-        # 获取当前URL的域名
         domain = urlparse(source).netloc
-        # 检查是否有高相似度的已有页面
         with self.simhash_lock:
             if domain not in self.DOM_simhash_map:
                 self.DOM_simhash_map[domain] = set()
@@ -106,10 +100,8 @@ class DuplicateChecker:
 
         domain = urlparse(url).netloc
         with self.title_lock:
-            # 初始化域名对应的标题集合
             if domain not in self.title_map:
                 self.title_map[domain] = set()
-            # 检查标题是否已存在
             if title in self.title_map[domain]:
                 return True  # 重复
             self.title_map[domain].add(title)
@@ -117,7 +109,7 @@ class DuplicateChecker:
 
     def check_duplicate_by_length(self, length: int, url: str) -> bool:
         """按“域名+长度”去重（同域名长度相同视为重复）"""
-        if length < 300:  # 过短内容本身会被过滤，无需去重
+        if length < 300:
             return False
 
         domain = urlparse(url).netloc
@@ -142,7 +134,6 @@ class DuplicateChecker:
         with self.simhash_lock:
             if domain not in self.simhash_map:
                 self.simhash_map[domain] = set()
-            # 检查是否有高相似度的已有页面
             if any(similarity(simhash, existing) > similarity_threshold
                    for existing in self.simhash_map[domain]):
                 return True  # 重复
