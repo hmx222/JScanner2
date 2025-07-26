@@ -47,7 +47,7 @@ def parse_args():
                         help='user_agent已经随机，请求头字符串，格式如：\'cookie\':\'session=123\';\'Referer\':\'https://example.com\'')
 
     # 结果导出参数
-    parser.add_argument('-e', '--excel', type=str, help="导出结果到Excel文件（如：./result.xlsx）")
+    parser.add_argument('-e', '--excel', default=False, action='store_true', help="导出结果到result目录下")
 
     # 去重参数优化方案
     parser.add_argument('-d', '--de_duplication_title', action='store_true', default=False,
@@ -62,6 +62,7 @@ def parse_args():
     parser.add_argument('-f', '--de_duplication_similarity', type=str_to_float, default=None,  # 关键修改
                         help="启用文本相似度去重并设置阈值（默认关闭，启用示例：-f 0.7）")
 
+    parser.add_argument('-g','--sensitiveInfo', default=False, action='store_true',help="是否对收集JS敏感信息")
     args = parser.parse_args()
 
     # 动态开启去重功能（当用户指定阈值时启用）
