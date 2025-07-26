@@ -51,7 +51,7 @@ class Scanner:
             return
 
         # 异步请求+去重处理
-        scan_info_list, next_urls = asyncio.run(
+        unprocessed_scan_info_list, scan_info_list, next_urls = asyncio.run(
             get_source_async(
                 urls=urls,
                 thread_num=self.args.thread_num,
@@ -59,8 +59,8 @@ class Scanner:
                 checker=self.checker
             )
         )
-
-        excel_handler.append_data(scan_info_list)
+        if args.excel:
+            excel_handler.append_data(unprocessed_scan_info_list)
         self._extract_sensitive_info(scan_info_list)
         if next_urls:
             self._scan_recursive(next_urls, depth + 1)
@@ -95,5 +95,6 @@ if __name__ == '__main__':
     args = parse_args()
     scanner = Scanner(args)
     scanner.run()
-    excel_handler.save()
+    if args.excel:
+        excel_handler.save()
     print("请求失败的url：",str(fail_url))

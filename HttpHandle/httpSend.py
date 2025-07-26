@@ -2,6 +2,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from time import sleep
 from urllib.parse import urlparse
 
 import requests
@@ -102,6 +103,7 @@ def get_webpage_title(html_source):
 
 async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
     """Playwright异步批量请求+去重处理入口"""
+
     progress = tqdm_asyncio(total=len(urls), desc="Process", unit="url", ncols=100)
 
     async with async_playwright() as p:
@@ -127,6 +129,8 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
 
     # 处理请求结果（生成scan_info并去重）
     scan_info_list = []
+    # 未处理的scan_info_list(主要是给excel传值，靠北了)
+    unprocessed_scan_info_list = []
     all_next_urls = set()
     for html, url, status in results:
         if not html:
@@ -146,6 +150,10 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "source_code": html,
             "is_valid": 0,
         }
+        # 又tnd绕了一圈
+        scan_info.pop("source_code")
+        unprocessed_scan_info_list.append(scan_info)
+        scan_info["source_code"] = html
 
         # 去重并提取下一层URL
         is_valid, next_urls = await process_scan_result(scan_info, checker, args)
@@ -160,4 +168,4 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             all_next_urls.update(next_urls)
         scan_info_list.append(scan_info)
 
-    return scan_info_list, all_next_urls
+    return unprocessed_scan_info_list, scan_info_list, all_next_urls
