@@ -61,7 +61,8 @@ class Scanner:
         )
         if args.excel:
             excel_handler.append_data(unprocessed_scan_info_list)
-        self._extract_sensitive_info(scan_info_list)
+        if args.sensitiveInfo:
+            self._extract_sensitive_info(scan_info_list)
         if next_urls:
             self._scan_recursive(next_urls, depth + 1)
 
