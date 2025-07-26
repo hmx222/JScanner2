@@ -88,6 +88,7 @@ pip install -r requirements.txt
 | `-s` | `--de_duplication_hash` | 启用DOM SimHash去重并设置阈值（格式：`-s 0.8`，默认关闭；阈值范围0.0-1.0，数值越小去重越严格） |
 | `-l` | `--de_duplication_length` | 启用长度去重（默认关闭；启用后会过滤HTML长度完全相同的页面） |
 | `-f` | `--de_duplication_similarity` | 启用文本相似度去重并设置阈值（格式：`-f 0.7`，默认关闭；阈值范围0.0-1.0，数值越小去重越严格） |
+| `-g` | `--sensitiveInfo` | 主动寻找Javascript中的敏感信息 |
 
 
 ---
@@ -127,20 +128,20 @@ https://market.aliyun.com/xinxuan/application/miniapps?spm=a2c4g.11186623.nav-v2
     python main.py -u "https://xxxxx.com" -H 3
    ```
    ```bash
-   # 使用title与length去重（不推荐）
+   # 使用title与length去重
    python main.py -u "https://target.com" -H 3 -d -l
    ```
    ```bash
    # 平衡去重与效率（最最最推荐）
-   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l
+   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -s -g 
    ```
    ```bash
    # 效率最慢（次之）
-   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -f 0.65
+   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -f 0.65 
    ```
    ```bash
    # 多URL扫描，建议在config/whiteList 添加白名单，让扫描更充分
-   python main.py -b xxxx.txt -H 3 -d -s 0.8 -l
+   python main.py -b xxxx.txt -H 3 -d -s 0.8 -l -g
    ```
 
 ---
