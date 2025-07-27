@@ -1,6 +1,7 @@
-from functools import lru_cache
-from itertools import chain
-from multiprocessing import Pool, cpu_count
+import multiprocessing
+import time
+import traceback
+from multiprocessing import Pool
 
 import regex as re
 
@@ -43,6 +44,7 @@ def find_comments_sensitive_info(text) -> list:
     comments = re.findall(comment_pattern, text, re.MULTILINE)
     return [comment for comment in comments if re.search(sensitive_pattern, comment)]
 
+
 def find_phone_numbers(text)->list:
     """
     手机号提取
@@ -53,6 +55,7 @@ def find_phone_numbers(text)->list:
     pattern = r'/^(13[0-9]|14[01456879]|15[0-35-9]|16[2567]|17[0-8]|18[0-9]|19[0-35-9])\d{8}$/'
     return re.findall(pattern, text)
 
+
 def find_email_addresses(text):
     """
     邮箱地址提取
@@ -62,6 +65,7 @@ def find_email_addresses(text):
     # 邮箱地址正则表达式，添加了(?<!png)负向零宽断言确保不以png结尾
     pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?<!png)\b'
     return re.findall(pattern, text)
+
 
 def find_access_keys(text)->list:
     """
@@ -74,6 +78,7 @@ def find_access_keys(text)->list:
     return re.findall(pattern, text)
 
 
+
 def find_swagger(text)->list:
     """
     swagger提取
@@ -82,6 +87,7 @@ def find_swagger(text)->list:
     """
     pattern = r'((swagger-ui.html)|(\"swagger\":)|(Swagger UI)|(swaggerUi)|(swaggerVersion))'
     return re.findall(pattern, text)
+
 
 def find_js_map_files(text):
     """寻找所有可能的.js.map文件路径"""
@@ -159,6 +165,7 @@ def find_sensitive_info_1(text)->list:
             result.extend(matches)
     return result
 
+
 def find_sensitive_info_2(text)->list:
     """
     敏感信息提取
@@ -233,7 +240,7 @@ def find_sensitive_info_2(text)->list:
             result.extend(matches)
     return result
 
-@lru_cache(maxsize=None)
+
 def find_sensitive_info_3(text)->list:
     """
     敏感信息提取
@@ -341,6 +348,7 @@ def find_sensitive_info_3(text)->list:
     return result
 # 311-235
 
+
 def find_sensitive_info_4(text) -> list:
     """
     敏感信息提取
@@ -445,7 +453,6 @@ def find_sensitive_info_4(text) -> list:
     return result
 
 
-@lru_cache(maxsize=None)
 def find_sensitive_info_5(text)->list:
     """
     敏感信息提取
@@ -666,7 +673,7 @@ def find_sensitive_info_6(text)->list:
     return result
 #634-530=104
 
-@lru_cache(maxsize=None)
+
 def find_sensitive_info_7(text)->list:
     """
     敏感信息提取
@@ -795,7 +802,7 @@ def find_sensitive_info_7(text)->list:
     return result
 # 762-636=126
 
-@lru_cache(maxsize=None)
+
 def find_sensitive_info_8(text)->list:
     """
     敏感信息提取
@@ -920,7 +927,7 @@ def find_sensitive_info_8(text)->list:
     return result
 # 764-899 = 135
 
-@lru_cache(maxsize=None)
+
 def find_sensitive_info_9(text)->list:
     """
     敏感信息提取
@@ -1031,19 +1038,24 @@ def check_available(import_info):
     return [item for item in import_info if len(item) <= 500]
 
 
-# 定义在模块顶层（函数外部），确保可以被序列化
-def call_scan_function(func, text):
-    """用于多进程调用的包装函数"""
-    return func(text)
+# 单个函数执行（无嵌套进程/线程，避免任何阻塞风险）
+def run_single_func(func, text):
+    try:
+        start = time.time()
+        result = func(text)
+        cost = time.time() - start
+        # 只打印耗时较长的函数，减少日志干扰
+        if cost > 0.1:
+            print(f"函数 {func.__name__} 执行完成，耗时 {cost:.2f}秒")
+        return result[:100] if isinstance(result, list) else []
+    except Exception as e:
+        print(f"函数 {func.__name__} 出错: {str(e)}")
+        return []
 
 
+# 进程池执行所有函数（带全局超时）
 def find_all_info_by_rex(text: str) -> list:
-    """
-    多进程敏感信息提取
-    :param text: 待扫描文本
-    :return: 敏感信息列表
-    """
-    if text is None:
+    if not text:
         return []
     text = text.lower()
     if text.startswith("<!doctype html>"):
@@ -1068,16 +1080,45 @@ def find_all_info_by_rex(text: str) -> list:
         find_sensitive_info_8,
         find_sensitive_info_9
     ]
+    total = len(scan_functions)
+    print(f"共{total}个函数，开始扫描...")
 
-    # 使用顶层函数而非lambda，避免序列化问题
-    with Pool(processes=cpu_count()) as pool:
-        # 构建任务列表：(函数, 文本)
-        tasks = [(func, text) for func in scan_functions]
-        # 使用starmap调用顶层包装函数
-        results = pool.starmap(call_scan_function, tasks)
+    # 2. 关键：用进程池+全局超时，超时直接终止所有任务
+    max_processes = min(4, multiprocessing.cpu_count())  # 固定4个进程
+    global_timeout = 20  # 全局超时20秒（无论多少函数，到点就停）
+    results = []
 
-        flattened_list = list(chain.from_iterable(results))
+    try:
+        # 创建非守护进程池（避免嵌套问题）
+        with Pool(processes=max_processes) as pool:
+            # 提交所有任务
+            tasks = [(func, text) for func in scan_functions]
+            # 用apply_async异步执行，方便超时控制
+            async_results = [pool.apply_async(run_single_func, args=task) for task in tasks]
 
-    return check_available(flattened_list)
+            # 等待结果，超时则终止
+            start_time = time.time()
+            for i, async_res in enumerate(async_results):
+                # 剩余时间 = 全局超时 - 已用时间
+                remaining = max(0, global_timeout - (time.time() - start_time))
+                if remaining <= 0:
+                    print("全局超时！停止等待剩余结果")
+                    break
+                try:
+                    # 等待单个结果，超时则跳过
+                    res = async_res.get(timeout=remaining)
+                    results.extend(res)
+                except Exception:
+                    print(f"函数 {scan_functions[i].__name__} 超时，跳过")
+
+        # 强制终止所有进程（确保不残留）
+        pool.terminate()
+        pool.join()
+
+    except Exception as e:
+        print(f"扫描出错: {str(e)}")
+        print(traceback.format_exc())
+
+    return check_available(results)
 
 

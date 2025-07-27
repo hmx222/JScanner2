@@ -1,6 +1,7 @@
 # 导入必要依赖
 import asyncio
 import json
+import re
 from contextlib import asynccontextmanager
 from time import sleep
 from urllib.parse import urlparse
@@ -54,6 +55,13 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
     finally:
         progress.update(1)
 
+def clean_illegal_chars(text):
+    if not isinstance(text, str):
+        return text
+    # 正则表达式，匹配 ASCII 控制字符（除了常见的空白符等可显示的）
+    # 这里保留了常见的空白符（如空格、换行等），如果不需要可调整正则
+    return re.sub(r'[\x00-\x08\x0b-\x1f]', '', text)
+
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
     """处理扫描结果（去重+提取下一层URL）"""
@@ -87,6 +95,7 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
     if ".js" in url or get_root_domain(url) in args.initial_urls:
         from JsHandle.pathScan import analysis_by_rex, data_clean
         dirty_data = analysis_by_rex(source)
+        url = clean_illegal_chars(url)
         next_urls = set(data_clean(url, dirty_data))
 
     return True, next_urls

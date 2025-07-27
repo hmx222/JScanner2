@@ -81,10 +81,11 @@ class Scanner:
         """提取敏感信息（从有效扫描结果中）"""
         for scan_info in scan_info_list:
             url = scan_info["url"]
-            source = scan_info["source_code"]
             if scan_info["is_valid"] == 1 or url in self.initial_urls:
 
-                sensitive_info = find_all_info_by_rex(source)
+                sensitive_info = find_all_info_by_rex(scan_info["source_code"])
+                if url == "https://mcp.xfyun.cn:443":
+                    print("成功结束sensitive的查找")
                 write2json(
                     "./result/sensitiveInfo.json",
                     json.dumps({"url": url, "sensitive_info": sensitive_info})
