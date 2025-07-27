@@ -14,6 +14,7 @@ from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
 from HttpHandle.DuplicateChecker import DuplicateChecker
+from JsHandle.pathScan import get_root_domain
 from JsHandle.valid_page import check_valid_page
 from FileIO.filerw import write2json
 from parse_args import parse_headers
@@ -77,13 +78,13 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
                 (args.de_duplication_length and checker.check_duplicate_by_length(length, url)) or \
                 (args.de_duplication_similarity and checker.check_duplicate_by_simhash(
                     source, url, float(args.de_duplication_similarity))):
-            return False, set()  # 触发去重，不继续处理
+            return False, set()
 
     checker.mark_url_visited(url)
 
     # 提取下一层URL（仅JS文件或初始URL需要）
     next_urls = set()
-    if ".js" in url or url in args.initial_urls:
+    if ".js" in url or get_root_domain(url) in args.initial_urls:
         from JsHandle.pathScan import analysis_by_rex, data_clean
         dirty_data = analysis_by_rex(source)
         next_urls = set(data_clean(url, dirty_data))
