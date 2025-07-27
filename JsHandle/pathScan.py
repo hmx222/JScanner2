@@ -2,6 +2,7 @@ import os
 import re
 from urllib.parse import urlparse
 
+from attr.validators import instance_of
 from esprima import esprima
 from tldextract import tldextract
 
@@ -203,6 +204,7 @@ def get_root_domain(url):
     """
     get root domain
     """
+
     parsed_url = urlparse(url)
     full_domain = parsed_url.netloc
     extracted = tldextract.extract(full_domain)

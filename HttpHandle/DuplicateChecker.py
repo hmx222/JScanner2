@@ -11,7 +11,7 @@ from JsHandle.Similarity_HTML import get_simhash, similarity
 
 
 class DuplicateChecker:
-    def __init__(self, initial_root_domain: str):
+    def __init__(self, initial_root_domain: list):
         """
         初始化去重管理器
         :param initial_root_domain: 目标根域名（用于URL有效性检查）
@@ -39,7 +39,10 @@ class DuplicateChecker:
                 return False
             # 检查是否属于目标域名
             parsed = urlparse(url)
-            return parsed.netloc.endswith(self.target_root)
+            for root in self.target_root:
+                if root in parsed.netloc:
+                    return True
+            return False
 
     def mark_url_visited(self, url: str):
         """标记URL为已访问（线程安全）"""
