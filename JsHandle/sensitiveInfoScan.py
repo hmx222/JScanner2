@@ -1038,22 +1038,17 @@ def check_available(import_info):
     return [item for item in import_info if len(item) <= 500]
 
 
-# 单个函数执行（无嵌套进程/线程，避免任何阻塞风险）
+# 单个函数执行（纯单进程，无任何并行逻辑）
 def run_single_func(func, text):
     try:
-        start = time.time()
         result = func(text)
-        cost = time.time() - start
-        # 只打印耗时较长的函数，减少日志干扰
-        if cost > 0.1:
-            print(f"函数 {func.__name__} 执行完成，耗时 {cost:.2f}秒")
         return result[:100] if isinstance(result, list) else []
     except Exception as e:
         print(f"函数 {func.__name__} 出错: {str(e)}")
         return []
 
 
-# 进程池执行所有函数（带全局超时）
+# 单进程执行所有函数（彻底去掉多进程）
 def find_all_info_by_rex(text: str) -> list:
     if not text:
         return []
@@ -1061,7 +1056,7 @@ def find_all_info_by_rex(text: str) -> list:
     if text.startswith("<!doctype html>"):
         return []
 
-    # 定义需要并行执行的函数列表
+    # 定义需要执行的函数列表
     scan_functions = [
         find_id_cards,
         find_comments_sensitive_info,
@@ -1083,41 +1078,20 @@ def find_all_info_by_rex(text: str) -> list:
     total = len(scan_functions)
     print(f"共{total}个函数，开始扫描...")
 
-    # 2. 关键：用进程池+全局超时，超时直接终止所有任务
-    max_processes = min(4, multiprocessing.cpu_count())  # 固定4个进程
-    global_timeout = 20  # 全局超时20秒（无论多少函数，到点就停）
     results = []
+    global_timeout = 20  # 全局超时20秒
+    start_time = time.time()
 
-    try:
-        # 创建非守护进程池（避免嵌套问题）
-        with Pool(processes=max_processes) as pool:
-            # 提交所有任务
-            tasks = [(func, text) for func in scan_functions]
-            # 用apply_async异步执行，方便超时控制
-            async_results = [pool.apply_async(run_single_func, args=task) for task in tasks]
+    # 单进程串行执行所有函数
+    for func in scan_functions:
+        # 检查是否已超时
+        if time.time() - start_time > global_timeout:
+            print("全局超时！停止后续函数执行")
+            break
 
-            # 等待结果，超时则终止
-            start_time = time.time()
-            for i, async_res in enumerate(async_results):
-                # 剩余时间 = 全局超时 - 已用时间
-                remaining = max(0, global_timeout - (time.time() - start_time))
-                if remaining <= 0:
-                    print("全局超时！停止等待剩余结果")
-                    break
-                try:
-                    # 等待单个结果，超时则跳过
-                    res = async_res.get(timeout=remaining)
-                    results.extend(res)
-                except Exception:
-                    print(f"函数 {scan_functions[i].__name__} 超时，跳过")
-
-        # 强制终止所有进程（确保不残留）
-        pool.terminate()
-        pool.join()
-
-    except Exception as e:
-        print(f"扫描出错: {str(e)}")
-        print(traceback.format_exc())
+        # 直接调用函数（无进程池，无异步）
+        func_result = run_single_func(func, text)
+        results.extend(func_result)
 
     return check_available(results)
 

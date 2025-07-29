@@ -168,9 +168,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         # 去重并提取下一层URL
         is_valid, next_urls = await process_scan_result(scan_info, checker, args)
         if is_valid:
-            scan_info.pop("source_code")
-            # 写入基础扫描信息
-            write2json("./result/scanInfo.json", json.dumps(scan_info))
+            # 删除了scaninfo的文件写入json
             print(
                 f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
             scan_info["source_code"] = html

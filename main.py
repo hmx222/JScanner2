@@ -84,6 +84,8 @@ class Scanner:
             if scan_info["is_valid"] == 1 or url in self.initial_urls:
 
                 sensitive_info = find_all_info_by_rex(scan_info["source_code"])
+                if len(sensitive_info) == 0:
+                    continue
                 if url == "https://mcp.xfyun.cn:443":
                     print("成功结束sensitive的查找")
                 write2json(
