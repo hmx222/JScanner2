@@ -128,7 +128,7 @@ def analysis_by_rex(source)->list:
 
 def data_clean(url, dirty_data)->list:
     """
-    data clean
+    dirty data come from request url
     """
     return_url_list = []
     for main_url in dirty_data:
