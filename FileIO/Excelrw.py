@@ -1,3 +1,5 @@
+import re
+
 from openpyxl.styles import Alignment, Font, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
@@ -54,8 +56,14 @@ class SafePathExcelGenerator:
             top=Side(style="thin"),
             bottom=Side(style="thin")
         )
-
+        self.del_old_file()
         self._init_file_safely()
+
+
+    def del_old_file(self) -> None:
+        """删除旧文件，创建新文件"""
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
 
     def _init_file_safely(self) -> None:
         """安全初始化文件，处理旧文件损坏等情况"""
@@ -257,6 +265,13 @@ class SafePathExcelGenerator:
 
         return new_data
 
+    def clean_illegal_chars(text):
+        if not isinstance(text, str):
+            return text
+        # 正则表达式，匹配 ASCII 控制字符（除了常见的空白符等可显示的）
+        # 这里保留了常见的空白符（如空格、换行等），如果不需要可调整正则
+        return re.sub(r'[\x00-\x08\x0b-\x1f]', '', text)
+
     def _render_excel(self) -> None:
         """渲染 Excel 内容（表头、数据、样式）"""
         if not self.ws or not self.wb:
@@ -281,6 +296,9 @@ class SafePathExcelGenerator:
 
         # 写入数据
         for idx, item in enumerate(self.all_data, start=1):
+            # 跳过.js与vue的写入
+            if ".js" in item["url"]  or ".vue" in item["url"]:
+                continue
             row_data = [
                 str(idx),
                 item["domain"],
@@ -290,7 +308,11 @@ class SafePathExcelGenerator:
                 item["length"],
                 item["title"]
             ]
-            self.ws.append(row_data)
+            try:
+                self.ws.append(row_data)
+            except Exception as e:
+                print(f"⚠️ 写入数据失败（行{idx}）：{item['url']}")
+                continue
 
         # 设置单元格样式（仅处理数据行）
         for row_idx in range(2, self.ws.max_row + 1):

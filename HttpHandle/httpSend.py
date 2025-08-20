@@ -13,8 +13,9 @@ from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
+from AI.Get_API import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from JsHandle.pathScan import get_root_domain
+from JsHandle.pathScan import get_root_domain, extract_pure_js
 from JsHandle.valid_page import check_valid_page
 from FileIO.filerw import write2json
 from parse_args import parse_headers
@@ -86,7 +87,17 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
     next_urls = set()
     if ".js" in url or get_root_domain(url) in args.initial_urls:
         from JsHandle.pathScan import analysis_by_rex, data_clean
-        dirty_data = analysis_by_rex(source)
+
+        if not args.ollama:
+            dirty_data = analysis_by_rex(source)
+        else:
+            if ".js" in url and not source.startswith("<!DOCTYPE html>"):
+                source = extract_pure_js(source)
+
+                dirty_data = clean_output(run_analysis(source))
+            else:
+                dirty_data = analysis_by_rex(source)
+
         next_urls = set(data_clean(url, dirty_data))
 
     return True, next_urls
@@ -159,14 +170,10 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         # 去重并提取下一层URL
         is_valid, next_urls = await process_scan_result(scan_info, checker, args)
         if is_valid:
-            scan_info.pop("source_code")
-            # 写入基础扫描信息
-            write2json("./result/scanInfo.json", json.dumps(scan_info))
-            print(
-                f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
-            scan_info["source_code"] = html
             scan_info["is_valid"] = 1
             all_next_urls.update(next_urls)
+
+        print(f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
         scan_info_list.append(scan_info)
 
     return unprocessed_scan_info_list, scan_info_list, all_next_urls
