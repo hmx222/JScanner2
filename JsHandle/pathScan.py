@@ -3,6 +3,7 @@ import re
 from urllib.parse import urlparse
 
 from attr.validators import instance_of
+from bs4 import BeautifulSoup
 from esprima import esprima
 from tldextract import tldextract
 
@@ -210,3 +211,27 @@ def get_root_domain(url):
     extracted = tldextract.extract(full_domain)
     root_domain = f"{extracted.domain}.{extracted.suffix}"
     return root_domain
+
+
+def extract_pure_js(html_content):
+    """从包含HTML标签的内容中提取<pre>标签内的JS代码"""
+    # 解析HTML内容
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    # 精准匹配带有特定style的<pre>标签（根据你的响应结构定制）
+    pre_tag = soup.find(
+        'pre',
+        style="word-wrap: break-word; white-space: pre-wrap;"
+    )
+
+    if pre_tag:
+        # 提取标签内文本并去除首尾空白
+        js_code = pre_tag.get_text().strip()
+        return js_code
+    else:
+        # 如果未找到目标标签，尝试查找第一个<pre>标签作为备选
+        fallback_pre = soup.find('pre')
+        if fallback_pre:
+            return fallback_pre.get_text().strip()
+        else:
+            raise ValueError("未在响应中找到包含JS代码的<pre>标签")

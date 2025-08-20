@@ -2,9 +2,9 @@ import asyncio
 import json
 import os
 import time
-
 from colorama import init, Fore
 
+from AI.Get_API import run_analysis
 from FileIO.Excelrw import SafePathExcelGenerator
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from HttpHandle.httpSend import get_source_async, fail_url
@@ -63,9 +63,13 @@ class Scanner:
         if next_urls:
             self.tmp_urls |= next_urls
 
-        if args.excel:
-            data_source = next_urls if not args.api else unprocessed_scan_info_list
-            excel_handler.append_data(data_source)
+        for i in next_urls:
+            print(f"{Fore.BLUE}next_urls:{i}{Fore.RESET}")
+        print("\n")
+
+        # 默认不进行API扫描，data_source = next_urls
+        data_source = next_urls if not args.api else unprocessed_scan_info_list
+        excel_handler.append_data(data_source)
 
         if not args.api:
             next_urls = [url for url in next_urls if ".js" in url]

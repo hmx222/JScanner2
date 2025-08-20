@@ -56,8 +56,14 @@ class SafePathExcelGenerator:
             top=Side(style="thin"),
             bottom=Side(style="thin")
         )
-
+        self.del_old_file()
         self._init_file_safely()
+
+
+    def del_old_file(self) -> None:
+        """删除旧文件，创建新文件"""
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
 
     def _init_file_safely(self) -> None:
         """安全初始化文件，处理旧文件损坏等情况"""
