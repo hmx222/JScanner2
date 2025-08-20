@@ -37,10 +37,10 @@ logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
 os.environ["OLLAMA_GPU_MEMORY"] = OLLAMA_GPU_MEMORY
 
 from langchain_community.chat_models import ChatOllama
-from langchain_core.callbacks import BaseCallbackHandler  # 用于捕获输出
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.prompts import PromptTemplate
 
-# 已有工具函数
+
 from AI.beautifyjs import format_code
 from AI.split_code import extract_relevant_lines
 
@@ -48,7 +48,7 @@ from AI.split_code import extract_relevant_lines
 # 自定义回调：捕获模型输出（同时打印到控制台）
 class CaptureAndPrintCallback(BaseCallbackHandler):
     def __init__(self):
-        self.buffer = StringIO()  # 用于保存输出的缓冲区
+        self.buffer = StringIO()
 
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         self.buffer.write(token)  # 保存到缓冲区
@@ -56,7 +56,7 @@ class CaptureAndPrintCallback(BaseCallbackHandler):
 
     def get_output(self) -> str:
 
-        return self.buffer.getvalue().strip()  # 返回完整捕获的输出
+        return self.buffer.getvalue().strip()
 
 
 def load_ollama_llm():
@@ -66,7 +66,7 @@ def load_ollama_llm():
         temperature=MODEL_TEMPERATURE,
         max_tokens=MODEL_MAX_TOKENS,
         streaming=True,
-        keep_alive=-1  # 不预先绑定回调，后续调用时动态传入
+        keep_alive=-1
     )
 
 
@@ -150,16 +150,16 @@ def analyze_single_slice(chain, slice_code):
     # 调用链时通过config传入回调，确保输出被当前回调捕获
     chain.invoke(
         {"code": slice_code},
-        config={"callbacks": [capture_callback]}  # 动态绑定回调
+        config={"callbacks": [capture_callback]}
     )
-    # 直接从当前回调获取输出（不再访问chain内部属性）
+    # 直接从当前回调获取输出
     return capture_callback.get_output()
 
 
 def analyze_sliced_code(chain, code_str, lines_per_slice=15):
     slices = split_code_into_slices(code_str, lines_per_slice)
     all_output = []
-    total_slices = len(slices)  # 总切片数，用于进度条
+    total_slices = len(slices)
 
     # 创建进度条：总进度为切片数量，描述为"分析代码"
     with tqdm(total=total_slices, desc="分析代码进度", unit="切片") as pbar:
@@ -168,7 +168,7 @@ def analyze_sliced_code(chain, code_str, lines_per_slice=15):
             if slice_output:
                 all_output.append(slice_output)
             time.sleep(0.5)
-            pbar.update(1)  # 每处理完一个切片，进度+1
+            pbar.update(1)
 
     return "\n".join(all_output)
 
@@ -221,7 +221,7 @@ def clean_output(output):
             # 找到http/https的起始位置，截取从该位置开始的内容（去掉前面所有/）
             match = http_pattern.search(path)
             if match:
-                processed_path = path[match.start():]  # 从http/https开始截取
+                processed_path = path[match.start():]
                 processed_paths.append(processed_path)
             else:
                 processed_paths.append(path)
