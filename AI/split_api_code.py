@@ -42,10 +42,6 @@ def extract_relevant_lines(input_str):
         if not quoted_contents:
             continue
 
-        # 检查是否有符合条件的内容：
-        # 1. 包含有效/（至少一个/的左或右有数字/字母）
-        # 2. 不含正则元字符
-        # 3. 不在黑名单
         valid = False
         for content in quoted_contents:
             if (

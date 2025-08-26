@@ -14,7 +14,6 @@ from parse_args import parse_args
 from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 
 
-# Scanner类核心修改
 class Scanner:
     def __init__(self, args):
         self.args = args
@@ -79,7 +78,6 @@ class Scanner:
 
         if next_urls:
             self._scan_recursive(next_urls, depth + 1)
-
 
     def _extract_sensitive_info(self, scan_info_list):
         """提取敏感信息（从有效扫描结果中）"""

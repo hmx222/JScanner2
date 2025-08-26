@@ -15,7 +15,7 @@ from user_agent import generate_user_agent
 
 from AI.Get_API import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from JsHandle.pathScan import get_root_domain, extract_pure_js
+from JsHandle.pathScan import get_root_domain, extract_pure_js, is_js_file
 from JsHandle.valid_page import check_valid_page
 from FileIO.filerw import write2json
 from parse_args import parse_headers
@@ -85,20 +85,20 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
 
     # 提取下一层URL（仅JS文件或初始URL需要）
     next_urls = set()
+    all_dirty = []
     if ".js" in url or get_root_domain(url) in args.initial_urls:
         from JsHandle.pathScan import analysis_by_rex, data_clean
 
         if not args.ollama:
-            dirty_data = analysis_by_rex(source)
+            all_dirty = analysis_by_rex(source)
         else:
-            if ".js" in url and not source.startswith("<!DOCTYPE html>"):
+            if is_js_file(url) and not source.startswith("<!DOCTYPE html>"):
                 source = extract_pure_js(source)
-
-                dirty_data = clean_output(run_analysis(source))
-            else:
-                dirty_data = analysis_by_rex(source)
-
-        next_urls = set(data_clean(url, dirty_data))
+                ollama_output = clean_output(run_analysis(source))
+                rex_output = analysis_by_rex(source)
+                all_dirty.extend(ollama_output)
+                all_dirty.extend(rex_output)
+        next_urls = set(data_clean(url, all_dirty))
 
     return True, next_urls
 

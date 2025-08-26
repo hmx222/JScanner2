@@ -23,7 +23,7 @@ from langchain_core.prompts import PromptTemplate
 
 # 已有工具函数
 from AI.beautifyjs import format_code
-from AI.split_code import extract_relevant_lines
+from AI.split_api_code import extract_relevant_lines
 
 
 # 自定义回调：捕获并打印输出
@@ -123,12 +123,6 @@ def clean_model_output(raw_output):
     if not raw_output:
         return ""
 
-    # 1. 移除解释文字（如"完全静默"）
-    raw_output = re.sub(r"完全静默|无信息|无敏感信息", "", raw_output, flags=re.DOTALL)
-
-    # 2. 移除孤立的[END]
-    raw_output = re.sub(r"(?<!\[STR\].*?)\[END\]", "", raw_output)
-
     # 3. 过滤所有行，仅保留合法内容
     lines = raw_output.splitlines()
     valid_lines = []
@@ -161,7 +155,7 @@ def clean_model_output(raw_output):
 
 
 def run_analysis(js_code, lines_per_slice):
-    llm = load_ollama_llm(model_name="hf-mirror.com/wqerrewetw/DistilQwen2.5-7B-Instruct-GGUF:Q4_K_M")
+    llm = load_ollama_llm(model_name="qwen3:4b")
     analysis_chain = build_analysis_chain(llm)
     result_js = format_code(js_code)
     raw_output = analyze_sliced_code(analysis_chain, result_js, lines_per_slice=lines_per_slice)
