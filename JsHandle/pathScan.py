@@ -132,6 +132,8 @@ def data_clean(url, dirty_data)->list:
     dirty data come from request url
     """
     return_url_list = []
+    if dirty_data is None:
+        return []
     for main_url in dirty_data:
         # 解析输入的url，主要是用来完整的URL的拼接
         handled_url = urlparse(url)
@@ -211,6 +213,11 @@ def get_root_domain(url):
     extracted = tldextract.extract(full_domain)
     root_domain = f"{extracted.domain}.{extracted.suffix}"
     return root_domain
+
+def is_js_file(url):
+    js_pattern = re.compile(r'\.js(?=[^a-zA-Z]|$)')  # 关键规则
+    json_pattern = re.compile(r'\.json')
+    return not json_pattern.search(url) and bool(js_pattern.search(url))
 
 
 def extract_pure_js(html_content):
