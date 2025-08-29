@@ -22,7 +22,7 @@ MODEL_NAME = "qwen2.5:7b-instruct-q3_K_S"
 MODEL_TEMPERATURE = 0.4
 
 # 模型生成参数：最大令牌数（控制输出长度）
-MODEL_MAX_TOKENS = 1000
+MODEL_MAX_TOKENS = 900
 
 # 代码切片行数（每次向模型输入的代码行数）
 CODE_SLICE_LINES = 25

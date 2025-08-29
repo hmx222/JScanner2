@@ -13,7 +13,7 @@ from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
-from AI.Get_API import run_analysis, clean_output
+from AI.Get_API2 import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from JsHandle.pathScan import get_root_domain, extract_pure_js, is_js_file
 from JsHandle.valid_page import check_valid_page
@@ -95,9 +95,9 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
             if is_js_file(url) and not source.startswith("<!DOCTYPE html>"):
                 source = extract_pure_js(source)
                 ollama_output = clean_output(run_analysis(source))
-                rex_output = analysis_by_rex(source)
                 all_dirty.extend(ollama_output)
-                all_dirty.extend(rex_output)
+            rex_output = analysis_by_rex(source)
+            all_dirty.extend(rex_output)
         next_urls = set(data_clean(url, all_dirty))
 
     return True, next_urls
