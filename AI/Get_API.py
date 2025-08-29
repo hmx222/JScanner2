@@ -16,7 +16,7 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = "qwen2.5:7b-instruct-q3_K_S"
 
 # 模型生成参数：温度值（0-1，越低输出越稳定）
 MODEL_TEMPERATURE = 0.4
@@ -39,7 +39,6 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.prompts import PromptTemplate
 
-
 from AI.beautifyjs import format_code
 from AI.split_api_code import extract_relevant_lines
 
@@ -51,10 +50,9 @@ class CaptureAndPrintCallback(BaseCallbackHandler):
 
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         self.buffer.write(token)  # 保存到缓冲区
-        # print(token, end="", flush=True)  # 同时打印到控制台（保持流式输出体验）
+        print(token, end="", flush=True)  # 同时打印到控制台（保持流式输出体验）
 
     def get_output(self) -> str:
-
         return self.buffer.getvalue().strip()
 
 
@@ -165,7 +163,7 @@ def clean_output(output):
     for path in filtered_paths:
         if path.endswith("/"):
             path = path[:-1]
-            
+
         if path in example_path_from_prompt:
             continue
 

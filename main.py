@@ -4,7 +4,7 @@ import os
 import time
 from colorama import init, Fore
 
-from AI.Get_API import run_analysis
+# from AI.Get_API import run_analysis
 from FileIO.Excelrw import SafePathExcelGenerator
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from HttpHandle.httpSend import get_source_async, fail_url
