@@ -1,6 +1,6 @@
 import os
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 from attr.validators import instance_of
 from bs4 import BeautifulSoup
@@ -127,7 +127,7 @@ def analysis_by_rex(source)->list:
     return list(set(relist))
 
 
-def data_clean(url, dirty_data)->list:
+def data_clean(base_url, dirty_data)->list:
     """
     dirty data come from request url
     """
@@ -135,35 +135,36 @@ def data_clean(url, dirty_data)->list:
     if dirty_data is None:
         return []
     for main_url in dirty_data:
-        # 解析输入的url，主要是用来完整的URL的拼接
-        handled_url = urlparse(url)
-        # 解析http、https协议
-        Protocol = handled_url.scheme
-        # 解析出域名
-        Domain = handled_url.hostname
-        # 解析出路径
-        Path = handled_url.path
+        return_url = urljoin(base_url, main_url)
+        # # 解析输入的url，主要是用来完整的URL的拼接
+        # handled_url = urlparse(url)
+        # # 解析http、https协议
+        # Protocol = handled_url.scheme
+        # # 解析出域名
+        # Domain = handled_url.hostname
+        # # 解析出路径
+        # Path = handled_url.path
+        #
+        # if main_url.startswith('/'):
+        #     # 处理以斜杠开头的相对路径
+        #     if main_url.startswith('//'):
+        #         return_url = Protocol + ':' + main_url
+        #     else:  # 此时也就是 / 开头的
+        #         return_url = Protocol + '://' + Domain + main_url
+        # elif main_url.startswith('./'):
+        #     # 处理以./开头的相对路径
+        #     return_url = Protocol + '://' + Domain + main_url[2:]
+        # elif main_url.startswith('../'):
+        #     # 处理以../开头的相对路径
+        #     return_url = Protocol + '://' + Domain + os.path.normpath(os.path.join(Path, main_url))
+        # elif main_url.startswith('http') or main_url.startswith('https'):
+        #     # 处理以http或https开头的绝对路径
+        #     return_url = main_url
+        # else:
+        #     # 处理其他情况
+        #     return_url = Protocol + '://' + Domain + '/' + main_url
 
-        if main_url.startswith('/'):
-            # 处理以斜杠开头的相对路径
-            if main_url.startswith('//'):
-                return_url = Protocol + ':' + main_url
-            else:  # 此时也就是 / 开头的
-                return_url = Protocol + '://' + Domain + main_url
-        elif main_url.startswith('./'):
-            # 处理以./开头的相对路径
-            return_url = Protocol + '://' + Domain + main_url[2:]
-        elif main_url.startswith('../'):
-            # 处理以../开头的相对路径
-            return_url = Protocol + '://' + Domain + os.path.normpath(os.path.join(Path, main_url))
-        elif main_url.startswith('http') or main_url.startswith('https'):
-            # 处理以http或https开头的绝对路径
-            return_url = main_url
-        else:
-            # 处理其他情况
-            return_url = Protocol + '://' + Domain + '/' + main_url
-
-        if check_url(original_url=url,splicing_url=return_url):
+        if check_url(original_url=base_url, splicing_url=return_url):
             return_url_list.append(return_url)
 
     return return_url_list
