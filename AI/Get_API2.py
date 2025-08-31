@@ -10,7 +10,6 @@ from collections import deque
 
 
 SEMANTIC_ANALYSIS_AVAILABLE = False
-# 尝试导入语义分析库，如果失败则使用简单替代方案
 try:
     from sentence_transformers import SentenceTransformer
     from sklearn.metrics.pairwise import cosine_similarity
@@ -32,7 +31,7 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = "qwen2.5:7b-instruct-q4_0"
 
 # 模型生成参数：温度值（0-1，越低输出越稳定）
 MODEL_TEMPERATURE = 0.4
@@ -45,7 +44,7 @@ CODE_SLICE_LINES = 25
 
 # L1: 词级检测参数
 LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
-LOOP_PROTECTION_MAX_TOKEN_REPEAT = 2  # 允许相同token序列重复的最大次数
+LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4  # 允许相同token序列重复的最大次数
 
 # L2: 句级检测参数
 LOOP_PROTECTION_SENTENCE_WINDOW = 5  # 保存的历史句子数量
@@ -123,7 +122,6 @@ class LoopProtectionCallback(BaseCallbackHandler):
         self.token_count += 1
         self.last_tokens.append(token)
 
-        # 实时打印到控制台
         print(token, end="", flush=True)
 
         # 每隔N个token检查一次循环
@@ -151,8 +149,6 @@ class LoopProtectionCallback(BaseCallbackHandler):
 
     def _check_token_repetition(self) -> bool:
         """检查token级别重复（快速轻量级检测）"""
-        # 将最近的tokens转换为字符串
-        recent_text = ''.join(self.last_tokens)
 
         # 检查是否有重复模式（例如"abcabc"）
         pattern_len = self.token_window // 2
@@ -175,7 +171,7 @@ class LoopProtectionCallback(BaseCallbackHandler):
         # 将当前token视为句子结束的标志
         if self.last_tokens[-1] in ['。', '!', '?', '\n', '.', '!', '?']:
             current_sentence_text = ''.join(self.current_sentence).strip()
-            if len(current_sentence_text) > 10:  # 忽略太短的句子
+            if len(current_sentence_text) > 10:
                 # 计算与历史句子的相似度
                 if self.sentence_history:
                     max_similarity = self._calculate_similarity(current_sentence_text,
@@ -301,7 +297,7 @@ def build_analysis_chain(llm):
 
 3. API端点预测规则：
    - 理解当前API端点的功能和操作，例如：端点为deleteComment，功能为删除评论
-   - 仅对端点为英文的路径进行预测
+   - 仅对端点为非静态文件的路径进行预测
    - 重点预测CRUD操作
    - 不可私自新增路径层数，例如：/api/comment/delete → /api/comment/delete/add(错误)
    - 每个原始API端点最多预测2个相关端点，也可以不用预测
