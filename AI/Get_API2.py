@@ -1,0 +1,432 @@
+import logging
+import os
+import re
+import time
+import traceback
+import warnings
+from io import StringIO
+import random
+from collections import deque
+
+
+SEMANTIC_ANALYSIS_AVAILABLE = False
+try:
+    from sentence_transformers import SentenceTransformer
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    SEMANTIC_ANALYSIS_AVAILABLE = True
+    # 初始化语义模型（延迟加载，避免启动时阻塞）
+    _semantic_model = None
+except ImportError:
+    SEMANTIC_ANALYSIS_AVAILABLE = False
+    _semantic_model = None
+
+from tqdm import tqdm
+
+# OLLAMA GPU内存限制，根据本地显卡内存调整
+OLLAMA_GPU_MEMORY = "4GB"
+
+# 日志级别设置，ERROR表示只显示错误信息，可改为INFO、DEBUG等
+LANGCHAIN_LOG_LEVEL = logging.ERROR
+HTTPX_LOG_LEVEL = logging.ERROR
+
+# 调用的OLLAMA模型名称，需确保本地已下载该模型
+MODEL_NAME = "qwen2.5:7b-instruct-q4_0"
+
+# 模型生成参数：温度值（0-1，越低输出越稳定）
+MODEL_TEMPERATURE = 0.4
+
+# 模型生成参数：最大令牌数（控制输出长度）
+MODEL_MAX_TOKENS = 900
+
+# 代码切片行数（每次向模型输入的代码行数）
+CODE_SLICE_LINES = 25
+
+# L1: 词级检测参数
+LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
+LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4  # 允许相同token序列重复的最大次数
+
+# L2: 句级检测参数
+LOOP_PROTECTION_SENTENCE_WINDOW = 5  # 保存的历史句子数量
+LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.82  # 语义相似度阈值
+LOOP_PROTECTION_CHECK_INTERVAL = 5  # 每生成N个token检查一次
+
+# L3: 上下文分析参数
+LOOP_PROTECTION_TOPIC_STABILITY = 8  # 相同主题持续超过此数量触发
+
+# 恢复策略权重
+LOOP_PROTECTION_RECOVERY_STRATEGY = {
+    "increase_temperature": 0.6,  # 增加温度策略权重
+    "inject_diversity": 0.3,  # 注入多样性提示权重
+    "hard_terminate": 0.1  # 硬终止权重
+}
+
+# -------------------------------------------------------------------------------------
+
+# 屏蔽警告
+warnings.filterwarnings("ignore")
+logging.getLogger("langchain").setLevel(LANGCHAIN_LOG_LEVEL)
+logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
+os.environ["OLLAMA_GPU_MEMORY"] = OLLAMA_GPU_MEMORY
+
+from langchain_community.chat_models import ChatOllama
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.prompts import PromptTemplate
+
+from AI.beautifyjs import format_code
+from AI.split_api_code import extract_relevant_lines
+
+
+def get_semantic_model():
+    """延迟加载语义模型，避免启动时阻塞"""
+    global _semantic_model
+    if _semantic_model is None and SEMANTIC_ANALYSIS_AVAILABLE:
+        try:
+            _semantic_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            logging.info("语义分析模型已加载")
+        except Exception as e:
+            logging.warning(f"无法加载语义模型: {str(e)}，将使用简单相似度检测")
+            _semantic_model = "SIMPLE"
+    return _semantic_model
+
+
+class LoopProtectionCallback(BaseCallbackHandler):
+    """增强版回调处理器，添加循环检测与防护功能"""
+
+    def __init__(self,
+                 token_window=LOOP_PROTECTION_TOKEN_WINDOW,
+                 max_token_repeat=LOOP_PROTECTION_MAX_TOKEN_REPEAT,
+                 sentence_window=LOOP_PROTECTION_SENTENCE_WINDOW,
+                 similarity_threshold=LOOP_PROTECTION_SIMILARITY_THRESHOLD,
+                 check_interval=LOOP_PROTECTION_CHECK_INTERVAL):
+        self.buffer = StringIO()
+        self.token_count = 0
+        self.last_tokens = deque(maxlen=token_window)
+        self.token_repetition_count = 0
+        self.sentence_history = deque(maxlen=sentence_window)
+        self.current_sentence = []
+        self.sentence_similarity_checks = 0
+        self.check_interval = check_interval
+        self.similarity_threshold = similarity_threshold
+        self.loop_detected = False
+        self.termination_phrase = "\n\n[内容生成已因检测到重复模式而终止]"
+
+        # 配置参数
+        self.token_window = token_window
+        self.max_token_repeat = max_token_repeat
+        self.sentence_window = sentence_window
+
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        """处理新生成的token，同时进行循环检测"""
+        self.buffer.write(token)
+        self.token_count += 1
+        self.last_tokens.append(token)
+
+        print(token, end="", flush=True)
+
+        # 每隔N个token检查一次循环
+        if self.token_count % self.check_interval == 0:
+            self._check_for_loop()
+
+    def get_output(self) -> str:
+        """获取当前生成的输出内容"""
+        return self.buffer.getvalue().strip()
+
+    def _check_for_loop(self):
+        """执行多层循环检测"""
+        if self.loop_detected:
+            return
+
+        # L1: 词级检测 - 检查最近的token序列是否重复
+        if self._check_token_repetition():
+            self._handle_loop_detection("token_repetition")
+            return
+
+        # L2: 句级检测 - 检查语义相似度
+        if self.token_count > 50 and self._check_sentence_similarity():
+            self._handle_loop_detection("sentence_similarity")
+            return
+
+    def _check_token_repetition(self) -> bool:
+        """检查token级别重复（快速轻量级检测）"""
+
+        # 检查是否有重复模式（例如"abcabc"）
+        pattern_len = self.token_window // 2
+        if pattern_len > 0:
+            first_half = ''.join(list(self.last_tokens)[:pattern_len])
+            second_half = ''.join(list(self.last_tokens)[pattern_len:])
+
+            if first_half and first_half in second_half:
+                self.token_repetition_count += 1
+                return self.token_repetition_count >= self.max_token_repeat
+
+        return False
+
+    def _check_sentence_similarity(self) -> bool:
+        """检查句子级别语义重复（更精确但计算量大）"""
+        # 构建当前句子
+        if not self.current_sentence:
+            self.current_sentence = []
+
+        # 将当前token视为句子结束的标志
+        if self.last_tokens[-1] in ['。', '!', '?', '\n', '.', '!', '?']:
+            current_sentence_text = ''.join(self.current_sentence).strip()
+            if len(current_sentence_text) > 10:
+                # 计算与历史句子的相似度
+                if self.sentence_history:
+                    max_similarity = self._calculate_similarity(current_sentence_text,
+                                                                list(self.sentence_history))
+                    if max_similarity > self.similarity_threshold:
+                        self.sentence_similarity_checks += 1
+                        # 多次高相似度才触发
+                        return self.sentence_similarity_checks >= 2
+
+                # 添加到历史记录
+                self.sentence_history.append(current_sentence_text)
+
+            # 重置当前句子
+            self.current_sentence = []
+        else:
+            # 继续构建当前句子
+            self.current_sentence.append(self.last_tokens[-1])
+
+        return False
+
+    def _calculate_similarity(self, text1, texts):
+        """计算文本与文本列表的最大相似度"""
+        if not texts:
+            return 0.0
+
+        # 如果语义模型不可用，使用简单的Jaccard相似度
+        if not SEMANTIC_ANALYSIS_AVAILABLE or get_semantic_model() == "SIMPLE":
+            return self._simple_similarity(text1, texts)
+
+        try:
+            model = get_semantic_model()
+            if model == "SIMPLE":
+                return self._simple_similarity(text1, texts)
+
+            # 生成嵌入
+            embeddings = model.encode([text1] + texts)
+            text1_embed = embeddings[0].reshape(1, -1)
+            max_sim = 0
+
+            for i in range(1, len(embeddings)):
+                sim = cosine_similarity(text1_embed, embeddings[i].reshape(1, -1))[0][0]
+                max_sim = max(max_sim, sim)
+
+            return max_sim
+        except Exception as e:
+            logging.warning(f"语义相似度计算出错: {str(e)}，将使用简单相似度检测")
+            return self._simple_similarity(text1, texts)
+
+    def _simple_similarity(self, text1, texts):
+        """简单的Jaccard相似度计算（备用方案）"""
+        set1 = set(text1)
+        max_sim = 0
+
+        for text2 in texts:
+            set2 = set(text2)
+            intersection = len(set1 & set2)
+            union = len(set1 | set2)
+            sim = intersection / union if union > 0 else 0
+            max_sim = max(max_sim, sim)
+
+        return max_sim
+
+    def _handle_loop_detection(self, detection_type):
+        """处理检测到的循环，尝试恢复而非简单终止"""
+        self.loop_detected = True
+        print(f"\n检测到{detection_type}循环，正在尝试恢复...", flush=True)
+
+        # 选择恢复策略
+        strategy = self._select_recovery_strategy()
+
+        if strategy == "increase_temperature":
+            print("增加随机性以打破循环...", flush=True)
+            # 在缓冲区末尾添加提示，引导模型改变方向
+            self.buffer.write("\n\n让我们换个角度思考这个问题...\n")
+
+        elif strategy == "inject_diversity":
+            print("注入多样性提示以打破循环...", flush=True)
+            diversions = [
+                "实际上，这个问题可以从另一个完全不同的视角来看...",
+                "值得注意的是，我们可能忽略了某些关键因素...",
+                "从历史经验来看，这个问题通常有多种解决方案...",
+                "有趣的是，这个问题与[某领域]有相似之处..."
+            ]
+            self.buffer.write(f"\n\n{random.choice(diversions)}\n")
+
+        else:  # hard_terminate
+            print("检测到严重循环，已终止生成", flush=True)
+            self.buffer.write(self.termination_phrase)
+            # 提前终止生成
+            raise Exception("Loop detection triggered termination")
+
+    def _select_recovery_strategy(self):
+        """根据权重选择恢复策略"""
+        strategies = list(LOOP_PROTECTION_RECOVERY_STRATEGY.keys())
+        weights = list(LOOP_PROTECTION_RECOVERY_STRATEGY.values())
+        return random.choices(strategies, weights=weights, k=1)[0]
+
+
+def load_ollama_llm():
+    # 移除预先设置的callbacks，改为在调用时动态传入（避免回调复用导致数据混乱）
+    return ChatOllama(
+        model=MODEL_NAME,
+        temperature=MODEL_TEMPERATURE,
+        max_tokens=MODEL_MAX_TOKENS,
+        streaming=True,
+        keep_alive=-1
+    )
+
+
+def build_analysis_chain(llm):
+    """提示词保持不变"""
+    prompt_template = """
+仅从以下JavaScript代码中提取并推测路径，不包含任何思考过程、解释、注释，你可以推理思考，要尽可能多的提取路径：
+
+1. 提取对象：
+   - API路径：所有作为接口访问的路径（不限请求方法，变量拼接需补全，例：/api/v1/user，含中文路径需标注但正常提取）
+   - JavaScript路径：.js后缀的静态文件路径
+   - 其他静态文件：保留除图片、视频、音频、CSS、字体以外的静态文件路径（含中文名称路径）
+
+2. 提取规则：
+   - 路径需合法（符合URL Path规范，允许中文，特殊字符仅允许/._-）
+   - 每条路径用[STR]开头、[END]结尾，单独成行。
+
+3. API端点预测规则：
+   - 理解当前API端点的功能和操作，例如：端点为deleteComment，功能为删除评论
+   - 仅对端点为非静态文件的路径进行预测
+   - 重点预测CRUD操作
+   - 不可私自新增路径层数，例如：/api/comment/delete → /api/comment/delete/add(错误)
+   - 每个原始API端点最多预测2个相关端点，也可以不用预测
+   - 预测示例：
+     * /api/comment/delete → /api/comment/create, /api/comment/get
+     * /api/user/updateinfo → /api/user/deleteinfo, /api/user/createinfo
+     * /api/message/pc/unread/clear-all → /api/message/pc/unread/get-all, /api/message/pc/unread/mark-as-read
+
+4. 输出规则：
+   - 提取的原始路径按原有格式输出：[STR]路径[END]
+   - 预测的API端点额外输出，格式：[STR]路径[END]（与原始路径格式一致）
+   - 无符合条件的内容时，则不输出
+   - 严格禁止输出任何解释、注释或思考过程
+
+代码片段：
+{code}
+        """
+    prompt = PromptTemplate(
+        template=prompt_template,
+        input_variables=["code"]
+    )
+    return prompt | llm
+
+
+def split_code_into_slices(code_str, lines_per_slice=CODE_SLICE_LINES):
+    valid_lines = [line.rstrip() for line in code_str.splitlines() if line.strip()]
+    total_lines = len(valid_lines)
+    slices = []
+    for start_idx in range(0, total_lines, lines_per_slice):
+        end_idx = min(start_idx + lines_per_slice - 1, total_lines - 1)
+        slice_lines = valid_lines[start_idx:end_idx + 1]
+        formatted_slice = [f"{start_idx + 1 + idx}: {line}" for idx, line in enumerate(slice_lines)]
+        slices.append("\n".join(formatted_slice))
+    return slices
+
+
+def analyze_single_slice(chain, slice_code):
+    """调用链并返回当前切片的模型输出（核心修改：动态传入回调）"""
+    # 每次调用创建独立的LoopProtectionCallback实例
+    protection_callback = LoopProtectionCallback(
+        token_window=LOOP_PROTECTION_TOKEN_WINDOW,
+        max_token_repeat=LOOP_PROTECTION_MAX_TOKEN_REPEAT,
+        sentence_window=LOOP_PROTECTION_SENTENCE_WINDOW,
+        similarity_threshold=LOOP_PROTECTION_SIMILARITY_THRESHOLD,
+        check_interval=LOOP_PROTECTION_CHECK_INTERVAL
+    )
+
+    try:
+        # 调用链时传入循环防护回调
+        chain.invoke(
+            {"code": slice_code},
+            config={"callbacks": [protection_callback]}
+        )
+        return protection_callback.get_output()
+    except Exception as e:
+        if "Loop detection triggered termination" in str(e):
+            return protection_callback.get_output()  # 返回已生成的部分结果
+        raise  # 其他异常正常抛出
+
+
+def analyze_sliced_code(chain, code_str, lines_per_slice=15):
+    slices = split_code_into_slices(code_str, lines_per_slice)
+    all_output = []
+    total_slices = len(slices)
+
+    # 创建进度条：总进度为切片数量，描述为"分析代码"
+    with tqdm(total=total_slices, desc="分析代码进度", unit="切片") as pbar:
+        for slice_code in slices:
+            try:
+                slice_output = analyze_single_slice(chain, slice_code)
+                if slice_output:
+                    all_output.append(slice_output)
+            except Exception as e:
+                logging.error(f"处理切片时出错: {str(e)}")
+                # 打印详细的报错信息
+                traceback.print_exc()
+            time.sleep(0.5)
+            pbar.update(1)
+
+    return "\n".join(all_output)
+
+
+def run_analysis(js_code, lines_per_slice=CODE_SLICE_LINES):
+    print("ollama analysis is start")
+    llm = load_ollama_llm()
+    analysis_chain = build_analysis_chain(llm)
+    # 代码美化与提取
+    result_js = format_code(js_code)
+    result = extract_relevant_lines(result_js)
+    model_full_output = analyze_sliced_code(analysis_chain, result, lines_per_slice=lines_per_slice)
+    return model_full_output
+
+
+def clean_output(output):
+    # 1. 提取所有被[STR]和[END]包裹的内容
+    paths = re.findall(r'\[STR\](.*?)\[END\]', output, re.DOTALL)
+    # 2. 去重
+    paths = list(set(paths))
+    allowed_pattern = re.compile(
+        r'^[a-zA-Z0-9\u4e00-\u9fa5/._-~:?&=+$,#\[\]!*\'()]+$'
+    )
+    filtered_paths = [path for path in paths if allowed_pattern.match(path)]
+    # 4. 处理含http/https且以/开头的行：移除http/https前面的所有/
+    processed_paths = []
+    http_pattern = re.compile(r'https?://')  # 匹配http://或https://
+    example_path_from_prompt = []
+
+    for path in filtered_paths:
+        if path.endswith("/"):
+            path = path[:-1]
+
+        if path in example_path_from_prompt:
+            continue
+
+        if len(path) <= 3:
+            continue
+
+        # 检查条件：以/开头 且 包含http/https
+        if len(path) > 0 and path[0] == '/' and http_pattern.search(path):
+            # 找到http/https的起始位置，截取从该位置开始的内容（去掉前面所有/）
+            match = http_pattern.search(path)
+            if match:
+                processed_path = path[match.start():]
+                processed_paths.append(processed_path)
+            else:
+                processed_paths.append(path)
+        else:
+            # 不符合条件的行保持原样
+            processed_paths.append(path)
+
+    # 5. 处理后可能产生新的重复，再次去重
+    return list(set(processed_paths))

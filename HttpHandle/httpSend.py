@@ -1,8 +1,5 @@
-# 导入必要依赖
 import asyncio
-import json
 from contextlib import asynccontextmanager
-from time import sleep
 from urllib.parse import urlparse
 
 import requests
@@ -17,7 +14,6 @@ from AI.Get_API2 import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from JsHandle.pathScan import get_root_domain, extract_pure_js, is_js_file
 from JsHandle.valid_page import check_valid_page
-from FileIO.filerw import write2json
 from parse_args import parse_headers
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
