@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
-
+from rich import print
 import requests
 from bs4 import BeautifulSoup
 from colorama import Fore
@@ -89,9 +89,17 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
             all_dirty = analysis_by_rex(source)
         else:
             if is_js_file(url) and not source.startswith("<!DOCTYPE html>"):
-                source = extract_pure_js(source)
-                ollama_output = clean_output(run_analysis(source))
-                all_dirty.extend(ollama_output)
+                try:
+                    source = extract_pure_js(source)
+                    ollama_output = clean_output(run_analysis(source))
+                    all_dirty.extend(ollama_output)
+                except:
+                    print(
+                        f"[bold]当前处理的URL:[/bold]\n"
+                        f"  [blue underline]{url}[/blue underline]\n"
+                        f"[orange]⚠️ 美化JavaScript时可能出现错误[/orange]\n"
+                        f"[green]→ 继续执行正常任务[/green]"
+                    )
             rex_output = analysis_by_rex(source)
             all_dirty.extend(rex_output)
         next_urls = set(data_clean(url, all_dirty))
@@ -169,7 +177,13 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             scan_info["is_valid"] = 1
             all_next_urls.update(next_urls)
 
-        print(f"{Fore.BLUE}url:{scan_info['url']}\n\tstatus:{scan_info['status']}\n\ttitle:{scan_info['title']}{Fore.RESET}\n\tlength:{scan_info['length']}\n\tvalid_Element:{scan_info['valid_Element']}\n")
+        print(
+            f"[bold blue]URL:[/bold blue] {scan_info['url']}\n"
+            f"\t[bold green]Status:[/bold green] {scan_info['status']}\n"
+            f"\t[bold cyan]Title:[/bold cyan] {scan_info['title']}\n"
+            f"\t[bold yellow]Content Length:[/bold yellow] {scan_info['length']}\n"
+            f"\t[bold magenta]Valid Elements:[/bold magenta] {scan_info['valid_Element']}\n"
+        )
         scan_info_list.append(scan_info)
 
     return unprocessed_scan_info_list, scan_info_list, all_next_urls

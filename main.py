@@ -1,9 +1,13 @@
+import os
+import sys
+
 import asyncio
 import json
-import os
 import time
-from colorama import init, Fore
-
+import warnings
+warnings.filterwarnings("ignore")
+from colorama import init
+from rich import print as rich_print
 # from AI.Get_API import run_analysis
 from FileIO.Excelrw import SafePathExcelGenerator
 from HttpHandle.DuplicateChecker import DuplicateChecker
@@ -30,7 +34,7 @@ class Scanner:
 
         self.initial_urls = self._load_initial_urls()
         if not self.initial_urls and not self.args.url:
-            print(f"{Fore.RED}未找到初始URL{Fore.RESET}")
+            rich_print("[red]未找到初始URL[/red]")
             return
 
         self.checker = DuplicateChecker(initial_root_domain=self.initial_urls)
@@ -41,7 +45,7 @@ class Scanner:
         start_time = time.time()
         self._scan_recursive(self.load_url(self.args), 0)
 
-        print(f"{Fore.CYAN}总耗时: {time.time() - start_time:.2f}秒{Fore.RESET}")
+        rich_print(f"[cyan]总耗时: {time.time() - start_time:.2f}秒[/cyan]")
 
 
     def _scan_recursive(self, urls, depth):
@@ -63,7 +67,7 @@ class Scanner:
             self.tmp_urls |= next_urls
 
         for i in next_urls:
-            print(f"{Fore.BLUE}next_urls:{i}{Fore.RESET}")
+            print(f"next_urls:{i}")
         print("\n")
 
         # 默认不进行API扫描，data_source = next_urls
@@ -92,7 +96,10 @@ class Scanner:
                     "./result/sensitiveInfo.json",
                     json.dumps({"url": url, "sensitive_info": sensitive_info})
                 )
-                print(f"{Fore.RED}URL: {url}\n\t敏感信息: {sensitive_info}{Fore.RESET}")
+                rich_print(
+                    f"[bold orange]URL:[/bold orange] {url}\n"
+                    f"\t[bold orange]敏感信息:[/bold orange] {sensitive_info}"
+                )
 
     def load_url(self,args):
         if args.url is not None:
@@ -119,4 +126,4 @@ if __name__ == '__main__':
     excel_handler = SafePathExcelGenerator('./result/result.xlsx')
     scanner = Scanner(args)
     scanner.run()
-    print("请求失败的url：",str(fail_url))
+    rich_print(f"[bold]请求失败的url：[/bold][underline]{str(fail_url)}[/underline]")
