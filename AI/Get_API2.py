@@ -1,27 +1,21 @@
-import logging
 import os
+import logging
 import re
 import time
 import traceback
-import warnings
 from io import StringIO
 import random
 from collections import deque
-
-
-SEMANTIC_ANALYSIS_AVAILABLE = False
 try:
     from sentence_transformers import SentenceTransformer
     from sklearn.metrics.pairwise import cosine_similarity
 
     SEMANTIC_ANALYSIS_AVAILABLE = True
-    # 初始化语义模型（延迟加载，避免启动时阻塞）
     _semantic_model = None
 except ImportError:
     SEMANTIC_ANALYSIS_AVAILABLE = False
     _semantic_model = None
 
-from tqdm import tqdm
 
 # OLLAMA GPU内存限制，根据本地显卡内存调整
 OLLAMA_GPU_MEMORY = "4GB"
@@ -31,7 +25,7 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:7b-instruct-q4_0"
+MODEL_NAME = "qwen2.5:14b-instruct-q2_K"
 
 # 模型生成参数：温度值（0-1，越低输出越稳定）
 MODEL_TEMPERATURE = 0.4
@@ -63,8 +57,7 @@ LOOP_PROTECTION_RECOVERY_STRATEGY = {
 
 # -------------------------------------------------------------------------------------
 
-# 屏蔽警告
-warnings.filterwarnings("ignore")
+
 logging.getLogger("langchain").setLevel(LANGCHAIN_LOG_LEVEL)
 logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
 os.environ["OLLAMA_GPU_MEMORY"] = OLLAMA_GPU_MEMORY
@@ -78,16 +71,40 @@ from AI.split_api_code import extract_relevant_lines
 
 
 def get_semantic_model():
-    """延迟加载语义模型，避免启动时阻塞"""
+    """延迟加载语义模型，直接从ModelScope魔搭加载（国内镜像）"""
     global _semantic_model
-    if _semantic_model is None and SEMANTIC_ANALYSIS_AVAILABLE:
+
+    if _semantic_model is not None:
+        return _semantic_model
+
+    if not SEMANTIC_ANALYSIS_AVAILABLE:
+        _semantic_model = "SIMPLE"
+        return _semantic_model
+
+    try:
         try:
-            _semantic_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-            logging.info("语义分析模型已加载")
-        except Exception as e:
-            logging.warning(f"无法加载语义模型: {str(e)}，将使用简单相似度检测")
+            from modelscope import snapshot_download
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
             _semantic_model = "SIMPLE"
-    return _semantic_model
+            return _semantic_model
+
+        os.environ["MODELSCOPE_CACHE"] = "./modelscope_models"
+
+        model_dir = snapshot_download(
+            'Ceceliachenen/paraphrase-multilingual-MiniLM-L12-v2',
+            cache_dir='./modelscope_models',
+            revision='master'
+        )
+
+        _semantic_model = SentenceTransformer(model_dir)
+        logging.info("成功从ModelScope魔搭加载语义分析模型")
+        return _semantic_model
+
+    except Exception as e:
+        logging.error(f"从ModelScope加载模型失败: {str(e)}，将使用简单相似度检测")
+        _semantic_model = "SIMPLE"
+        return _semantic_model
 
 
 class LoopProtectionCallback(BaseCallbackHandler):
@@ -284,35 +301,31 @@ def load_ollama_llm():
 def build_analysis_chain(llm):
     """提示词保持不变"""
     prompt_template = """
-仅从以下JavaScript代码中提取并推测路径，不包含任何思考过程、解释、注释，你可以推理思考，要尽可能多的提取路径：
-
-1. 提取对象：
-   - API路径：所有作为接口访问的路径（不限请求方法，变量拼接需补全，例：/api/v1/user，含中文路径需标注但正常提取）
-   - JavaScript路径：.js后缀的静态文件路径
-   - 其他静态文件：保留除图片、视频、音频、CSS、字体以外的静态文件路径（含中文名称路径）
-
-2. 提取规则：
-   - 路径需合法（符合URL Path规范，允许中文，特殊字符仅允许/._-）
-   - 每条路径用[STR]开头、[END]结尾，单独成行。
-
-3. API端点预测规则：
-   - 理解当前API端点的功能和操作，例如：端点为deleteComment，功能为删除评论
-   - 仅对端点为非静态文件的路径进行预测
-   - 重点预测CRUD操作
-   - 不可私自新增路径层数，例如：/api/comment/delete → /api/comment/delete/add(错误)
-   - 每个原始API端点最多预测2个相关端点，也可以不用预测
-   - 预测示例：
-     * /api/comment/delete → /api/comment/create, /api/comment/get
-     * /api/user/updateinfo → /api/user/deleteinfo, /api/user/createinfo
-     * /api/message/pc/unread/clear-all → /api/message/pc/unread/get-all, /api/message/pc/unread/mark-as-read
-
-4. 输出规则：
-   - 提取的原始路径按原有格式输出：[STR]路径[END]
-   - 预测的API端点额外输出，格式：[STR]路径[END]（与原始路径格式一致）
-   - 无符合条件的内容时，则不输出
-   - 严格禁止输出任何解释、注释或思考过程
-
-代码片段：
+仅从以下JavaScript代码中提取并推测路径，不包含任何思考过程、解释，要尽可能多的提取路径，让我们一步步推导：
+1.提取对象：
+       API路径：所有作为接口访问的路径（不限请求方法，变量拼接需补全，例：/api/v1/user，含中文路径需标注但正常提取）
+       JavaScript路径：.js后缀的静态文件路径
+       其他静态文件：保留除图片、视频、音频、CSS、字体以外的静态文件路径（含中文名称路径）
+2.提取规则：
+       路径需合法（符合URL Path规范，允许中文，特殊字符仅允许/._-）
+       每条路径用[STR]开头、[END]结尾，单独成行。
+3.API端点预测规则（仅对非静态文件的API路径进行）：
+       理解操作意图：分析原始API端点的命名，推断其执行的具体操作（如：delete 表示删除，add/create 表示创建，update 表示更新，get/list 表示查询）。
+       预测关联操作：基于RESTful设计原则，一个资源的典型操作是成套的（增、删、改、查）。如果原始路径明确指向其中一种操作，可以预测其最直接相关的1-2个其他操作。
+       预测方法：
+           若原始路径为删除操作（如包含delete, remove, del等），可预测创建操作（如将delete替换为create, add等）。
+           若原始路径为创建操作（如包含create, add, new等），可预测删除或查询操作。
+           若原始路径为登录（login），可预测登出（logout）和注册（register）。
+           避免预测模糊或不相关的操作。
+       严格限制：
+           不可私自新增路径层数（例如：/api/comment/delete → /api/comment/delete/add 是错误的）。
+           每个原始API端点最多预测2个相关端点。
+           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时，才进行预测。对于非CRUD操作（如ping, status），不进行预测。
+4.输出规则：
+       先输出所有原始提取的路径，每条格式为：[STR]路径[END]。
+       再输出所有预测的API端点，格式与原始路径完全相同：[STR]路径[END]。
+       如果没有符合条件的原始路径或预测路径，则不输出任何内容。
+代码片段如下：
 {code}
         """
     prompt = PromptTemplate(
@@ -361,27 +374,20 @@ def analyze_single_slice(chain, slice_code):
 def analyze_sliced_code(chain, code_str, lines_per_slice=15):
     slices = split_code_into_slices(code_str, lines_per_slice)
     all_output = []
-    total_slices = len(slices)
 
-    # 创建进度条：总进度为切片数量，描述为"分析代码"
-    with tqdm(total=total_slices, desc="分析代码进度", unit="切片") as pbar:
-        for slice_code in slices:
-            try:
-                slice_output = analyze_single_slice(chain, slice_code)
-                if slice_output:
-                    all_output.append(slice_output)
-            except Exception as e:
-                logging.error(f"处理切片时出错: {str(e)}")
-                # 打印详细的报错信息
-                traceback.print_exc()
-            time.sleep(0.5)
-            pbar.update(1)
+    for slice_code in slices:
+        try:
+            slice_output = analyze_single_slice(chain, slice_code)
+            if slice_output:
+                all_output.append(slice_output)
+        except Exception as e:
+            logging.error(f"处理切片时出错: {str(e)}")
+        time.sleep(0.5)
 
     return "\n".join(all_output)
 
 
 def run_analysis(js_code, lines_per_slice=CODE_SLICE_LINES):
-    print("ollama analysis is start")
     llm = load_ollama_llm()
     analysis_chain = build_analysis_chain(llm)
     # 代码美化与提取

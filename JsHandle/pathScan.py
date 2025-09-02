@@ -127,43 +127,109 @@ def analysis_by_rex(source)->list:
     return list(set(relist))
 
 
-def data_clean(base_url, dirty_data)->list:
+import os
+import re
+from urllib.parse import urlparse, urlunparse, urljoin
+
+
+def is_potential_domain(url: str) -> bool:
     """
-    dirty data come from request url
+    智能判断URL是否包含有效域名（无需额外依赖）
+
+    :param url: 要检查的URL片段
+    :return: 是否包含有效域名
+    """
+    # 基本检查：必须包含点且点不在开头/结尾
+    if '.' not in url or url.startswith('.') or url.endswith('.'):
+        return False
+
+    # 检查点前后是否有字母（排除纯数字IP，但允许带路径的IP）
+    parts = url.split('.', 1)
+    if not any(c.isalpha() for c in parts[0]):
+        return False
+
+    # 检查TLD部分（简单验证）
+    tld = parts[1].split('/')[0]  # 取路径前的部分
+    if len(tld) < 2 or not any(c.isalpha() for c in tld):
+        return False
+
+    return True
+
+
+def data_clean(base_url: str, dirty_data) -> list:
+    """
+    智能清洗URL数据，正确区分域名和路径
+
+    :param base_url: 基础URL（用于相对路径解析）
+    :param dirty_data: 待清洗的URL列表
+    :return: 清洗后的完整URL列表
     """
     return_url_list = []
-    if dirty_data is None:
+    if not dirty_data:
         return []
+
+    # 解析基础URL
+    base_parsed = urlparse(base_url)
+
+    # 确保基础URL有协议
+    if not base_parsed.scheme:
+        base_url = "https://" + base_url
+        base_parsed = urlparse(base_url)
+
+    Protocol = base_parsed.scheme
+    Domain = base_parsed.netloc
+    Path = base_parsed.path.rstrip('/') or '/'
+
     for main_url in dirty_data:
-        # 解析输入的url，主要是用来完整的URL的拼接
-        handled_url = urlparse(base_url)
-        # 解析http、https协议
-        Protocol = handled_url.scheme
-        # 解析出域名
-        Domain = handled_url.hostname
-        # 解析出路径
-        Path = handled_url.path
+        if not main_url:
+            continue
 
-        if main_url.startswith('/'):
-            # 处理以斜杠开头的相对路径
-            if main_url.startswith('//'):
-                return_url = Protocol + ':' + main_url
-            else:  # 此时也就是 / 开头的
-                return_url = Protocol + '://' + Domain + main_url
-        elif main_url.startswith('./'):
-            # 处理以./开头的相对路径
-            return_url = Protocol + '://' + Domain + main_url[2:]
-        elif main_url.startswith('../'):
-            # 处理以../开头的相对路径
-            return_url = Protocol + '://' + Domain + os.path.normpath(os.path.join(Path, main_url))
-        elif main_url.startswith('http') or main_url.startswith('https'):
-            # 处理以http或https开头的绝对路径
+        # 清理反斜杠和多余空格
+        main_url = main_url.replace('\\', '/').strip()
+
+        # 跳过javascript:等非HTTP协议
+        if main_url.startswith(('javascript:', 'mailto:', 'tel:', 'data:')):
+            continue
+
+        # 情况1: 以//开头的协议相对URL
+        if main_url.startswith('//'):
+            return_url = f"{Protocol}:{main_url}"
+
+        # 情况2: 以/开头的绝对路径
+        elif main_url.startswith('/'):
+            return_url = f"{Protocol}://{Domain}{main_url}"
+
+        # 情况3: 以./或../开头的相对路径
+        elif main_url.startswith(('./', '../')):
+            # 使用urljoin处理相对路径（最可靠的方式）
+            return_url = urljoin(base_url, main_url)
+
+        # 情况4: 以http/https开头的绝对URL
+        elif main_url.startswith(('http://', 'https://')):
             return_url = main_url
-        else:
-            # 处理其他情况
-            return_url = Protocol + '://' + Domain + '/' + main_url
 
-        if check_url(original_url=base_url, splicing_url=return_url):
+        # 情况5: 可能缺少协议的完整URL (如 www.baidu.com/aaa)
+        elif is_potential_domain(main_url):
+            # 检查是否有路径部分
+            if '/' in main_url:
+                return_url = f"{Protocol}://{main_url}"
+            else:
+                return_url = f"{Protocol}://{main_url}/"
+
+        # 情况6: 相对路径 (如 aaa/bbbb/ccc)
+        else:
+            # 检查是否包含路径分隔符且不像是域名
+            if '/' in main_url and not is_potential_domain(main_url.split('/')[0]):
+                return_url = f"{Protocol}://{Domain}{Path.rstrip('/')}/{main_url.lstrip('/')}"
+            else:
+                # 可能是查询参数或片段
+                return_url = f"{Protocol}://{Domain}{Path}?{main_url}"
+
+        # 规范化URL（移除多余斜杠等）
+        return_url = re.sub(r'(?<!:)//+', '/', return_url)
+
+        # 验证并添加到结果
+        if check_url(base_url, return_url):
             return_url_list.append(return_url)
 
     return return_url_list
@@ -173,29 +239,9 @@ def check_url(original_url,splicing_url):
     """check the url,and it is a blacklist of url"""
     urlparse2 = urlparse(splicing_url)
 
-    if urlparse2.path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','ttf','.css','.svg','.m4v','.aac','.woff','.woff2','.ttf','.eot','.otf','.apk','.exe')):
+    if urlparse2.path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','ttf','.css','.svg','.m4v','.aac','.woff','.woff2','.ttf','.eot','.otf','.apk','.exe','.swf')):
         return False
 
-    if "jquery" in urlparse2.path:
-        return False
-
-    if "update" in urlparse2.path:
-         return False
-
-    if "delete" in urlparse2.path:
-         return False
-
-    if "add" in urlparse2.path:
-         return False
-
-    if "test" in urlparse2.netloc:
-         return False
-
-    if "pre" in urlparse2.netloc:
-         return False
-
-    if "dev" in urlparse2.netloc:
-         return False
 
     if (get_root_domain(original_url) == get_root_domain(splicing_url)) or (get_root_domain(splicing_url) in whiteList):
         return True
