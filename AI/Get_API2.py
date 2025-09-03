@@ -25,7 +25,14 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:14b-instruct-q2_K"
+MODEL_NAME = "qwen2.5:7b"
+'''
+qwen 2.5 7b 90分 完美适配，稍有瑕疵
+qwen 2.5 14b q2 85分 会自己推测梳理，速度较慢，精度较高
+qwen2.5-coder:7b-base-q4_0 75分 压不住
+shmily_006/Qw3:latest 70分 精度差，但是体积小
+'''
+
 
 # 模型生成参数：温度值（0-1，越低输出越稳定）
 MODEL_TEMPERATURE = 0.4
@@ -46,11 +53,11 @@ LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.82  # 语义相似度阈值
 LOOP_PROTECTION_CHECK_INTERVAL = 5  # 每生成N个token检查一次
 
 # L3: 上下文分析参数
-LOOP_PROTECTION_TOPIC_STABILITY = 8  # 相同主题持续超过此数量触发
+LOOP_PROTECTION_TOPIC_STABILITY = 4  # 相同主题持续超过此数量触发
 
 # 恢复策略权重
 LOOP_PROTECTION_RECOVERY_STRATEGY = {
-    "increase_temperature": 0.6,  # 增加温度策略权重
+    "increase_temperature": 0.4,  # 增加温度策略权重
     "inject_diversity": 0.3,  # 注入多样性提示权重
     "hard_terminate": 0.1  # 硬终止权重
 }
