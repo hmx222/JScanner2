@@ -1,11 +1,16 @@
-import os
 import logging
+import os
+import random
 import re
 import time
-import traceback
-from io import StringIO
-import random
 from collections import deque
+from io import StringIO
+
+from config.config import LANGCHAIN_LOG_LEVEL, HTTPX_LOG_LEVEL, OLLAMA_MAX_GPU_MEMORY, LOOP_PROTECTION_TOKEN_WINDOW, \
+    LOOP_PROTECTION_MAX_TOKEN_REPEAT, LOOP_PROTECTION_SENTENCE_WINDOW, LOOP_PROTECTION_SIMILARITY_THRESHOLD, \
+    LOOP_PROTECTION_CHECK_INTERVAL, LOOP_PROTECTION_RECOVERY_STRATEGY, MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS, \
+    MODEL_REPEAT_LAST_N, MODEL_REPEAT_PENALTY, CODE_SLICE_LINES, MODEL_TOP_P, MODEL_TOP_K
+
 try:
     from sentence_transformers import SentenceTransformer
     from sklearn.metrics.pairwise import cosine_similarity
@@ -16,58 +21,9 @@ except ImportError:
     SEMANTIC_ANALYSIS_AVAILABLE = False
     _semantic_model = None
 
-
-# OLLAMA GPU内存限制，根据本地显卡内存调整
-OLLAMA_GPU_MEMORY = "4GB"
-
-# 日志级别设置，ERROR表示只显示错误信息，可改为INFO、DEBUG等
-LANGCHAIN_LOG_LEVEL = logging.ERROR
-HTTPX_LOG_LEVEL = logging.ERROR
-
-# 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:7b-instruct-q4_0"
-'''
-qwen 2.5 7b 90分 完美适配，稍有瑕疵
-qwen 2.5 14b q2 85分 会自己推测梳理，速度较慢，精度较高
-qwen2.5-coder:7b-base-q4_0 75分 压不住
-shmily_006/Qw3:latest 70分 精度差，但是体积小
-'''
-
-
-# 模型生成参数：温度值（0-1，越低输出越稳定）
-MODEL_TEMPERATURE = 0.7
-
-# 模型生成参数：最大令牌数（控制输出长度）
-MODEL_MAX_TOKENS = 900
-
-# 代码切片行数（每次向模型输入的代码行数）
-CODE_SLICE_LINES = 25
-
-# L1: 词级检测参数
-LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
-LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4  # 允许相同token序列重复的最大次数
-
-# L2: 句级检测参数
-LOOP_PROTECTION_SENTENCE_WINDOW = 5  # 保存的历史句子数量
-LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.70  # 语义相似度阈值
-LOOP_PROTECTION_CHECK_INTERVAL = 50  # 每生成N个token检查一次
-
-# L3: 上下文分析参数
-LOOP_PROTECTION_TOPIC_STABILITY = 4  # 相同主题持续超过此数量触发
-
-# 恢复策略权重
-LOOP_PROTECTION_RECOVERY_STRATEGY = {
-    "increase_temperature": 0.4,  # 增加温度策略权重
-    "inject_diversity": 0.3,  # 注入多样性提示权重
-    "hard_terminate": 0.1  # 硬终止权重
-}
-
-# -------------------------------------------------------------------------------------
-
-
 logging.getLogger("langchain").setLevel(LANGCHAIN_LOG_LEVEL)
 logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
-os.environ["OLLAMA_GPU_MEMORY"] = OLLAMA_GPU_MEMORY
+os.environ["OLLAMA_MAX_GPU_MEMORY"] = OLLAMA_MAX_GPU_MEMORY
 
 from langchain_community.chat_models import ChatOllama
 from langchain_core.callbacks import BaseCallbackHandler
@@ -145,8 +101,8 @@ class LoopProtectionCallback(BaseCallbackHandler):
         self.buffer.write(token)
         self.token_count += 1
         self.last_tokens.append(token)
-
-        print(token, end="", flush=True)
+        # 是否进行流式输出
+        # print(token, end="", flush=True)
 
         # 每隔N个token检查一次循环
         if self.token_count % self.check_interval == 0:
@@ -333,7 +289,12 @@ def load_ollama_llm():
         temperature=MODEL_TEMPERATURE,
         max_tokens=MODEL_MAX_TOKENS,
         streaming=True,
-        keep_alive=-1
+        keep_alive=-1,
+        reasoning=False,
+        repeat_last_n=MODEL_REPEAT_LAST_N,
+        repeat_penalty=MODEL_REPEAT_PENALTY,
+        top_p=MODEL_TOP_P,
+        top_k=MODEL_TOP_K
     )
 
 
@@ -359,11 +320,16 @@ def build_analysis_chain(llm):
        严格限制：
            不可私自新增路径层数（例如：/api/comment/delete → /api/comment/delete/add 是错误的）。
            每个原始API端点最多预测2个相关端点。
-           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时，才进行预测。对于非CRUD操作（如ping, status），不进行预测。
+           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时优先预测。对于非CRUD操作适当预测，如登录、登出、注册等。
 4.输出规则：
        先输出所有原始提取的路径，每条格式为：[STR]路径[END]。
        再输出所有预测的API端点，格式与原始路径完全相同：[STR]路径[END]。
        如果没有符合条件的原始路径或预测路径，则不输出任何内容。
+       输出示例：
+           [STR]/api/user[END]
+           [STR]/api/user/register[END]
+           [STR]/api/user/login[END]
+           [STR]/api/user/logout[END]
 代码片段如下：
 {code}
         """
@@ -437,6 +403,8 @@ def run_analysis(js_code, lines_per_slice=CODE_SLICE_LINES):
 
 
 def clean_output(output):
+    # 去除思考部分<think></think>
+    output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
     # 1. 提取所有被[STR]和[END]包裹的内容
     paths = re.findall(r'\[STR\](.*?)\[END\]', output, re.DOTALL)
     # 2. 去重

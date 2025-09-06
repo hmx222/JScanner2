@@ -90,7 +90,9 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         if not args.ollama:
             all_dirty = analysis_by_rex(source)
         else:
-            if is_js_file(url) and not source.startswith("<!DOCTYPE html>"):
+            rex_output = analysis_by_rex(source)
+            all_dirty.extend(rex_output)
+            if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(rex_output) >= 6:
                 try:
                     source = extract_pure_js(source)
                     ollama_output = clean_output(run_analysis(source))
@@ -102,8 +104,7 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
                         f"[orange]⚠️ 美化JavaScript时可能出现错误[/orange]\n"
                         f"[green]→ 继续执行正常任务[/green]"
                     )
-            rex_output = analysis_by_rex(source)
-            all_dirty.extend(rex_output)
+
         next_urls = set(data_clean(url, all_dirty))
 
     return True, next_urls
