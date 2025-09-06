@@ -123,7 +123,9 @@ class Scanner:
 if __name__ == '__main__':
     init(autoreset=True)
     args = parse_args()
+    start_time = time.time()
     excel_handler = SafePathExcelGenerator('./result/result.xlsx')
     scanner = Scanner(args)
     scanner.run()
     rich_print(f"[bold]请求失败的url：[/bold][underline]{str(fail_url)}[/underline]")
+    rich_print(f"[bold]耗时：{time.time() - start_time}[/bold]")

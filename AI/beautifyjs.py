@@ -2,11 +2,12 @@ import subprocess
 import tempfile
 import os
 
+from config import config
+
 
 def format_code(
         unformatted_code,
-        parser="babel",
-        prettier_path=None
+        parser="babel"
 ):
     """
     使用prettier格式化代码，解决Windows下的编码问题
@@ -19,24 +20,7 @@ def format_code(
     返回:
         str: 格式化后的代码
     """
-    # 自动查找prettier路径（适用于Windows系统）
-    if not prettier_path:
-        # 常见的全局安装路径（请根据实际用户名修改）
-        default_paths = [
-            os.path.expandvars(r"%USERPROFILE%\AppData\Roaming\npm\prettier.cmd"),
-            r"C:\Program Files\nodejs\node_modules\npm\bin\prettier.cmd"
-        ]
-
-        for path in default_paths:
-            if os.path.exists(path):
-                prettier_path = path
-                break
-
-        if not prettier_path:
-            raise FileNotFoundError(
-                "未找到prettier可执行文件，请手动指定路径。\n"
-                "提示：全局安装后通常位于：C:\\Users\\你的用户名\\AppData\\Roaming\\npm\\prettier.cmd"
-            )
+    prettier_path = config.prettier_path
 
     # 创建临时文件并以UTF-8编码写入（解决写入时的编码问题）
     with tempfile.NamedTemporaryFile(

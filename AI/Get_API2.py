@@ -1,11 +1,16 @@
-import os
 import logging
+import os
+import random
 import re
 import time
-import traceback
-from io import StringIO
-import random
 from collections import deque
+from io import StringIO
+
+from config.config import LANGCHAIN_LOG_LEVEL, HTTPX_LOG_LEVEL, OLLAMA_MAX_GPU_MEMORY, LOOP_PROTECTION_TOKEN_WINDOW, \
+    LOOP_PROTECTION_MAX_TOKEN_REPEAT, LOOP_PROTECTION_SENTENCE_WINDOW, LOOP_PROTECTION_SIMILARITY_THRESHOLD, \
+    LOOP_PROTECTION_CHECK_INTERVAL, LOOP_PROTECTION_RECOVERY_STRATEGY, MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS, \
+    MODEL_REPEAT_LAST_N, MODEL_REPEAT_PENALTY, CODE_SLICE_LINES, MODEL_TOP_P, MODEL_TOP_K
+
 try:
     from sentence_transformers import SentenceTransformer
     from sklearn.metrics.pairwise import cosine_similarity
@@ -16,51 +21,9 @@ except ImportError:
     SEMANTIC_ANALYSIS_AVAILABLE = False
     _semantic_model = None
 
-
-# OLLAMA GPU内存限制，根据本地显卡内存调整
-OLLAMA_GPU_MEMORY = "4GB"
-
-# 日志级别设置，ERROR表示只显示错误信息，可改为INFO、DEBUG等
-LANGCHAIN_LOG_LEVEL = logging.ERROR
-HTTPX_LOG_LEVEL = logging.ERROR
-
-# 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5:14b-instruct-q2_K"
-
-# 模型生成参数：温度值（0-1，越低输出越稳定）
-MODEL_TEMPERATURE = 0.4
-
-# 模型生成参数：最大令牌数（控制输出长度）
-MODEL_MAX_TOKENS = 900
-
-# 代码切片行数（每次向模型输入的代码行数）
-CODE_SLICE_LINES = 25
-
-# L1: 词级检测参数
-LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
-LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4  # 允许相同token序列重复的最大次数
-
-# L2: 句级检测参数
-LOOP_PROTECTION_SENTENCE_WINDOW = 5  # 保存的历史句子数量
-LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.82  # 语义相似度阈值
-LOOP_PROTECTION_CHECK_INTERVAL = 5  # 每生成N个token检查一次
-
-# L3: 上下文分析参数
-LOOP_PROTECTION_TOPIC_STABILITY = 8  # 相同主题持续超过此数量触发
-
-# 恢复策略权重
-LOOP_PROTECTION_RECOVERY_STRATEGY = {
-    "increase_temperature": 0.6,  # 增加温度策略权重
-    "inject_diversity": 0.3,  # 注入多样性提示权重
-    "hard_terminate": 0.1  # 硬终止权重
-}
-
-# -------------------------------------------------------------------------------------
-
-
 logging.getLogger("langchain").setLevel(LANGCHAIN_LOG_LEVEL)
 logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
-os.environ["OLLAMA_GPU_MEMORY"] = OLLAMA_GPU_MEMORY
+os.environ["OLLAMA_MAX_GPU_MEMORY"] = OLLAMA_MAX_GPU_MEMORY
 
 from langchain_community.chat_models import ChatOllama
 from langchain_core.callbacks import BaseCallbackHandler
@@ -138,8 +101,8 @@ class LoopProtectionCallback(BaseCallbackHandler):
         self.buffer.write(token)
         self.token_count += 1
         self.last_tokens.append(token)
-
-        print(token, end="", flush=True)
+        # 是否进行流式输出
+        # print(token, end="", flush=True)
 
         # 每隔N个token检查一次循环
         if self.token_count % self.check_interval == 0:
@@ -165,58 +128,65 @@ class LoopProtectionCallback(BaseCallbackHandler):
             return
 
     def _check_token_repetition(self) -> bool:
-        """检查token级别重复（快速轻量级检测）"""
+        """优化：检测完整路径片段的重复（基于换行或路径分隔符分割）"""
+        # 1. 先将token序列拼接成字符串，按换行或路径分隔符分割成“片段”（如路径、标点）
+        full_token_str = ''.join(self.last_tokens)
+        # 分割符：换行（\n）、路径开头（/）、标点（.、?等），确保能拆分出完整路径
+        segments = re.split(r'(\n|/)', full_token_str)  # 保留分割符，方便重组路径
+        segments = [s.strip() for s in segments if s.strip()]  # 过滤空字符串
 
-        # 检查是否有重复模式（例如"abcabc"）
-        pattern_len = self.token_window // 2
-        if pattern_len > 0:
-            first_half = ''.join(list(self.last_tokens)[:pattern_len])
-            second_half = ''.join(list(self.last_tokens)[pattern_len:])
+        # 2. 只检测长度>2的片段（避免单个字符的误判，如“a”“b”）
+        valid_segments = [seg for seg in segments if len(seg) > 3]
+        if len(valid_segments) < 3:  # 至少2个片段才可能重复
+            return False
 
-            if first_half and first_half in second_half:
-                self.token_repetition_count += 1
-                return self.token_repetition_count >= self.max_token_repeat
+        # 3. 检测是否有连续重复的片段（如“/api/user”出现2次以上）
+        repeat_count = 1
+        for i in range(1, len(valid_segments)):
+            if valid_segments[i] == valid_segments[i - 1]:
+                repeat_count += 1
+                if repeat_count >= self.max_token_repeat:  # 达到最大重复次数
+                    return True
+            else:
+                repeat_count = 1  # 重置计数
 
         return False
 
     def _check_sentence_similarity(self) -> bool:
-        """检查句子级别语义重复（更精确但计算量大）"""
-        # 构建当前句子
-        if not self.current_sentence:
-            self.current_sentence = []
+        """优化：适配路径生成场景的句子分割与相似度检测"""
+        # 1. 调整句子结束的判断：路径片段（以/开头或结尾）、换行符，均视为句子结束
+        current_token = self.last_tokens[-1]
+        is_sentence_end = (
+                current_token in ['。', '!', '?', '\n', '.', '!', '?']
+                or (len(self.current_sentence) > 0 and (current_token == '/' or self.current_sentence[-1] == '/'))
+        )
 
-        # 将当前token视为句子结束的标志
-        if self.last_tokens[-1] in ['。', '!', '?', '\n', '.', '!', '?']:
-            current_sentence_text = ''.join(self.current_sentence).strip()
-            if len(current_sentence_text) > 10:
-                # 计算与历史句子的相似度
-                if self.sentence_history:
-                    max_similarity = self._calculate_similarity(current_sentence_text,
-                                                                list(self.sentence_history))
-                    if max_similarity > self.similarity_threshold:
-                        self.sentence_similarity_checks += 1
-                        # 多次高相似度才触发
-                        return self.sentence_similarity_checks >= 2
+        # 2. 构建当前句子（包含完整路径片段）
+        self.current_sentence.append(current_token)
+        current_sentence_text = ''.join(self.current_sentence).strip()
 
-                # 添加到历史记录
-                self.sentence_history.append(current_sentence_text)
+        # 3. 句子结束且长度>5（路径至少如“/api”），才加入历史
+        if is_sentence_end and len(current_sentence_text) > 5:
+            # 4. 立即检查与历史句子的相似度（不再等50个token，同步触发）
+            max_similarity = self._calculate_similarity(current_sentence_text, list(self.sentence_history))
+            self.sentence_history.append(current_sentence_text)  # 加入历史
+            self.current_sentence = []  # 重置当前句子
 
-            # 重置当前句子
-            self.current_sentence = []
-        else:
-            # 继续构建当前句子
-            self.current_sentence.append(self.last_tokens[-1])
+            # 5. 连续2次相似度超过阈值，触发循环检测
+            if max_similarity > self.similarity_threshold:
+                self.sentence_similarity_checks += 1
+                return self.sentence_similarity_checks >= 4
+            else:
+                self.sentence_similarity_checks = 0  # 重置计数
 
         return False
 
     def _calculate_similarity(self, text1, texts):
-        """计算文本与文本列表的最大相似度"""
         if not texts:
             return 0.0
 
-        # 如果语义模型不可用，使用简单的Jaccard相似度
         if not SEMANTIC_ANALYSIS_AVAILABLE or get_semantic_model() == "SIMPLE":
-            return self._simple_similarity(text1, texts)
+            return self._edit_distance_similarity(text1, texts)  # 替换为编辑距离
 
         try:
             model = get_semantic_model()
@@ -236,6 +206,31 @@ class LoopProtectionCallback(BaseCallbackHandler):
         except Exception as e:
             logging.warning(f"语义相似度计算出错: {str(e)}，将使用简单相似度检测")
             return self._simple_similarity(text1, texts)
+
+    def _edit_distance_similarity(self, text1, texts):
+        """编辑距离相似度：1 - 编辑距离 / 最长文本长度（值越近1越相似）"""
+        max_sim = 0.0
+        len_text1 = len(text1)
+        for text2 in texts:
+            len_text2 = len(text2)
+            # 计算编辑距离（Levenshtein距离）
+            dp = [[0] * (len_text2 + 1) for _ in range(len_text1 + 1)]
+            for i in range(len_text1 + 1):
+                dp[i][0] = i
+            for j in range(len_text2 + 1):
+                dp[0][j] = j
+            for i in range(1, len_text1 + 1):
+                for j in range(1, len_text2 + 1):
+                    if text1[i - 1] == text2[j - 1]:
+                        dp[i][j] = dp[i - 1][j - 1]
+                    else:
+                        dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+            # 计算相似度（避免除以0）
+            max_len = max(len_text1, len_text2)
+            sim = 1 - (dp[len_text1][len_text2] / max_len) if max_len > 0 else 0.0
+            if sim > max_sim:
+                max_sim = sim
+        return max_sim
 
     def _simple_similarity(self, text1, texts):
         """简单的Jaccard相似度计算（备用方案）"""
@@ -294,7 +289,12 @@ def load_ollama_llm():
         temperature=MODEL_TEMPERATURE,
         max_tokens=MODEL_MAX_TOKENS,
         streaming=True,
-        keep_alive=-1
+        keep_alive=-1,
+        reasoning=False,
+        repeat_last_n=MODEL_REPEAT_LAST_N,
+        repeat_penalty=MODEL_REPEAT_PENALTY,
+        top_p=MODEL_TOP_P,
+        top_k=MODEL_TOP_K
     )
 
 
@@ -320,11 +320,16 @@ def build_analysis_chain(llm):
        严格限制：
            不可私自新增路径层数（例如：/api/comment/delete → /api/comment/delete/add 是错误的）。
            每个原始API端点最多预测2个相关端点。
-           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时，才进行预测。对于非CRUD操作（如ping, status），不进行预测。
+           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时优先预测。对于非CRUD操作适当预测，如登录、登出、注册等。
 4.输出规则：
        先输出所有原始提取的路径，每条格式为：[STR]路径[END]。
        再输出所有预测的API端点，格式与原始路径完全相同：[STR]路径[END]。
        如果没有符合条件的原始路径或预测路径，则不输出任何内容。
+       输出示例：
+           [STR]/api/user[END]
+           [STR]/api/user/register[END]
+           [STR]/api/user/login[END]
+           [STR]/api/user/logout[END]
 代码片段如下：
 {code}
         """
@@ -398,6 +403,8 @@ def run_analysis(js_code, lines_per_slice=CODE_SLICE_LINES):
 
 
 def clean_output(output):
+    # 去除思考部分<think></think>
+    output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
     # 1. 提取所有被[STR]和[END]包裹的内容
     paths = re.findall(r'\[STR\](.*?)\[END\]', output, re.DOTALL)
     # 2. 去重

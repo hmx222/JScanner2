@@ -1,8 +1,3 @@
-import os
-import re
-from urllib.parse import urlparse, urljoin
-
-from attr.validators import instance_of
 from bs4 import BeautifulSoup
 from esprima import esprima
 from tldextract import tldextract
@@ -127,9 +122,8 @@ def analysis_by_rex(source)->list:
     return list(set(relist))
 
 
-import os
 import re
-from urllib.parse import urlparse, urlunparse, urljoin
+from urllib.parse import urlparse, urljoin
 
 
 def is_potential_domain(url: str) -> bool:
@@ -181,7 +175,23 @@ def data_clean(base_url: str, dirty_data) -> list:
     Path = base_parsed.path.rstrip('/') or '/'
 
     for main_url in dirty_data:
+        # 增加部分黑名单
+        SKIP_CONTENT_TYPES = {
+            "text/html",
+            "text/plain",
+            "image/gif",
+            "image/jpg",
+            "image/jpeg",
+            "image/svg+xml"
+        }
+
+        if main_url in SKIP_CONTENT_TYPES:
+            continue
+
         if not main_url:
+            continue
+
+        if " " in main_url:
             continue
 
         # 清理反斜杠和多余空格
