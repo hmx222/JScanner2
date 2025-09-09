@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 from colorama import Fore
 from playwright.async_api import async_playwright, Page, Browser
+from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
@@ -67,7 +68,7 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         return False, set()
     if status and status >= 404:
         return False, set()
-    if not source or length < 100:
+    if not source or length < 200:
         return False, set()
 
     if ".js" not in url:
@@ -92,8 +93,9 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         else:
             rex_output = analysis_by_rex(source)
             all_dirty.extend(rex_output)
-            if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(rex_output) >= 6:
+            if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(source) > 1000 and len(rex_output) >= 6 :
                 try:
+                    print("🤔 大模型正在分析中 🔍💡")
                     source = extract_pure_js(source)
                     ollama_output = clean_output(run_analysis(source))
                     all_dirty.extend(ollama_output)
@@ -181,11 +183,11 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             all_next_urls.update(next_urls)
 
         print(
-            f"[bold blue]URL:[/bold blue] {scan_info['url']}\n"
-            f"\t[bold green]Status:[/bold green] {scan_info['status']}\n"
-            f"\t[bold cyan]Title:[/bold cyan] {scan_info['title']}\n"
-            f"\t[bold yellow]Content Length:[/bold yellow] {scan_info['length']}\n"
-            f"\t[bold magenta]Valid Elements:[/bold magenta] {scan_info['valid_Element']}\n"
+            f"[bold blue]URL:[/bold blue] {escape(str(scan_info['url']))}\n"  # 确保转为字符串
+            f"\t[bold green]Status:[/bold green] {escape(str(scan_info['status']))}\n"  # 状态码（整数）转字符串
+            f"\t[bold cyan]Title:[/bold cyan] {escape(str(scan_info['title']))}\n"  # title可能为None，转字符串
+            f"\t[bold yellow]Content Length:[/bold yellow] {escape(str(scan_info['length']))}\n"  # 长度（整数）转字符串
+            f"\t[bold magenta]Valid Elements:[/bold magenta] {escape(str(scan_info['valid_Element']))}\n"  # 确保是字符串
         )
         scan_info_list.append(scan_info)
 

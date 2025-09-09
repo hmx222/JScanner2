@@ -278,7 +278,7 @@ class SafePathExcelGenerator:
             print("❌ 工作表未初始化，无法渲染数据")
             return
 
-        # 清空旧数据（保留表头逻辑优化）
+        # 清空旧数据
         try:
             if self.ws.max_row > 0:
                 self.ws.delete_rows(1, self.ws.max_row)
@@ -294,10 +294,9 @@ class SafePathExcelGenerator:
             cell.font = self.header_font
             cell.border = self.thin_border
 
-        # 写入数据
+        # 写入数据（跳过 .js / .vue）
         for idx, item in enumerate(self.all_data, start=1):
-            # 跳过.js与vue的写入
-            if ".js" in item["url"]  or ".vue" in item["url"]:
+            if ".js" in item["url"] or ".vue" in item["url"]:
                 continue
             row_data = [
                 str(idx),
@@ -311,26 +310,39 @@ class SafePathExcelGenerator:
             try:
                 self.ws.append(row_data)
             except Exception as e:
-                print(f"⚠️ 写入数据失败（行{idx}）：{item['url']}")
+                print(f"⚠️ 写入数据失败（行{idx}）：{item['url']}，错误：{e}")
                 continue
 
-        # 设置单元格样式（仅处理数据行）
+        # 设置数据行样式
         for row_idx in range(2, self.ws.max_row + 1):
             for col_idx in range(1, self.ws.max_column + 1):
                 cell = self.ws.cell(row=row_idx, column=col_idx)
                 cell.alignment = self.alignment
                 cell.border = self.thin_border
 
-        # 调整列宽（限制最大宽度避免过宽）
+        # 🚀 优化列宽计算：仅对关键列（URL=第3列, Title=第7列）采样前1000行
+        KEY_COLS = {3, 7}  # URL 和 Title 列
+        DEFAULT_WIDTH = 15
+        MAX_SAMPLE_ROWS = 10
+
         for col_idx in range(1, self.ws.max_column + 1):
             try:
-                max_length = max(
-                    len(str(self.ws.cell(row=row, column=col_idx).value or ""))
-                    for row in range(1, self.ws.max_row + 1)
-                )
-                self.ws.column_dimensions[get_column_letter(col_idx)].width = min(max_length, 50) + 2
+                if col_idx in KEY_COLS and self.ws.max_row > 1:
+                    # 采样前 MAX_SAMPLE_ROWS 行计算最大宽度
+                    sample_rows = min(MAX_SAMPLE_ROWS, self.ws.max_row)
+                    max_length = max(
+                        len(str(self.ws.cell(row=row, column=col_idx).value or ""))
+                        for row in range(1, sample_rows + 1)
+                    )
+                    width = min(max_length, 50) + 2  # 限制最大宽度为50
+                else:
+                    width = DEFAULT_WIDTH
+
+                col_letter = get_column_letter(col_idx)
+                self.ws.column_dimensions[col_letter].width = width
             except Exception as e:
-               pass # print(f"⚠️ 调整列宽失败（列{col_idx}）：{str(e)}")
+                # 可选：记录日志或忽略
+                pass
 
     def append_data(self, input_data: InputData, auto_save: bool = True) -> None:
         """

@@ -24,6 +24,7 @@ class Scanner:
         self.initial_urls = []  # 初始URL
         self.checker = None  # 去重管理器（后续初始化）
         self.tmp_urls = set()  # 临时URL列表
+        self.whiteList = read("./config/whiteList")
 
 
     def run(self):
@@ -123,6 +124,7 @@ class Scanner:
 if __name__ == '__main__':
     init(autoreset=True)
     args = parse_args()
+    # load whiteList
     start_time = time.time()
     excel_handler = SafePathExcelGenerator('./result/result.xlsx')
     scanner = Scanner(args)

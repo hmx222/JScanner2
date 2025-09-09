@@ -247,13 +247,20 @@ def data_clean(base_url: str, dirty_data) -> list:
 
 def check_url(original_url,splicing_url):
     """check the url,and it is a blacklist of url"""
-    urlparse2 = urlparse(splicing_url)
-
-    if urlparse2.path.endswith(('.png', '.jpg', '.jpeg','.ico','.mp4','.mp3','.gif','ttf','.css','.svg','.m4v','.aac','.woff','.woff2','.ttf','.eot','.otf','.apk','.exe','.swf')):
+    try:
+        urlparse2 = urlparse(splicing_url)
+    except:
         return False
 
+    if any(ext in urlparse2.path for ext in (
+            '.png', '.jpg', '.jpeg', '.ico', '.mp4', '.mp3', '.gif', 'ttf',
+            '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.ttf', '.eot',
+            '.otf', '.apk', '.exe', '.swf','.webp','.html','.htm'
+    )):
+        return False
 
-    if (get_root_domain(original_url) == get_root_domain(splicing_url)) or (get_root_domain(splicing_url) in whiteList):
+    if ((get_root_domain(original_url) == get_root_domain(splicing_url)) or
+            (get_root_domain(splicing_url) in whiteList)):
         return True
     else:
         return False

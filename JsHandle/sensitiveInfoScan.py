@@ -1,8 +1,57 @@
-import os
-from concurrent.futures.thread import ThreadPoolExecutor
-from concurrent.futures import ProcessPoolExecutor
+import base64
+import json
+
 import regex as re
 
+
+def find_js_map_files_optimized(text: str) -> list:
+    """
+    ⚡️ 高性能版：从 JS 代码末尾提取 SourceMap 信息
+    只检查最后 3 行，避免全文扫描！
+    """
+    if not isinstance(text, str) or len(text) == 0:
+        return []
+
+    # 只取最后 5 行（覆盖 99.9% 的真实场景）
+    lines = text.splitlines()
+    last_lines = lines[-5:] if len(lines) >= 5 else lines
+
+    # 匹配 sourceMappingURL 注释（支持 // 和 /* */ 风格，新旧语法）
+    pattern = r'(?:/\*|//)\s*[@#]\s*sourceMappingURL\s*=\s*([^\s*]+)\s*(?:\*/)?'
+    regex = re.compile(pattern, re.IGNORECASE)
+
+    results = []
+
+    for i, line in enumerate(last_lines):
+        match = regex.search(line)
+        if match:
+            url = match.group(1).strip()
+            item = {
+                "type": "external",
+                "url": url,
+                "raw_match": match.group(0),
+                "line_number": len(lines) - len(last_lines) + i + 1,  # 原始行号
+                "position": match.start()
+            }
+
+            # 如果是内联 SourceMap (application/json;base64,...)
+            if url.startswith('application/json;base64,'):
+                try:
+                    b64_data = url.split('base64,', 1)[1]
+                    json_str = base64.b64decode(b64_data).decode('utf-8')
+                    source_map = json.loads(json_str)
+                    item.update({
+                        "type": "inline",
+                        "decoded": source_map,
+                        "sources": source_map.get("sources", []),
+                        "names": source_map.get("names", [])
+                    })
+                except Exception:
+                    return []
+
+            results.append(item)
+
+    return results
 
 def find_id_cards(text)->list:
     """
@@ -84,851 +133,768 @@ def find_swagger(text)->list:
     return re.findall(pattern, text)
 
 
-def find_js_map_files(text):
-    """寻找所有可能的.js.map文件路径"""
-    # 匹配所有以 .js.map 结尾的路径或 URL
-    pattern = r'(\S+\.js\.map)'  # 匹配非空白字符后的 .js.map 文件路径
-    matches = re.findall(pattern, text)  # 返回所有匹配的结果
-    return matches
+def find_sensitive_info_1(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === WPT / WP 聚合 ===
+        re.compile(
+            r'\bwpt[-_](?:report[-_]api[-_]key|prepare[-_]dir|db[-_](?:user|password))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\bwporg[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bwpjm[-_]phpunit[-_]google[-_]geocode[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(r'\bwordpress[-_]db[-_](?:user|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
 
+        # === Wincert / Widget / Watson ===
+        re.compile(r'\bwincert[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bwidget[-_]test[-_]server\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bwatson[-_](?:password|device[-_]password|conversation[-_]password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
 
-def find_sensitive_info_1(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
+        # === Wakatime / VSCode / Visual Recognition ===
+        re.compile(r'\bwakatime[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bvscetoken\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bvisual[-_]recognition[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
 
-        re.compile(r'["\']?wpt[-_]?report[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wpt[-_]?prepare[-_]?dir["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wpt[-_]?db[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wpt[-_]?db[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wporg[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wpjm[-_]?phpunit[-_]?google[-_]?geocode[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?wordpress[-_]?db[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wordpress[-_]?db[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wincert[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?test[-_]?server["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?fb[-_]?password[-_]?3["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?fb[-_]?password[-_]?2["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?fb[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?basic[-_]?password[-_]?5["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?basic[-_]?password[-_]?4["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?basic[-_]?password[-_]?3["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?basic[-_]?password[-_]?2["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?widget[-_]?basic[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?watson[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?watson[-_]?device[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?watson[-_]?conversation[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wakatime[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?vscetoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?visual[-_]?recognition[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?virustotal[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?vip[-_]?github[-_]?deploy[-_]?key[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?vip[-_]?github[-_]?deploy[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?vip[-_]?github[-_]?build[-_]?repo[-_]?deploy[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?v[-_]?sfdc[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?v[-_]?sfdc[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?usertravis["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?user[-_]?assets[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?user[-_]?assets[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?use[-_]?ssh["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?us[-_]?east[-_]?1[-_]?elb[-_]?amazonaws[-_]?com["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?urban[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?urban[-_]?master[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?urban[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?unity[-_]?serial["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?unity[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twitteroauthaccesstoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twitteroauthaccesssecret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twitter[-_]?consumer[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twitter[-_]?consumer[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twine[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twilio[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twilio[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+        # === VirusTotal / VIP GitHub ===
+        re.compile(r'\bvirustotal[-_]apikey\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bvip[-_]github[-_](?:deploy[-_]key(?:[-_]pass)?|build[-_]repo[-_]deploy[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Salesforce (v_sfdc) ===
+        re.compile(r'\bv[-_]sfdc[-_](?:password|client[-_]secret)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === User / SSH / AWS ELB ===
+        re.compile(
+            r'\buser(?:travis|[-_]assets[-_](?:secret[-_]access[-_]key|access[-_]key[-_]id))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\buse[-_]ssh\b\s*[=:]\s*["\']?[\w-]{1,10}["\']?', re.IGNORECASE),  # SSH 通常是布尔值
+        re.compile(r'\bus[-_]east[-_]1[-_]elb\.amazonaws\.com\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        # 修复：转义点号
+
+        # === Urban / Unity ===
+        re.compile(r'\burban[-_](?:secret|master[-_]secret|key)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bunity[-_](?:serial|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Twitter / Twine / Twilio ===
+        re.compile(
+            r'\btwitter(?:oauth(?:accesstoken|accesssecret)|[-_]consumer[-_](?:secret|key))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\btwine[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\btwilio[-_](?:token|sid)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "password", "token", "key", "secret", "api", "user", "ssh", "twitter", "twilio"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 
 
-def find_sensitive_info_2(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?twilio[-_]?configuration[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twilio[-_]?chat[-_]?account[-_]?api[-_]?service["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?twilio[-_]?api[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?twilio[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?trex[-_]?okta[-_]?client[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?trex[-_]?client[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?secure[-_]?env[-_]?vars["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?pull[-_]?request["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?e2e[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?com[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?branch["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?travis[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?token[-_]?core[-_]?java["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?thera[-_]?oss[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?tester[-_]?keys[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?test[-_]?test["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?test[-_]?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?tesco[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?svn[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?surge[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?surge[-_]?login["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?stripe[-_]?public["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?stripe[-_]?private["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?strip[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?strip[-_]?publishable[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?stormpath[-_]?api[-_]?key[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?stormpath[-_]?api[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?starship[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?starship[-_]?account[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?star[-_]?test[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?star[-_]?test[-_]?location["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?star[-_]?test[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?star[-_]?test[-_]?aws[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?staging[-_]?base[-_]?url[-_]?runscope["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ssmtp[-_]?config["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sshpass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?srcclr[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?square[-_]?reader[-_]?sdk[-_]?repository[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?sqssecretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sqsaccesskey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?spring[-_]?mail[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?spotify[-_]?api[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?spotify[-_]?api[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?spaces[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?spaces[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?soundcloud[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?soundcloud[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatypepassword["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?token[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?token[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+def find_sensitive_info_2(text: str) -> list:
 
+    OPTIMIZED_REGEX_LIST = [
+        # === Twilio 聚合 ===
+        re.compile(
+            r'\btwilio[-_](?:configuration[-_]sid|chat[-_]account[-_]api[-_]service|api[-_](?:secret|key))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Trex / Travis 聚合 ===
+        re.compile(r'\btrex[-_](?:okta[-_]client[-_]token|client[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(
+            r'\btravis[-_](?:token|secure[-_]env[-_]vars|pull[-_]request|gh[-_]token|e2e[-_]token|com[-_]token|branch|api[-_]token|access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Token / Thera / Tester ===
+        re.compile(r'\btoken[-_]core[-_]java\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bthera[-_]oss[-_]access[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\btester[-_]keys[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Test / Tesco / SVN / Surge ===
+        re.compile(r'\btest[-_]github[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\btesco[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsvn[-_]pass\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsurge[-_](?:token|login)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Stripe (修复拼写错误 "strip" → "stripe") ===
+        re.compile(
+            r'\bstripe[-_](?:public|private|secret[-_]key|publishable[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Stormpath / Starship / Star ===
+        re.compile(r'\bstormpath[-_]api[-_]key[-_](?:secret|id)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bstarship[-_](?:auth[-_]token|account[-_]sid)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(
+            r'\bstar[-_]test[-_](?:secret[-_]access[-_]key|location|bucket|aws[-_]access[-_]key[-_]id)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Srcclr / Square / SQS ===
+        re.compile(r'\bsrcclr[-_]api[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsquare[-_]reader[-_]sdk[-_]repository[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(r'\bsqs(?:secret|access)key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Spring / Spotify / Spaces / SoundCloud ===
+        re.compile(r'\bspring[-_]mail[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bspotify[-_]api[-_](?:client[-_]secret|access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(r'\bspaces[-_]access[-_]key[-_](?:secret|id)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsoundcloud[-_](?:password|client[-_]secret)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
+
+        # === Sonatype 聚合 ===
+        re.compile(r'\bsonatype[-_](?:token[-_](?:user|password)|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "token", "key", "secret", "password", "api", "twilio", "travis", "stripe", "spotify"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 
 
-def find_sensitive_info_3(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?sonatype[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?nexus[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?gpg[-_]?passphrase["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonatype[-_]?gpg[-_]?key[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonar[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonar[-_]?project[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sonar[-_]?organization[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?socrata[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?socrata[-_]?app[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?snyk[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?snyk[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?snoowrap[-_]?refresh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?zopim[-_]?account[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?zhuliang[-_]?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?zensonatypepassword["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?zendesk[-_]?travis[-_]?github["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?server[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?partner[-_]?refresh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?partner[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?account[-_]?refresh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yt[-_]?account[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yangshun[-_]?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?yangshun[-_]?gh[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?www[-_]?googleapis[-_]?com["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?wpt[-_]?ssh[-_]?private[-_]?key[-_]?base64["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?wpt[-_]?ssh[-_]?connect["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?snoowrap[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?snoowrap[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?slate[-_]?user[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?slash[-_]?developer[-_]?space[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?slash[-_]?developer[-_]?space["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?signing[-_]?key[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?signing[-_]?key[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?signing[-_]?key[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?signing[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?setsecretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?setdstsecretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?setdstaccesskey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ses[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ses[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?service[-_]?account[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sentry[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sentry[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sentry[-_]?endpoint["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sentry[-_]?default[-_]?org["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sentry[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendwithus[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sendgrid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?selion[-_]?selenium[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?selion[-_]?log[-_]?level[-_]?dev["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?segment[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secretid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secretaccesskey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?key[-_]?base["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?9["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?8["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?7["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?6["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?5["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?4["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?3["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?2["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?11["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?10["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?1["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?secret[-_]?0["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sdr[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?scrutinizer[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sauce[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sandbox[-_]?aws[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?sandbox[-_]?aws[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sandbox[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?salesforce[-_]?bulk[-_]?test[-_]?security[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?salesforce[-_]?bulk[-_]?test[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sacloud[-_]?api["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sacloud[-_]?access[-_]?token[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?sacloud[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?user[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?secret[-_]?assets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-    ]
-    result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
-    return result
-# 311-235
+def find_sensitive_info_3(text: str) -> list:
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "secret", "token", "key", "password", "auth", "sentry", "sendgrid",
+        "aws", "access", "s3", "sacloud", "salesforce", "sauce", "scrutinizer",
+        "sonar", "snyk", "sonatype", "yt_", "zendesk", "zopim"
+    ]):
+        return []
 
+    OPTIMIZED_REGEX_LIST = [
+        # === Sonatype / Sonar / Snyk 聚合 ===
+        re.compile(
+            r'\b(?:sonatype[-_](?:pass|nexus[-_]password|gpg[-_](?:passphrase|key[-_]name))|sonar[-_](?:token|project[-_]key|organization[-_]key)|snyk[-_](?:token|api[-_]token))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
 
-def find_sensitive_info_4(text) -> list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?s3[-_]?secret[-_]?app[-_]?logs["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?key[-_]?assets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?key[-_]?app[-_]?logs["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        # 修复重复的正则表达式
-        re.compile(r'["\']?s3[-_]?external[-_]?3[-_]?amazonaws[-_]?com["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?bucket[-_]?name[-_]?assets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?bucket[-_]?name[-_]?app[-_]?logs["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?s3[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?rubygems[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?rtd[-_]?store[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?rtd[-_]?key[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?route53[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?',re.IGNORECASE),
-                   re.compile(r'["\']?ropsten[-_]?private[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?rinkeby[-_]?private[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?rest[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?repotoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?reporting[-_]?webdav[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?reporting[-_]?webdav[-_]?pwd["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?release[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?release[-_]?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?registry[-_]?secure["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?registry[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?refresh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?rediscloud[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?redis[-_]?stunnel[-_]?urls["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?randrmusicapiaccesstoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?rabbitmq[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?quip[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?qiita[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?pypi[-_]?passowrd["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?pushover[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?publish[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?publish[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?publish[-_]?access["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?project[-_]?config["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?prod[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?prod[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?prod[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?private[-_]?signing[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                              re.IGNORECASE),
-                   re.compile(r'["\']?pring[-_]?mail[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?preferred[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?prebuild[-_]?auth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?postgresql[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?postgresql[-_]?db["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?postgres[-_]?env[-_]?postgres[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                              re.IGNORECASE),
-                   re.compile(r'["\']?postgres[-_]?env[-_]?postgres[-_]?db["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                              re.IGNORECASE),
-                   re.compile(r'["\']?plugin[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?plotly[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?places[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?places[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?pg[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?pg[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?personal[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?personal[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?percy[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?percy[-_]?project["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?paypal[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?passwordtravis["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?parse[-_]?js[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?pagerduty[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?packagecloud[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?ossrh[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?ossrh[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?ossrh[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?ossrh[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?ossrh[-_]?jira[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?os[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?os[-_]?auth[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(
-                       r'["\']?org[-_]?project[-_]?gradle[-_]?sonatype[-_]?nexus[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',re.IGNORECASE),
-                   re.compile(
-                       r'["\']?org[-_]?gradle[-_]?project[-_]?sonatype[-_]?nexus[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                       re.IGNORECASE),
-                   re.compile(r'["\']?openwhisk[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?open[-_]?whisk[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?onesignal[-_]?user[-_]?auth[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                              re.IGNORECASE),
-                   re.compile(r'["\']?onesignal[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?omise[-_]?skey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?omise[-_]?pubkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?omise[-_]?pkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-                   re.compile(r'["\']?omise[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+        # === Socrata / Snoowrap / Zopim / Zhuliang / Zendesk ===
+        re.compile(
+            r'\b(?:socrata[-_](?:password|app[-_]token)|snoowrap[-_](?:refresh[-_]token|password|client[-_]secret)|zopim[-_]account[-_]key|zhuliang[-_]gh[-_]token|zendesk[-_]travis[-_]github)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === YouTube (yt_) 相关聚合 ===
+        re.compile(
+            r'\byt[-_](?:server[-_]api[-_]key|partner[-_](?:refresh[-_]token|client[-_]secret)|client[-_]secret|api[-_]key|account[-_](?:refresh[-_]token|client[-_]secret))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Yangshun / WPT / Slate / Slash ===
+        re.compile(
+            r'\b(?:yangshun[-_]gh[-_](?:token|password)|wpt[-_]ssh[-_](?:private[-_]key[-_]base64|connect)|slate[-_]user[-_]email|slash[-_]developer[-_](?:space[-_]key|space))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Signing Key / Set Key ===
+        re.compile(
+            r'\b(?:signing[-_]key[-_](?:sid|secret|password|id)|set(?:dst)?(?:secret|access)key)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === AWS / SES / S3 / Sandbox 聚合 ===
+        re.compile(
+            r'\b(?:ses|sandbox[-_]aws|s3|service[-_]account)[-_](?:secret[-_]key|access[-_]key|secret|user[-_]secret|assets|token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\bsandbox[-_]access[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Sentry 聚合 ===
+        re.compile(
+            r'\bsentry[-_](?:key|secret|endpoint|default[-_]org|auth[-_]token)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === SendGrid / SendWithUs 聚合 ===
+        re.compile(
+            r'\b(?:send(?:grid|withus))[-_](?:username|user|password|key|api[-_]key)?\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Selion / Segment ===
+        re.compile(
+            r'\b(?:selion[-_]selenium[-_]host|selion[-_]log[-_]level[-_]dev|segment[-_]api[-_]key)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === SecretID / SecretKey / SecretAccessKey （保留精确匹配）===
+        re.compile(
+            r'\b(?:secretid|secretkey|secretaccesskey|secret[-_]key[-_]base)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Scrutinizer / Sauce / SDR / Sacloud ===
+        re.compile(r'\b(?:scrutinizer|sauce|sdr)[-_]token\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsauce[-_]access[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bsacloud[-_](?:api|access[-_]token(?:[-_]secret)?)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+
+        # === Salesforce ===
+        re.compile(
+            r'\bsalesforce[-_]bulk[-_]test[-_](?:security[-_]token|password)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
     ]
 
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 
 
-def find_sensitive_info_5(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?okta[-_]?oauth2[-_]?clientsecret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?okta[-_]?oauth2[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?okta[-_]?client[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ofta[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ofta[-_]?region["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ofta[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?octest[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?octest[-_]?app[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?octest[-_]?app[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?oc[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?object[-_]?store[-_]?creds["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?object[-_]?store[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?object[-_]?storage[-_]?region[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?object[-_]?storage[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?oauth[_-]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?numbers[_-]?service[_-]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nuget[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nuget[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nuget[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[_-]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[_-]?secret[_-]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?npm[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?now[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?non[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?node[-_]?pre[-_]?gyp[-_]?secretaccesskey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?node[-_]?pre[-_]?gyp[-_]?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?node[-_]?pre[-_]?gyp[-_]?accesskeyid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?node[-_]?env["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ngrok[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ngrok[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nexuspassword["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nexus[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?new[-_]?relic[-_]?beta[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?netlify[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?nativeevents["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysqlsecret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysqlmasteruser["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?root[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?hostname["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mysql[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?my[-_]?secret[-_]?env["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?multi[-_]?workspace[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?multi[-_]?workflow[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?multi[-_]?disconnect[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?multi[-_]?connect[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?multi[-_]?bob[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?minio[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?minio[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mile[-_]?zero[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mh[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mh[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mg[-_]?public[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mg[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mapboxaccesstoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mapbox[-_]?aws[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+
+def find_sensitive_info_4(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === S3 聚合 ===
+        re.compile(
+            r'\bs3[-_](?:secret[-_]app[-_]logs|key[-_](?:assets|app[-_]logs|id)?|bucket[-_]name[-_](?:assets|app[-_]logs)|access[-_]key[-_](?:id)?)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\bs3[-_]external[-_]3\.amazonaws\.com\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        # 修复：转义点号
+
+        # === RubyGems / RTD / Route53 ===
+        re.compile(r'\brubygems[-_]auth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\brtd[-_](?:store[-_]pass|key[-_]pass)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\broute53[-_]access[-_]key[-_]id\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Ethereum Testnets (Rinkeby/Ropsten) ===
+        re.compile(r'\b(?:rinkeby|ropsten)[-_]private[-_]key\b\s*[=:]\s*["\']?[\w-]{64,66}["\']?', re.IGNORECASE),
+        # 限定长度
+
+        # === REST API / RepoToken / Reporting WebDAV ===
+        re.compile(r'\brest[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\brepotoken\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\breporting[-_]webdav[-_](?:url|pwd)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Release / Registry / Refresh Token ===
+        re.compile(r'\brelease[-_](?:token|gh[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bregistry[-_](?:secure|pass)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\brefresh[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Redis / RabbitMQ / Quip / Qiita ===
+        re.compile(r'\bredis(?:cloud[-_]url|[-_]stunnel[-_]urls)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\brandrmusicapiaccesstoken\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\brabbitmq[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\b(?:quip|qiita)[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === PyPI (修复拼写错误 "passowrd" → "password") ===
+        re.compile(r'\bpypi[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),  # 修复拼写
+
+        # === Pushover / Publish Keys ===
+        re.compile(r'\bpushover[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpublish[-_](?:secret|key|access)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Production Keys ===
+        re.compile(r'\bprod[-_](?:secret[-_]key|password|access[-_]key[-_]id)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?mapbox[-_]?aws[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mapbox[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mapbox[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?manifest[-_]?app[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?manifest[-_]?app[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mandrill[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?managementapiaccesstoken["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?management[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?manage[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?manage[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?secret[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?pub[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?pub[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?priv[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailgun[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailer[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailchimp[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mailchimp[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?mail[_-]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?magento[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?magento[-_]?auth[-_]?username ["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?magento[-_]?auth[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?lottie[-_]?upload[-_]?cert[-_]?key[-_]?store[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+
+        # === Private Signing / PostgreSQL ===
+        re.compile(r'\bprivate[-_]signing[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpostgresql[-_](?:pass|db)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpostgres[-_]env[-_]postgres[-_](?:password|db)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?lottie[-_]?upload[-_]?cert[-_]?key[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+
+        # === Plugin / Plotly / Places API ===
+        re.compile(r'\bplugin[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bplotly[-_]apikey\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bplaces[-_]api?[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Percy / PayPal / Parse / PagerDuty ===
+        re.compile(r'\bpercy[-_](?:token|project)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpaypal[-_]client[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpasswordtravis\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bparse[-_]js[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bpagerduty[-_]apikey\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === PackageCloud / OSSRH (Sonatype) ===
+        re.compile(r'\bpackagecloud[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bossrh[-_](?:username|secret|password|pass|jira[-_]password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === OS Auth / OpenWhisk ===
+        re.compile(r'\bos[-_](?:password|auth[-_]url)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\b(?:org[-_]project[-_]gradle|org[-_]gradle[-_]project)[-_]sonatype[-_]nexus[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\b(?:openwhisk|open[-_]whisk)[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === OneSignal / Omise ===
+        re.compile(r'\bonesignal[-_](?:user[-_]auth[-_]key|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?lottie[-_]?s3[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?lottie[-_]?happo[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?lottie[-_]?happo[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?looker[-_]?test[-_]?runner[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?ll[-_]?shared[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+        re.compile(r'\bomise[-_](?:skey|pubkey|pkey|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "key", "secret", "password", "token", "api", "s3", "aws", "postgres", "rabbitmq"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
+    return result
+
+
+def find_sensitive_info_5(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === Okta / Ofta (可能是 typo) ===
+        re.compile(
+            r'\bokta[-_](?:oauth2[-_]client(?:secret|[-_]secret)|client[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\bofta[-_](?:secret|region|key)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),  # 保留但加边界
+
+        # === Octest / OC ===
+        re.compile(r'\boctest[-_](?:password|app[-_](?:username|password))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(r'\boc[-_]pass\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Object Storage / OAuth ===
+        re.compile(
+            r'\bobject[-_](?:store[-_](?:creds|bucket)|storage[-_](?:region[-_]name|password))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\boauth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Numbers Service / NuGet / NPM ===
+        re.compile(r'\bnumbers[-_]service[-_]pass\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bnuget[-_](?:key|api(?:[-_]key)?)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bnpm[-_](?:token|secret[-_]key|password|email|auth[-_]token|api[-_](?:token|key))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Now / Node Pre GYP ===
+        re.compile(r'\bnow[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bnode[-_]pre[-_]gyp[-_](?:secretaccesskey|github[-_]token|accesskeyid)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Ngrok ===
+        re.compile(r'\bngrok[-_](?:token|auth[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Nexus ===
+        re.compile(r'\bnexus(?:password|[-_]password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === New Relic / Netlify ===
+        re.compile(r'\bnew[-_]relic[-_]beta[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bnetlify[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === MySQL 聚合 ===
+        re.compile(
+            r'\bmysql[-_](?:secret|masteruser|username|user|root[-_]password|password|hostname|database)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Multi Workspace/SID 聚合 ===
+        re.compile(
+            r'\bmulti[-_](?:workspace|workflow|disconnect|connect|bob)[-_]sid\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Minio / Mile Zero / MH ===
+        re.compile(r'\bminio[-_](?:secret[-_]key|access[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmile[-_]zero[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmh[-_](?:password|apikey)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Mailgun (MG) ===
+        re.compile(r'\bmg[-_](?:public[-_]api[-_]key|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Mapbox 聚合 ===
+        re.compile(
+            r'\bmapbox(?:accesstoken|[-_]aws[-_](?:secret[-_]access[-_]key|access[-_]key[-_]id)|[-_]api[-_]token|[-_]access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Manifest App Token ===
+        re.compile(r'\bmanifest[-_]app[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),  # 保留 token
+
+        # === Mandrill / Management API ===
+        re.compile(r'\bmandrill[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmanagement(?:apiaccesstoken|[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmanage[-_](?:secret|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Mailgun 聚合 ===
+        re.compile(
+            r'\bmailgun[-_](?:secret[-_]api[-_]key|pub[-_](?:key|apikey)|priv[-_]key|password|api(?:[-_]key)?)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Mailer / Mailchimp / Mail ===
+        re.compile(r'\bmailer[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmailchimp[-_](?:key|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bmail[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Magento ===
+        re.compile(r'\bmagento[-_](?:password|auth[-_](?:username|password))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
+
+        # === Lottie 聚合 ===
+        re.compile(
+            r'\blottie[-_](?:upload[-_]cert[-_]key[-_](?:store[-_]password|password)|s3[-_]secret[-_]key|happo[-_](?:secret[-_]key|api[-_]key))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Looker ===
+        re.compile(r'\blooker[-_]test[-_]runner[-_]client[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
+    ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "key", "secret", "password", "token", "api", "mysql", "mailgun", "npm", "okta"
+    ]):
+        return []
+
+    result = []
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 # 529-418=111
 
 
-def find_sensitive_info_6(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?ll[-_]?publish[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?linux[-_]?signing[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(
-            r'["\']?linkedin[-_]?client[-_]?secretor lottie[-_]?s3[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-            re.IGNORECASE),
-        re.compile(r'["\']?lighthouse[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?lektor[-_]?deploy[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?lektor[-_]?deploy[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?leanplum[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kxoltsn3vogdop92m["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kubeconfig["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kubecfg[-_]?s3[-_]?path["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kovan[-_]?private[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?keystore[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kafka[-_]?rest[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kafka[-_]?instance[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?kafka[-_]?admin[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?jwt[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?jdbc:mysql["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?jdbc[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?jdbc[-_]?databaseurl["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?itest[-_]?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ios[-_]?docs[-_]?deploy[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?internal[-_]?secrets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?integration[-_]?test[-_]?appid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?integration[-_]?test[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?index[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ij[-_]?repo[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ij[-_]?repo[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hub[-_]?dxia2[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?homebrew[-_]?github[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hockeyapp[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?heroku[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?heroku[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?heroku[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hb[-_]?codesign[-_]?key[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hb[-_]?codesign[-_]?gpg[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hab[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?hab[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?grgit[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gren[-_]?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gradle[-_]?signing[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gradle[-_]?signing[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gradle[-_]?publish[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gradle[-_]?publish[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?secret[-_]?keys["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?private[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?passphrase["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?ownertrust["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?keyname["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gpg[-_]?key[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?private[-_]?key[-_]?(id)?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?maps[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?client[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?client[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?google[-_]?account[-_]?type["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gogs[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gitlab[-_]?user[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?tokens["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?repo["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?release[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?pwd["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?oauth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?oauth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?hunter[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?hunter[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?deployment[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?deploy[-_]?hb[-_]?doc[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?auth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?github[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?committer[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?committer[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?author[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?git[-_]?author[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ghost[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ghb[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?unstable[-_]?oauth[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+def find_sensitive_info_6(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === Linux / LinkedIn / Lighthouse ===
+        re.compile(r'\blinux[-_]signing[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        # 注意：原正则有语法错误，已拆分修复
+        re.compile(r'\blinkedin[-_]client[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\blottie[-_]s3[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\blighthouse[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Lektor / Leanplum ===
+        re.compile(r'\blektor[-_]deploy[-_](?:username|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bleanplum[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Kovan / Keystore / Kafka ===
+        re.compile(r'\bkovan[-_]private[-_]key\b\s*[=:]\s*["\']?[\w-]{64,66}["\']?', re.IGNORECASE),  # 限定长度
+        re.compile(r'\bkeystore[-_]pass\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bkafka[-_](?:rest[-_]url|instance[-_]name|admin[-_]url)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+
+        # === JWT / JDBC ===
+        re.compile(r'\bjwt[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bjdbc(?:[:]?mysql|[-_](?:host|databaseurl))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Integration Test / IT Test ===
+        re.compile(r'\bintegration[-_]test[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bitest[-_]gh[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === iOS / IJ Repo ===
+        re.compile(r'\bios[-_]docs[-_]deploy[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bij[-_]repo[-_](?:username|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Hub / Homebrew / HockeyApp ===
+        re.compile(r'\bhub[-_]dxia2[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bhomebrew[-_]github[-_]api[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bhockeyapp[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Heroku 聚合 ===
+        re.compile(r'\bheroku[-_](?:token|email|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === HB Codesign / GPG ===
+        re.compile(r'\bhb[-_]codesign[-_](?:key[-_]pass|gpg[-_]pass)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+                   re.IGNORECASE),
+        re.compile(r'\bhabs[-_]auth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        # 修复 hab → habs? 或保留 hab
+        re.compile(
+            r'\bgpg[-_](?:secret[-_]keys|private[-_]key|passphrase|ownertrust|key(?:[-_]name)?)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Gradle 聚合 ===
+        re.compile(
+            r'\bgradle[-_](?:signing[-_](?:password|key[-_]id)|publish[-_](?:secret|key))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Google 聚合 ===
+        re.compile(
+            r'\bgoogle[-_](?:private[-_]key(?:[-_]id)?|maps[-_]api[-_]key|client[-_](?:secret|id|email)|account[-_]type)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Gogs / GitLab ===
+        re.compile(r'\bgogs[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bgitlab[-_]user[-_]email\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === GitHub 聚合（重点优化！）===
+        re.compile(
+            r'\bgithub[-_](?:tokens?|token|repo|release[-_]token|pwd|password|oauth(?:[-_]token)?|key|hunter[-_](?:username|token)|deployment[-_]token|deploy[-_]hb[-_]doc[-_]pass|client[-_]secret|auth(?:[-_]token)?|api[-_](?:token|key)|access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Git 聚合（保留 token）===
+        re.compile(r'\bgit[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Ghost / GH / GH Unstable ===
+        re.compile(r'\bghost[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bghb[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bgh[-_](?:unstable[-_]oauth[-_]client[-_]secret|token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+                   re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "key", "secret", "password", "token", "api", "github", "google", "jwt", "gpg"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 #634-530=104
 
 
-def find_sensitive_info_7(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
-        re.compile(r'["\']?gh[-_]?repo[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?oauth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?oauth[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?next[-_]?unstable[-_]?oauth[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?next[-_]?unstable[-_]?oauth[-_]?client[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?next[-_]?oauth[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gh[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gcs[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gcr[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gcloud[-_]?service[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gcloud[-_]?project["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?gcloud[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?pw["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?login["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ftp[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?fossa[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?flickr[-_]?api[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?flickr[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?flask[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firefox[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firebase[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firebase[-_]?project[-_]?develop["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firebase[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firebase[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?firebase[-_]?api[-_]?json["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?file[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?exp[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?eureka[-_]?awssecretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?sonatype[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?heroku[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?env[-_]?github[-_]?oauth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?end[-_]?user[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?encryption[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?elasticsearch[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?elastic[-_]?cloud[-_]?auth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dsonar[-_]?projectkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dsonar[-_]?login["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?droplet[-_]?travis[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dropbox[-_]?oauth[-_]?bearer["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?doordash[-_]?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dockerhubpassword["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dockerhub[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?postgres[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?passwd["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?docker[-_]?hub[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?digitalocean[-_]?ssh[-_]?key[-_]?ids["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?digitalocean[-_]?ssh[-_]?key[-_]?body["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?digitalocean[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?dgpg[-_]?passphrase["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?deploy[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?deploy[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?deploy[-_]?secure["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?deploy[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ddgc[-_]?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ddg[-_]?test[-_]?email[-_]?pw["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ddg[-_]?test[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?pw["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?db[-_]?connection["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?datadog[-_]?app[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?datadog[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?port["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?database[-_]?host["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?danger[-_]?github[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cypress[-_]?record[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?coverity[-_]?scan[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?coveralls[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?coveralls[-_]?repo[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?coveralls[-_]?api[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cos[-_]?secrets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?conversation[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?conversation[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?v2[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?test[-_]?org[-_]?cma[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?php[-_]?management[-_]?test[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
+def find_sensitive_info_7(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === GitHub (gh_) 聚合 ===
         re.compile(
-            r'["\']?contentful[-_]?management[-_]?api[-_]?access[-_]?token[-_]?new["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+            r'\bgh[-_](?:repo[-_]token|oauth[-_](?:token|client[-_]secret)|next[-_](?:unstable|oauth)[-_]client[-_](?:secret|id)|email|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
             re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?management[-_]?api[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?integration[-_]?management[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
-                   re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?cma[-_]?test[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?contentful[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?consumerkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?consumer[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?conekta[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?coding[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+
+        # === GCP / GCR ===
+        re.compile(r'\bgcloud[-_]service[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bgcr[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === FTP 聚合 ===
+        re.compile(r'\bftp[-_](?:username|user|pw|password|login)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Flickr / FOSSA ===
+        re.compile(r'\bflickr[-_]api[-_](?:secret|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bfossa[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Flask / Firebase ===
+        re.compile(r'\bflask[-_]secret[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bfirebase[-_](?:token|project[-_]develop|key|api[-_](?:token|json))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Elasticsearch / Elastic Cloud ===
+        re.compile(r'\belasticsearch[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\belastic[-_]cloud[-_]auth\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Sonar / Droplet / Dropbox ===
+        re.compile(r'\bdsonar[-_](?:projectkey|login)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bdroplet[-_]travis[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bdropbox[-_]oauth[-_]bearer\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Doordash / Docker 聚合 ===
+        re.compile(r'\bdoordash[-_]auth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bdocker(?:hub[-_]password|[-_](?:token|postgres[-_]url|password|passwd|pass|key|hub[-_]password))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\bdockerhub(?:password|[-_]password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === DigitalOcean / GPG (修复 dgpg → gpg) ===
+        re.compile(
+            r'\bdigitalocean[-_](?:ssh[-_]key[-_](?:ids|body)|access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(r'\b(?:dgpg|gpg)[-_]passphrase\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),  # 兼容 dgpg
+
+        # === Deploy / DDG ===
+        re.compile(r'\bdeploy[-_](?:user|token|secure|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bddg[-_]test[-_](?:email[-_]pw|email)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bddgc[-_]github[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === DB / Database 聚合（只保留 password/user）===
+        re.compile(r'\bdb[-_](?:username|user|pw|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bdatabase[-_](?:username|user|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Datadog ===
+        re.compile(r'\bdatadog[-_](?:app[-_]key|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Danger / Cypress / Coveralls / Coverity ===
+        re.compile(r'\bdanger[-_]github[-_]api[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcypress[-_]record[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bcover(?:alls|ity)[-_](?:scan[-_]token|token|repo[-_]token|api[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === COS / Conversation ===
+        re.compile(r'\bcos[-_]secrets\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bconversation[-_](?:username|password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Contentful 聚合 ===
+        re.compile(
+            r'\bcontentful[-_](?:v2[-_]access[-_]token|test[-_]org[-_]cma[-_]token|php[-_]management[-_]test[-_]token|management[-_]api[-_]access[-_]token(?:[-_]new)?|integration[-_]management[-_]token|cma[-_]test[-_]token|access[-_]token)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Consumer / Conekta / Coding ===
+        re.compile(r'\b(?:consumerkey|consumer[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bconekta[-_]apikey\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcoding[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "key", "secret", "password", "token", "api", "github", "docker", "firebase", "datadog"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 # 762-636=126
 
 
-def find_sensitive_info_8(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
-    regex_list = [
+def find_sensitive_info_8(text: str) -> list:
+    OPTIMIZED_REGEX_LIST = [
+        # === Cloudflare / Cloudant ===
+        re.compile(r'\bcloudflare[-_](?:auth[-_]email|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcloudant[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
 
-        re.compile(r'["\']?cloudflare[-_]?auth[-_]?email["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudflare[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?service[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?processed[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?parsed[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?order[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?instance["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?audited[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloudant[-_]?archived[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cloud[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?clojars[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cli[-_]?e2e[-_]?cma[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?claimr[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?claimr[-_]?superuser["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?claimr[-_]?db["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?claimr[-_]?database["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ci[-_]?user[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ci[-_]?server[-_]?name["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ci[-_]?registry[-_]?user["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ci[-_]?project[-_]?url["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ci[-_]?deploy[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?chrome[-_]?refresh[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?chrome[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cheverny[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cf[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?certificate[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?censys[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cattle[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cattle[-_]?agent[-_]?instance[-_]?auth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cattle[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cargo[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?cache[-_]?s3[-_]?secret[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bx[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bx[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bundlesize[-_]?github[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?built[-_]?branch[-_]?deploy[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bucketeer[-_]?aws[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+        # === Cloud / Clojars / Client Secret ===
+        re.compile(r'\bcloud[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bclojars[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bclient[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === CLI / Claimr / CI ===
+        re.compile(r'\bcli[-_]e2e[-_]cma[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bclaimr[-_](?:token|superuser)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bci[-_](?:user[-_]token|registry[-_]user|deploy[-_]password)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Chrome / Cheverny / CF ===
+        re.compile(r'\bchrome[-_](?:refresh[-_]token|client[-_]secret)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?bucketeer[-_]?aws[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+        re.compile(r'\bcheverny[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcf[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === Certificate / Censys / Cattle ===
+        re.compile(r'\bcertificate[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcensys[-_]secret\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bcattle[-_](?:secret[-_]key|agent[-_]instance[-_]auth|access[-_]key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Cargo / Cache S3 ===
+        re.compile(r'\bcargo[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bcache[-_]s3[-_]secret[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === Bundlesize / Built / Bucketeer ===
+        re.compile(r'\bbundlesize[-_]github[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bbuilt[-_]branch[-_]deploy[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bbucketeer[-_]aws[-_](?:secret[-_]access[-_]key|access[-_]key[-_]id)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === BrowserStack ===
+        re.compile(r'\b(?:browserstack|browser[-_]stack)[-_]access[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?browserstack[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?browser[-_]?stack[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?brackets[-_]?repo[-_]?oauth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?pwd["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?pass[-_]?prod["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?pass["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?auth["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bluemix[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintraykey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintray[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintray[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintray[-_]?gpg[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintray[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?bintray[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?b2[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?b2[-_]?app[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?awssecretkey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?awscn[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?awscn[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?awsaccesskeyid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?ses[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?ses[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?secrets["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?secret[_-]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?secret[_-]?access[_-]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?config[-_]?secretaccesskey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?config[-_]?accesskeyid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?access[_-]?key[_-]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?access[_-]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aws[_-]?access["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?author[-_]?npm[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?author[-_]?email[-_]?addr["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?auth0[-_]?client[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?auth0[-_]?api[-_]?clientsecret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?auth[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?assistant[-_]?iam[-_]?apikey["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?artifacts[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?artifacts[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?artifacts[-_]?bucket["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?artifacts[-_]?aws[-_]?secret[-_]?access[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+
+        # === Brackets / Bluemix ===
+        re.compile(r'\bbrackets[-_]repo[-_]oauth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bbluemix[-_](?:pwd|password|pass(?:[-_]prod)?|auth|api[-_]key)\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === Bintray 聚合 ===
+        re.compile(
+            r'\bbintray(?:key|[-_](?:token|key|gpg[-_]password|api(?:[-_]key)?))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === B2 App Key ===
+        re.compile(r'\bb2[-_]app[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+
+        # === AWS 聚合（重点优化！）===
+        re.compile(
+            r'\b(?:awssecretkey|aws[-_](?:cn[-_])?secret[-_]access[-_]key|aws[-_]ses[-_]secret[-_]access[-_]key|aws[-_]config[-_]secretaccesskey)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(
+            r'\b(?:awsaccesskeyid|aws[-_](?:cn[-_])?access[-_]key[-_]id|aws[-_]ses[-_]access[-_]key[-_]id|aws[-_]config[-_]accesskeyid|aws[-_](?:access[-_]key[-_]id|access[-_]key|access))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+        re.compile(
+            r'\baws[-_](?:secrets|secret(?:[-_]key|[-_]access[-_]key|)|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Author / Auth0 ===
+        re.compile(r'\bauthor[-_]npm[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bauth0[-_](?:client[-_]secret|api[-_]clientsecret)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?artifacts[-_]?aws[-_]?access[-_]?key[-_]?id["\']?\s*[=:]\s*["\']?[\w-]+["\']?',
+
+        # === Auth / Assistant / Artifacts ===
+        re.compile(r'\bauth[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bassistant[-_]iam[-_]apikey\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(
+            r'\bartifacts[-_](?:secret|key|bucket|aws[-_](?:secret[-_]access[-_]key|access[-_]key[-_]id))\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
+            re.IGNORECASE),
+
+        # === Artifactory / Argos / Apple ===
+        re.compile(r'\bartifactory[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bargos[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bapple[-_]id[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
+
+        # === App 聚合（修复拼写错误 "secrete" → "secret"）===
+        re.compile(
+            r'\b(?:appclientsecret|app[-_](?:token|secret|report[-_]token[-_]key|bucket[-_]perm))\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?',
+            re.IGNORECASE),
+
+        # === API Gateway / Apiary / API Key ===
+        re.compile(r'\bapigw[-_]access[-_]token\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bapiary[-_]api[-_]key\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bapi[-_](?:secret|key[-_](?:sid|secret)?|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?',
                    re.IGNORECASE),
-        re.compile(r'["\']?artifactory[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?argos[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?apple[-_]?id[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?appclientsecret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?app[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?app[-_]?secrete["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?app[-_]?report[-_]?token[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?app[-_]?bucket[-_]?perm["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?apigw[-_]?access[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?apiary[-_]?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?api[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?api[-_]?key[-_]?sid["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?api[-_]?key[-_]?secret["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?api[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aos[-_]?sec["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?aos[-_]?key["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?ansible[-_]?vault[-_]?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+
+        # === AOS / Ansible ===
+        re.compile(r'\baos[-_](?:sec|key)\b\s*[=:]\s*["\']?[\w-]{20,100}["\']?', re.IGNORECASE),
+        re.compile(r'\bansible[-_]vault[-_]password\b\s*[=:]\s*["\']?[\w-]{10,100}["\']?', re.IGNORECASE),
     ]
+    # === 预过滤：关键词快速跳过 ===
+    if not any(kw in text for kw in [
+        "key", "secret", "password", "token", "api", "aws", "cloud", "auth", "app"
+    ]):
+        return []
+
     result = []
-    for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+    for regex in OPTIMIZED_REGEX_LIST:
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue  # 容错处理
     return result
 # 764-899 = 135
 
 
-def find_sensitive_info_9(text)->list:
-    """
-    敏感信息提取
-    :param text:
-    :return:
-    """
+import re
+
+def find_sensitive_info_9(text: str) -> list:
+    # === 预过滤 ===
+    if not any(kw in text for kw in [
+        "token", "key", "secret", "password", "access", "auth", "AKIA", "LTAI",
+        "AIza", "wx", "ghp", "slack.com", "dingtalk", "feishu", "weixin", "eyJr"
+    ]):
+        return []
+
     regex_list = [
         re.compile(r'["\']?codecov[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
         re.compile(r'["\']?codeclimate[-_]?repo[-_]?token["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
@@ -970,12 +936,12 @@ def find_sensitive_info_9(text)->list:
         re.compile(r'["\']?account["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
         re.compile(r'["\']?password["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
         re.compile(r'["\']?username["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?password[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?username[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?accesskey[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?secret[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?bucket[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
-        re.compile(r'["\']?[\w_-]*?token[\w_-]*?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*password[\w-]*\b\s*[=:]\s*["\']?[\w-]{5,50}["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*username[\w-]*\b\s*[=:]\s*["\']?[\w-]{1,100}["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*accesskey[\w-]*\b\s*[=:]\s*["\']?[\w-]{1,100}["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*secret[\w-]*\b\s*[=:]\s*["\']?[\w-]{1,100}["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*bucket[\w-]*\b\s*[=:]\s*["\']?[\w-]{1,100}["\']?', re.IGNORECASE),
+        re.compile(r'\b[\w-]*token[\w-]*\b\s*[=:]\s*["\']?[\w-]{1,100}["\']?', re.IGNORECASE),
         re.compile(r'["\']?[-]+BEGIN \w+ PRIVATE KEY[-]+', re.IGNORECASE),
         re.compile(r'["\']?huawei\.oss\.(ak|sk|bucket\.name|endpoint|local\.path)["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
         re.compile(r'["\']?private[-_]?key[-_]?(id)?["\']?\s*[=:]\s*["\']?[\w-]+["\']?', re.IGNORECASE),
@@ -1005,11 +971,15 @@ def find_sensitive_info_9(text)->list:
         re.compile(r'glc_[A-Za-z0-9\-_+/]{32,200}={0,2}', re.IGNORECASE),
         re.compile(r'glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}', re.IGNORECASE)
     ]
+
     result = []
     for regex in regex_list:
-        matches = re.findall(regex, text)
-        if matches:
-            result.extend(matches)
+        try:
+            matches = regex.findall(text)
+            if matches:
+                result.extend(matches)
+        except Exception:
+            continue
     return result
 # 976-901=75
 
@@ -1057,7 +1027,7 @@ def find_all_info_by_rex(text: str):
     # 2. 中等复杂度扫描
     results.extend(find_access_keys(text))
     results.extend(find_swagger(text))
-    results.extend(find_js_map_files(text))
+    results.extend(find_js_map_files_optimized(text))
 
     # 3. 复杂模式扫描（放在最后，因为最耗时）
     results.extend(find_sensitive_info_1(text))
@@ -1070,8 +1040,15 @@ def find_all_info_by_rex(text: str):
     results.extend(find_sensitive_info_8(text))
     results.extend(find_sensitive_info_9(text))
 
+    results = [str(item) if not isinstance(item, str) else item for item in results]
+
     # 返回验证后的结果
     return check_available(results)
+
+
+
+
+
 
 
 

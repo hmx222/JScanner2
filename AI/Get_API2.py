@@ -102,7 +102,7 @@ class LoopProtectionCallback(BaseCallbackHandler):
         self.token_count += 1
         self.last_tokens.append(token)
         # 是否进行流式输出
-        # print(token, end="", flush=True)
+        print(token, end="", flush=True)
 
         # 每隔N个token检查一次循环
         if self.token_count % self.check_interval == 0:
@@ -291,46 +291,33 @@ def load_ollama_llm():
         streaming=True,
         keep_alive=-1,
         reasoning=False,
-        repeat_last_n=MODEL_REPEAT_LAST_N,
-        repeat_penalty=MODEL_REPEAT_PENALTY,
-        top_p=MODEL_TOP_P,
-        top_k=MODEL_TOP_K
+        stop=["*","`","，","。"," "]
+        # repeat_last_n=MODEL_REPEAT_LAST_N,
+        # repeat_penalty=MODEL_REPEAT_PENALTY,
+        # top_p=MODEL_TOP_P,
+        # top_k=MODEL_TOP_K
     )
 
 
 def build_analysis_chain(llm):
     """提示词保持不变"""
     prompt_template = """
-仅从以下JavaScript代码中提取并推测路径，不包含任何思考过程、解释，要尽可能多的提取路径，让我们一步步推导：
-1.提取对象：
-       API路径：所有作为接口访问的路径（不限请求方法，变量拼接需补全，例：/api/v1/user，含中文路径需标注但正常提取）
-       JavaScript路径：.js后缀的静态文件路径
-       其他静态文件：保留除图片、视频、音频、CSS、字体以外的静态文件路径（含中文名称路径）
-2.提取规则：
-       路径需合法（符合URL Path规范，允许中文，特殊字符仅允许/._-）
-       每条路径用[STR]开头、[END]结尾，单独成行。
-3.API端点预测规则（仅对非静态文件的API路径进行）：
-       理解操作意图：分析原始API端点的命名，推断其执行的具体操作（如：delete 表示删除，add/create 表示创建，update 表示更新，get/list 表示查询）。
-       预测关联操作：基于RESTful设计原则，一个资源的典型操作是成套的（增、删、改、查）。如果原始路径明确指向其中一种操作，可以预测其最直接相关的1-2个其他操作。
-       预测方法：
-           若原始路径为删除操作（如包含delete, remove, del等），可预测创建操作（如将delete替换为create, add等）。
-           若原始路径为创建操作（如包含create, add, new等），可预测删除或查询操作。
-           若原始路径为登录（login），可预测登出（logout）和注册（register）。
-           避免预测模糊或不相关的操作。
-       严格限制：
-           不可私自新增路径层数（例如：/api/comment/delete → /api/comment/delete/add 是错误的）。
-           每个原始API端点最多预测2个相关端点。
-           仅当原路径明确涉及增删改查（CRUD）或类似核心功能时优先预测。对于非CRUD操作适当预测，如登录、登出、注册等。
-4.输出规则：
-       先输出所有原始提取的路径，每条格式为：[STR]路径[END]。
-       再输出所有预测的API端点，格式与原始路径完全相同：[STR]路径[END]。
-       如果没有符合条件的原始路径或预测路径，则不输出任何内容。
-       输出示例：
-           [STR]/api/user[END]
-           [STR]/api/user/register[END]
-           [STR]/api/user/login[END]
-           [STR]/api/user/logout[END]
-代码片段如下：
+仅从以下JavaScript代码中提取并推测路径，不包含任何思考过程、解释、注释，你可以推理思考，要尽可能多的提取路径：
+
+1. 提取对象：
+   - API路径：所有作为接口访问的路径（不限请求方法，变量拼接需补全，例：/api/v1/user，含中文路径需标注但正常提取）
+   - JavaScript路径：.js后缀的静态文件路径
+   - 其他静态文件：保留除图片（.jpg/.png等）、视频（.mp4等）、音频（.mp3等）、CSS（.css）、字体（.ttf等）以外的静态文件路径（含中文名称路径）
+
+2. 提取规则：
+   - 路径需合法（符合URL Path规范，允许中文，特殊字符仅允许/._-）
+   - 每条路径用[STR]开头、[END]结尾，单独成行。
+
+3. 输出规则：
+   - 无符合条件的内容时，则不输出
+   - 输出示例：
+    [STR]/api/v1/user/info[END]
+代码片段：
 {code}
         """
     prompt = PromptTemplate(
@@ -405,15 +392,16 @@ def run_analysis(js_code, lines_per_slice=CODE_SLICE_LINES):
 def clean_output(output):
     # 去除思考部分<think></think>
     output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
-    # 1. 提取所有被[STR]和[END]包裹的内容
+    # 提取所有被[STR]和[END]包裹的内容
     paths = re.findall(r'\[STR\](.*?)\[END\]', output, re.DOTALL)
-    # 2. 去重
+
+    # 去重
     paths = list(set(paths))
     allowed_pattern = re.compile(
         r'^[a-zA-Z0-9\u4e00-\u9fa5/._-~:?&=+$,#\[\]!*\'()]+$'
     )
     filtered_paths = [path for path in paths if allowed_pattern.match(path)]
-    # 4. 处理含http/https且以/开头的行：移除http/https前面的所有/
+    # 处理含http/https且以/开头的行：移除http/https前面的所有/
     processed_paths = []
     http_pattern = re.compile(r'https?://')  # 匹配http://或https://
     example_path_from_prompt = []
@@ -441,5 +429,5 @@ def clean_output(output):
             # 不符合条件的行保持原样
             processed_paths.append(path)
 
-    # 5. 处理后可能产生新的重复，再次去重
+    # 处理后可能产生新的重复，再次去重
     return list(set(processed_paths))
