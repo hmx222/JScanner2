@@ -1,13 +1,11 @@
 import asyncio
-import time
 from contextlib import asynccontextmanager
-from os import times
 from urllib.parse import urlparse
-from rich import print
+
 import requests
 from bs4 import BeautifulSoup
-from colorama import Fore
 from playwright.async_api import async_playwright, Page, Browser
+from rich import print
 from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning

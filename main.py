@@ -1,10 +1,9 @@
-import os
-import sys
-
 import asyncio
 import json
+import os
 import time
 import warnings
+
 warnings.filterwarnings("ignore")
 from colorama import init
 from rich import print as rich_print

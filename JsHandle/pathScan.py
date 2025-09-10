@@ -162,6 +162,9 @@ def data_clean(base_url: str, dirty_data) -> list:
     if not dirty_data:
         return []
 
+    if "\n" or "\t" or "\\" in dirty_data:
+        dirty_data = dirty_data.replace("\n", "").replace("\t", "").replace("\\", "")
+
     # 解析基础URL
     base_parsed = urlparse(base_url)
 

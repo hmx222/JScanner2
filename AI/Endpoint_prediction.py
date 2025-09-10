@@ -5,6 +5,7 @@ import time
 import random
 from io import StringIO
 from collections import deque
+from itertools import chain
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -24,7 +25,7 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称
-MODEL_NAME = "qwen2.5:7b-instruct-q4_0"
+MODEL_NAME = "qwen2.5:14b-instruct-q2_K"
 
 # 模型生成参数
 MODEL_TEMPERATURE = 0.6
@@ -260,23 +261,28 @@ def load_ollama_llm():
 def build_analysis_chain(llm):
     """构建API端点预测链（使用你的提示词）"""
     prompt_template = """
-你需要根据给定的 API 端点，预测更多符合常见命名规则的 API 端点，最多预测2个结果，且词性结构保持不变。
-以下是给定的 API 端点：
-<api_endpoint>
-{{api_endpoint}}
-</api_endpoint>
-请按照以下步骤完成任务：
-1. 解析词语：理解每个 API 端点词语的含义，标注词性。如 login（动词，意为登录）；getUserByID（get 为动词，User 为名词，By 为介词，ID 为名词，意为通过 ID 获取 User）；users（名词）。
-2. 判断可预测部分：单独的动词或复合结构中的动词部分可进行预测，单独的名词不做预测。例如：login（动词，可预测）；user（单独名词，不可预测）；addcomment（add 动词可预测，comment 名词可参与组合预测）。
-3. 进行推测：依据词性和含义进行合理推测。例如：login 可推测为 logout；addcomment 中 add 可推测为 del，comment 可结合含义推测为 article，即 addcomment 可推测出 delcomment、addarticle；getUserByID 中 get 可推测为 del，ID 可推测为 Phone，即 getUserByID 可推测出 delUserByID、getUserByPhone。像“登录”可对应“注册”，“增加评论”可对应“删除评论”“增加文章”。
-4. 组合结果：将推测出的部分组合成新的 API 端点，如 logout、delcomment、addarticle、delUserByID、getUserByPhone。
-<STR>
-[在此给出组合后的新 API 端点]
-<END>
+你是一名专业的渗透测试工程师，你的任务是结合渗透测试的思想，从给定的API列表中推测出更多的API，用于辅助渗透测试。
+请仔细阅读以下现有的API列表：
+<API列表>
+{{API_LIST}}
+</API列表>
+在推测API时，请遵循以下思路和方法：
+1. 分析现有API的命名规则、功能特点、参数结构等，找出其中的规律和模式。
+2. 考虑常见的业务逻辑和操作流程，推测可能与之相关的其他API。例如，如果有一个获取用户信息的API，可能存在更新用户信息、删除用户信息等相关API。
+3. 思考API的权限级别和使用场景，推测不同权限下可能存在的API。
+4. 结合渗透测试的经验，考虑可能被攻击者利用的薄弱环节，推测与之对应的API。
+
+如果觉得当前的API列表没有预测的价值，那么可以不预测，直接输出NULL即可。
+推测的API要与原API保持80%结构相似度，否则输出NULL。
+
+<推测API>
+[在此列出你推测出的API]
+</推测API>
+请确保你的推测基于合理的分析和渗透测试的思想。
         """
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["api_endpoint"]  # 明确使用api_endpoint作为变量
+        input_variables=["api_list"]  # 明确使用api_endpoint作为变量
     )
     return prompt | llm
 
@@ -303,15 +309,42 @@ def analyze_api_endpoint(chain, api_endpoint):
             return protection_callback.get_output()
         raise
 
-
-def run_analysis(api_endpoint):
-    """运行API端点预测流程"""
+def run_analysis(api_endpoints):
+    """运行API端点预测流程（一次性传入所有API）"""
     llm = load_ollama_llm()
     analysis_chain = build_analysis_chain(llm)
-    # 直接分析API端点，无需处理JS代码
-    model_output = analyze_api_endpoint(analysis_chain, api_endpoint)
-    return model_output
 
+    # 将列表拼接成字符串，每行一个API
+    api_list_str = "\n".join(api_endpoints)
+
+    print(f"\n🔍 一次性分析 {len(api_endpoints)} 个 API 端点：")
+    for api in api_endpoints:
+        print(f"   • {api}")
+
+    protection_callback = LoopProtectionCallback(
+        token_window=LOOP_PROTECTION_TOKEN_WINDOW,
+        max_token_repeat=LOOP_PROTECTION_MAX_TOKEN_REPEAT,
+        sentence_window=LOOP_PROTECTION_SENTENCE_WINDOW,
+        similarity_threshold=LOOP_PROTECTION_SIMILARITY_THRESHOLD,
+        check_interval=LOOP_PROTECTION_CHECK_INTERVAL
+    )
+
+    try:
+        chain.invoke(
+            {"api_list": api_list_str},  # ⚠️ 传入 api_list
+            config={"callbacks": [protection_callback]}
+        )
+        model_output = protection_callback.get_output()
+        cleaned = clean_output(model_output)
+        return { "input_apis": api_endpoints, "predicted_apis": cleaned }
+
+    except Exception as e:
+        if "Loop detection triggered termination" in str(e):
+            model_output = protection_callback.get_output()
+            cleaned = clean_output(model_output)
+            return { "input_apis": api_endpoints, "predicted_apis": cleaned }
+        else:
+            raise
 
 def clean_output(output):
     """清理模型输出，提取预测的API端点"""
@@ -338,22 +371,39 @@ def clean_output(output):
 
 
 if __name__ == '__main__':
-    # 示例：输入单个API端点进行测试
+    print("📌 请输入一个或多个 API 端点（每行一个，或用逗号分隔，输入 q 退出）：")
+
     while True:
-        print("\n请输入API端点（输入q退出）：")
-        api_endpoint = input().strip()
-        if api_endpoint.lower() == 'q':
+        user_input = input().strip()
+        if user_input.lower() == 'q':
             break
-        if not api_endpoint:
-            print("请输入有效的API端点")
+        if not user_input:
+            print("⚠️  请输入至少一个有效的 API 端点")
             continue
 
-        print("\n正在预测相关API端点...\n")
+        # 支持逗号分隔或换行输入（如果是粘贴多行）
+        if '\n' in user_input:
+            api_list = [line.strip() for line in user_input.splitlines() if line.strip()]
+        else:
+            api_list = [item.strip() for item in user_input.split(',') if item.strip()]
+
+        if not api_list:
+            print("⚠️  未检测到有效 API 端点")
+            continue
+
+        print(f"\n🚀 开始分析 {len(api_list)} 个 API 端点...\n")
+
         try:
-            model_output = run_analysis(api_endpoint)
-            print("\n\n预测结果：")
-            results = clean_output(model_output)
-            for i, result in enumerate(results, 1):
-                print(f"{i}. {result}")
+            all_results = run_analysis(api_list)
+
+            print("\n" + "="*60)
+            print("✅ 最终预测结果汇总：")
+            print("="*60)
+
+            for api, predictions in all_results.items():
+                print(f"\n🔹 原始 API: {api}")
+                for i, pred in enumerate(predictions, 1):
+                    print(f"  {i}. {pred}")
+
         except Exception as e:
-            print(f"处理出错：{str(e)}")
+            print(f"❌ 整体处理出错：{str(e)}")
