@@ -1,9 +1,9 @@
 import threading
 from urllib.parse import urlparse
-from url_bloom_filter import URLBloomFilter
 from lxml import etree
 from lxml.etree import _Element
 
+from HttpHandle.url_bloom_filter import URLBloomFilter
 from JsHandle.Similarity_HTML import get_simhash, similarity
 
 

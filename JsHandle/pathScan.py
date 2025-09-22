@@ -162,8 +162,6 @@ def data_clean(base_url: str, dirty_data) -> list:
     if not dirty_data:
         return []
 
-    if "\n" or "\t" or "\\" in dirty_data:
-        dirty_data = dirty_data.replace("\n", "").replace("\t", "").replace("\\", "")
 
     # 解析基础URL
     base_parsed = urlparse(base_url)
@@ -258,7 +256,7 @@ def check_url(original_url,splicing_url):
     if any(ext in urlparse2.path for ext in (
             '.png', '.jpg', '.jpeg', '.ico', '.mp4', '.mp3', '.gif', 'ttf',
             '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.ttf', '.eot',
-            '.otf', '.apk', '.exe', '.swf','.webp','.html','.htm'
+            '.otf', '.apk', '.exe', '.swf','.webp','.html','.htm','.vue','.ts','.tsx'
     )):
         return False
 
