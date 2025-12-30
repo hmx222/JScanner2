@@ -4,6 +4,10 @@ import re
 import sys
 from collections import Counter
 
+from bs4 import BeautifulSoup
+
+from AI.beautifyjs import format_code
+
 try:
     import wordninja
 except ImportError:
@@ -221,8 +225,8 @@ class LLMSecretVerifier:
             "Objective: Evaluate EACH candidate. ZERO TOLERANCE for missing secrets.\n"
             "Policy: RECALL > PRECISION. Flag as 'keep' if there is ANY doubt.\n\n"
             "### TARGETS:\n"
-            "1. High Entropy: Random strings (16+ chars), Hex, Base64, UUID, Hashes, or gibberish.\n"
-            "2. Credentials: Keys, Tokens, DB connections, Secrets.\n\n"
+            "1. High Entropy: Random strings, Hex, Base64, UUID, Hashes, or gibberish etc.\n"
+            "2. Credentials: Keys, Tokens, DB connections, Secrets etc.\n\n"
             "### IGNORE:\n"
             "UI text, CSS/JS syntax, file paths, standard URLs, simple integers.\n\n"
             "### OUTPUT (Strict JSON Array for ALL IDs):\n"
@@ -322,10 +326,23 @@ candidate_all = set()
 original_candidate_all = set()
 
 
+def remove_html_tags(html_text: str) -> str:
+    """
+    去除HTML标签，保留纯文本（处理嵌套/带属性/自闭合标签）
+    """
+    # 创建解析对象（推荐用lxml解析器，速度快；无lxml则用html.parser）
+    soup = BeautifulSoup(html_text, "lxml")  # 或 "html.parser"
+    # 提取所有纯文本（自动忽略标签，合并换行/空格）
+    pure_text = soup.get_text(strip=False)  # strip=False 保留原换行/空格，True则去除首尾空白
+    return pure_text
+
+
 def qwen_scan_js_code(js_code):
     """
     运行完整的敏感信息检测 pipeline (增加批处理支持)
     """
+    js_code = remove_html_tags(js_code)
+    js_code = format_code(js_code, True)
     candidates = scan_js_code(js_code)
     if not candidates:
         return []
@@ -354,6 +371,7 @@ def qwen_scan_js_code(js_code):
     batch_size = 15
     all_verified_results = []
 
+    print("开始抽取敏感信息")
     for i in range(0, len(candidate_objects), batch_size):
         batch = candidate_objects[i: i + batch_size]
 

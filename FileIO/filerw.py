@@ -36,7 +36,8 @@ def _json_writer(file_path):
             item = _write_queue.get()
             if item is None:
                 break
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+            # 仅添加 indent=4，其余逻辑不变
+            f.write(json.dumps(item, ensure_ascii=False, indent=4) + "\n")
             f.flush()
             _write_queue.task_done()
 
