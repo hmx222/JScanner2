@@ -11,7 +11,7 @@ from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
-from AI.Get_API2 import run_analysis, clean_output
+from AI.PathFind import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from JsHandle.pathScan import get_root_domain, extract_pure_js, is_js_file
 from JsHandle.valid_page import check_valid_page
@@ -91,19 +91,19 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         else:
             rex_output = analysis_by_rex(source)
             all_dirty.extend(rex_output)
-            if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(source) > 1000 and len(rex_output) >= 6 :
-                try:
-                    print("🤔 大模型正在分析中 🔍💡")
-                    source = extract_pure_js(source)
-                    ollama_output = clean_output(run_analysis(source))
-                    all_dirty.extend(ollama_output)
-                except:
-                    print(
-                        f"[bold]当前处理的URL:[/bold]\n"
-                        f"  [blue underline]{url}[/blue underline]\n"
-                        f"[orange]⚠️ 美化JavaScript时可能出现错误[/orange]\n"
-                        f"[green]→ 继续执行正常任务[/green]"
-                    )
+            # if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(source) > 1000 and len(rex_output) >= 6 :
+            #     try:
+            #         print("🤔 大模型正在分析中 🔍💡")
+            #         source = extract_pure_js(source)
+            #         ollama_output = clean_output(run_analysis(source))
+            #         all_dirty.extend(ollama_output)
+            #     except:
+            #         print(
+            #             f"[bold]当前处理的URL:[/bold]\n"
+            #             f"  [blue underline]{url}[/blue underline]\n"
+            #             f"[orange]⚠️ 美化JavaScript时可能出现错误[/orange]\n"
+            #             f"[green]→ 继续执行正常任务[/green]"
+            #         )
 
         next_urls = set(data_clean(url, all_dirty))
 

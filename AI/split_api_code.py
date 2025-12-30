@@ -1,4 +1,5 @@
 import re
+HTML_TAG_PATTERN = re.compile(r'<\s*/?\s*[a-zA-Z][^>]*>')
 
 REGEX_METACHARS = re.compile(r'[*+?^${}()|[\]\\]')  # 正则元字符
 SPLIT_COMMENT_PATTERN = re.compile(r'(?<!:)//')     # 分割行内注释（排除 http://）
@@ -23,6 +24,7 @@ def has_valid_slash(content: str) -> bool:
                 return True
     return False
 
+
 def extract_relevant_lines(input_str: str) -> str:
     """
     从 JS 代码中提取可能包含 API 路径的行（用于送入大模型分析）
@@ -40,6 +42,10 @@ def extract_relevant_lines(input_str: str) -> str:
         if not line_stripped or line_stripped.startswith('//'):
             continue
 
+        # 跳过单行过长的代码（避免模型处理过长文本）
+        if len(line_stripped) > 800:
+            continue
+
         # 🚀 快速跳过：不含关键字符的行（提升 3~5 倍性能）
         if not ('/' in line_stripped or 'http' in line_stripped or 'api' in line_stripped or "=" in line_stripped or ":" in line_stripped):
             continue
@@ -49,6 +55,17 @@ def extract_relevant_lines(input_str: str) -> str:
         line_no_comment = parts[0].rstrip()
         if not line_no_comment:
             continue
+
+        # ===================== 新增逻辑开始 =====================
+
+        # 1️⃣ 去除所有反斜杠
+        line_no_comment = line_no_comment.replace('\\', '')
+
+        # 2️⃣ HTML 标签检测，命中直接跳过
+        if HTML_TAG_PATTERN.search(line_no_comment):
+            continue
+
+        # ===================== 新增逻辑结束 =====================
 
         # 提取所有引号内的内容
         quoted_contents = QUOTED_CONTENT_PATTERN.findall(line_no_comment)

@@ -70,6 +70,7 @@ def parse_args():
 
     parser.add_argument('-o','--ollama', action='store_true', default=False, help="是否使用qwen2.5模型辅助分析JavaScript代码")
 
+    parser.add_argument('-q','--sensitiveInfoQwen', action='store_true', default=False, help="是否使用qwen2.5模型抽取敏感信息")
     args = parser.parse_args()
 
     # 动态开启去重功能（当用户指定阈值时启用）

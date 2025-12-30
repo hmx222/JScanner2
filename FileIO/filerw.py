@@ -1,52 +1,72 @@
+import json
 import os
+import queue
 import re
+import threading
 
 import chardet
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, Border, Side
-from openpyxl.utils import get_column_letter
-import json
 
 
 def read(file_path):
-    # 先以二进制模式读取文件一小部分，用于检测编码
     with open(file_path, 'rb') as f:
-        raw_data = f.read(1000)  # 读取前1000字节数据
-        result = chardet.detect(raw_data)  # 使用chardet库检测编码
-        encoding = result['encoding']  # 获取检测到的编码
+        raw_data = f.read(1000)
+        result = chardet.detect(raw_data)
+        encoding = result['encoding']
 
-    # 再以检测到的编码打开文件读取全部内容
     with open(file_path, 'r', encoding=encoding) as f:
-        content_list = f.readlines()  # 读取文件内容为列表，每个元素是一行文本
+        content_list = f.readlines()
 
-    # 去除每行中的异常空格
     cleaned_content_list = []
     for line in content_list:
-        # 使用正则表达式去除多余的空格，包括行首行尾空格以及连续的空格
         cleaned_line = re.sub(r'\s+', ' ', line).strip()
         cleaned_content_list.append(cleaned_line)
 
     return cleaned_content_list
 
 
+_write_queue = queue.Queue()
+_writer_started = False
+_writer_lock = threading.Lock()
+
+
+def _json_writer(file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "a", encoding="utf-8") as f:
+        while True:
+            item = _write_queue.get()
+            if item is None:
+                break
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+            f.flush()
+            _write_queue.task_done()
+
+
+def _ensure_writer_started(file_path):
+    global _writer_started
+    with _writer_lock:
+        if not _writer_started:
+            t = threading.Thread(
+                target=_json_writer,
+                args=(file_path,),
+                daemon=True
+            )
+            t.start()
+            _writer_started = True
+
 def write2json(file_path, json_str):
-    # 检查文件是否存在，如果不存在则初始化为一个空列表
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        existing_data = []
-    else:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            existing_data = json.load(file)
+    """
+    保持原有语义：
+    - 接收 json 字符串
+    - 写入文件
+    """
+    _ensure_writer_started(file_path)
 
-    new_data = json.loads(json_str)
+    try:
+        obj = json.loads(json_str)
+    except Exception:
+        return
 
-    if isinstance(existing_data, list):
-        existing_data.append(new_data)
-    else:
-        print(f"写入失败：{json_str}")
-
-    with open(file_path, 'w', encoding='utf-8') as file:
-        json.dump(existing_data, file, ensure_ascii=False, indent=4)
-
+    _write_queue.put(obj)
 
 def clear_or_create_file(file_path):
     directory = os.path.dirname(file_path)
@@ -54,9 +74,3 @@ def clear_or_create_file(file_path):
         os.makedirs(directory, exist_ok=True)
     with open(file_path, 'w', encoding='utf-8') as file:
         file.write('')
-
-
-
-
-
-

@@ -4,6 +4,8 @@ import os
 import time
 import warnings
 
+from AI.SenInfo import qwen_scan_js_code
+
 warnings.filterwarnings("ignore")
 from colorama import init
 from rich import print as rich_print
@@ -77,7 +79,7 @@ class Scanner:
         if not args.api:
             next_urls = [url for url in next_urls if ".js" in url]
 
-        if args.sensitiveInfo:
+        if args.sensitiveInfo or args.sensitiveInfoQwen:
             self._extract_sensitive_info(scan_info_list)
 
         if next_urls:
@@ -85,11 +87,14 @@ class Scanner:
 
     def _extract_sensitive_info(self, scan_info_list):
         """提取敏感信息（从有效扫描结果中）"""
+        sensitive_info = []
         for scan_info in scan_info_list:
             url = scan_info["url"]
             if scan_info["is_valid"] == 1 or url in self.initial_urls:
-
-                sensitive_info = find_all_info_by_rex(scan_info["source_code"])
+                if args.sensitiveInfoQwen:
+                    sensitive_info = qwen_scan_js_code(scan_info["source_code"])
+                elif args.sensitiveInfo:
+                    sensitive_info = find_all_info_by_rex(scan_info["source_code"])
                 if len(sensitive_info) == 0:
                     continue
                 write2json(
