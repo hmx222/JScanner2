@@ -8,9 +8,9 @@ LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen3:8b-q4_K_M"
+MODEL_NAME = "qwen2.5-coder:14b"
 # 模型生成参数：温度值（0-1，越低输出越稳定）
-MODEL_TEMPERATURE = 0.7  # 保持不变，确保稳定性
+MODEL_TEMPERATURE = 0.8  # 保持不变，确保稳定性
 # top_k
 MODEL_TOP_K = 50
 # top_p
@@ -24,7 +24,7 @@ MODEL_REPEAT_LAST_N = 40
 MODEL_MAX_TOKENS = 900
 
 # 代码切片行数（每次向模型输入的代码行数）
-CODE_SLICE_LINES = 25
+CODE_SLICE_LINES = 30
 
 # L1: 词级检测参数
 LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
@@ -44,6 +44,4 @@ LOOP_PROTECTION_RECOVERY_STRATEGY = {
     "inject_diversity": 0.3,  # 注入多样性提示权重
     "hard_terminate": 0.1  # 硬终止权重
 }
-
-# prettier路径
-prettier_path = "C:\\Users\\Cheng\\AppData\\Roaming\\npm\\prettier.cmd"
+STOP_WORDS_FOR_MODEL = ["*","`","，","。"," ","你提","这段","片段"]

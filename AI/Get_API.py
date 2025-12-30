@@ -83,6 +83,9 @@ def build_analysis_chain(llm):
 
 3. 输出规则：
    - 无符合条件的内容时，则不输出
+   输出示例：
+    [STR]/api/v1/user/info[END]
+    [STR]/api/v1/user/add[END]
 代码片段：
 {code}
         """

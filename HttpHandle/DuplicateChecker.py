@@ -1,12 +1,9 @@
 import threading
-from hashlib import md5
 from urllib.parse import urlparse
-
-import zss
-from bs4 import BeautifulSoup
 from lxml import etree
 from lxml.etree import _Element
 
+from HttpHandle.url_bloom_filter import URLBloomFilter
 from JsHandle.Similarity_HTML import get_simhash, similarity
 
 
@@ -17,7 +14,7 @@ class DuplicateChecker:
         :param initial_root_domain: 目标根域名（用于URL有效性检查）
         """
         # 去重核心数据（按域名隔离，避免跨域名误判）
-        self.visited_urls = set()  # 已访问URL
+        self.visited_urls = URLBloomFilter()  # 已访问URL
         self.simhash_map = dict()  # {域名: {simhash集合}}（内容相似度去重）
         self.title_map = dict()  # {域名: {标题集合}}（标题去重）
         self.length_map = dict()  # {域名: {长度集合}}（长度去重）
@@ -35,7 +32,7 @@ class DuplicateChecker:
         """检查URL是否有效（未访问+属于目标域名）"""
         with self.url_lock:
             # 已访问过的URL直接过滤
-            if url in self.visited_urls:
+            if self.visited_urls.is_processed(url):
                 return False
             # 检查是否属于目标域名
             parsed = urlparse(url)
@@ -47,7 +44,7 @@ class DuplicateChecker:
     def mark_url_visited(self, url: str):
         """标记URL为已访问（线程安全）"""
         with self.url_lock:
-            self.visited_urls.add(url)
+            self.visited_urls.mark_as_processed(url)
 
     def extract_dom_skeleton(self, element: _Element) -> str:
         """抽取DOM骨架（保留标签和层级，剔除动态内容）"""

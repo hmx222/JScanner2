@@ -1,87 +1,53 @@
-import subprocess
-import tempfile
-import os
+import logging
 
-from config import config
+import jsbeautifier
 
 
-def format_code(
-        unformatted_code,
-        parser="babel"
-):
+def format_code(js_code: str, fallback_on_error: bool = True) -> str:
     """
-    使用prettier格式化代码，解决Windows下的编码问题
+    安全的 JS 代码美化函数，带异常处理和降级策略
 
-    参数:
-        unformatted_code (str): 未格式化的代码字符串
-        parser (str): 代码解析器，默认"babel"（适用于JavaScript）
-        prettier_path (str): prettier.cmd的绝对路径，若为None则自动查找
-
-    返回:
-        str: 格式化后的代码
+    :param js_code: 原始 JS 代码
+    :param fallback_on_error: 出错时是否返回原文（True）或抛出异常（False）
+    :return: 美化后的代码 or 原文 or 空字符串
     """
-    prettier_path = config.prettier_path
+    if not isinstance(js_code, str):
+        if fallback_on_error:
+            return ""
+        raise TypeError("js_code must be a string")
 
-    # 创建临时文件并以UTF-8编码写入（解决写入时的编码问题）
-    with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.js',
-            delete=False,
-            encoding='utf-8'  # 强制UTF-8编码写入
-    ) as temp_file:
-        temp_file.write(unformatted_code)
-        temp_file_path = temp_file.name
+    if len(js_code.strip()) == 0:
+        return js_code  # 空字符串直接返回
 
     try:
-        # 调用prettier命令行工具，指定UTF-8编码解析输出（解决读取时的编码问题）
-        result = subprocess.run(
-            [
-                prettier_path,
-                "--parser", parser,
-                "--print-width", "60",  # 每行最大字符数
-                "--tab-width", "2",  # 缩进空格数
-                "--single-quote", "false",  # 使用双引号
-                temp_file_path
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding='utf-8'  # 强制UTF-8编码读取输出
-        )
-        return result.stdout
+        # 预编译选项（可移到模块级缓存）
+        opts = jsbeautifier.default_options()
+        opts.indent_size = 2
+        opts.max_preserve_newlines = 1
+        opts.keep_array_indentation = False
+        opts.break_chained_methods = False
+        opts.max_char_per_line = 160  # 避免超长行
 
-    except subprocess.CalledProcessError as e:
-        # 捕获格式化错误（如代码语法错误）
-        raise ValueError(f"代码格式化失败: {e.stderr}") from e
+        # 执行美化
+        beautified = jsbeautifier.beautify(js_code, opts)
 
-    finally:
-        # 确保临时文件被删除
-        if os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
+        # 简单验证：美化后不应为空（除非原文就是空）
+        if beautified is None or (len(beautified.strip()) == 0 and len(js_code.strip()) > 0):
+            raise ValueError("Beautifier returned empty result")
 
+        return beautified
 
-# ------------------------------
-# 使用示例
-# ------------------------------
-if __name__ == "__main__":
-    # 测试代码（包含多种特殊字符）
-    test_code = """
-    function helloWorld(){
-    console.log("Hello, World! 测试特殊字符：ä è ñ ç 中文 日本語");
-    let data = {id:1,name:"test",value:3.14};//131231
-    return data;
-    }
-    """
+    except (UnicodeDecodeError, MemoryError, RecursionError) as e:
+        logging.warning(f"美化失败（资源错误）")
+        if fallback_on_error:
+            return js_code  # 降级：返回原文
+        else:
+            raise
 
-    try:
-        # 替换为你的prettier.cmd实际路径
-        formatted_code = format_code(
-            test_code,
-            prettier_path=r"C:\Users\Cheng\AppData\Roaming\npm\prettier.cmd"
-        )
-        print("格式化成功：")
-        print("-" * 50)
-        print(formatted_code)
-        print("-" * 50)
     except Exception as e:
-        print(f"处理失败：{str(e)}")
+        # 捕获 jsbeautifier.ParseError 等所有异常
+        logging.warning(f"美化失败（语法错误等）")
+        if fallback_on_error:
+            return js_code  # 降级：返回原文
+        else:
+            raise
