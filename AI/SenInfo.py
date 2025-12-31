@@ -5,6 +5,7 @@ import sys
 from collections import Counter
 
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 from AI.beautifyjs import format_code
 
@@ -198,6 +199,17 @@ class AdvancedSecretFilter:
             return False
 
         entropy = self.shannon_entropy(text)
+
+        digit_count = sum(c.isdigit() for c in text)
+        digit_ratio = digit_count / len(text)
+
+        if digit_ratio > 0.20:
+            # 2. Hex 特征检查
+            # 如果字符串只包含 hex 字符且长度较长，直接判定为 Secret，跳过分词检查
+            if (len(text) == 16 or len(text) == 32) and re.match(r'^[0-9a-fA-F]+$', text):
+                if entropy > 2.0:  # 纯 Hex 很容易被判定为单词，所以这里强制通过
+                    return True, "Hex String Pattern"
+
         if entropy < self.entropy_threshold:
             return False
 
@@ -221,58 +233,48 @@ class LLMSecretVerifier:
 
     def _get_system_prompt(self):
         return (
-            "Role: Paranoid Security Auditor.\n"
-            "Objective: Evaluate EACH candidate. ZERO TOLERANCE for missing secrets.\n"
-            "Policy: RECALL > PRECISION. Flag as 'keep' if there is ANY doubt.\n\n"
-            "### TARGETS:\n"
-            "1. High Entropy: Random strings, Hex, Base64, UUID, Hashes, or gibberish etc.\n"
-            "2. Credentials: Keys, Tokens, DB connections, Secrets etc.\n\n"
-            "### IGNORE:\n"
-            "UI text, CSS/JS syntax, file paths, standard URLs, simple integers.\n\n"
-            "### OUTPUT (Strict JSON Array for ALL IDs):\n"
-            "Return: `[{\"id\": <id>, \"decision\": \"keep/drop\", \"reason\": \"...\"}]`"
+            "Role: Binary Security Classifier.\n"
+            "Objective: Identify hardcoded secrets.\n"
+            "Instruction: For each ID, output 1 if it is a potential secret/key/token, output 0 if it is safe code/UI text.\n"
+            "Policy: If unsure, output 1 (Recall > Precision).\n"
+            "Output Format: Strict JSON object: `{\"id\": 1/0, ...}`"
         )
 
     def verify_candidates(self, candidates):
         if not candidates:
             return []
 
-        # 构造输入 Payload
-        input_data = [{"id": c['id'], "v": c['value']} for c in candidates]
+        # 构造极其紧凑的输入，只给 ID 和值
+        input_data = {c['id']: c['value'] for c in candidates}
         formatted_input = json.dumps(input_data, ensure_ascii=False)
 
         messages = [
             SystemMessage(content=self._get_system_prompt()),
-            HumanMessage(content=f"Evaluate these IDs:\n{formatted_input}")
+            HumanMessage(content=f"Classify these:\n{formatted_input}")
         ]
 
         try:
             response = self.llm.invoke(messages)
             content = response.content.strip()
 
-            # 正则提取 JSON
-            match = re.search(r'\[\s*\{.*\}\s*\]', content, re.DOTALL)
-            json_str = match.group() if match else "[]"
-            result_list = json.loads(json_str)
-
-            # 建立决策映射
-            # 除非模型明确说 'drop'，否则默认为 'keep' 以防漏报
-            decision_map = {str(r.get('id')): r.get('decision', 'keep') for r in result_list}
-            reason_map = {str(r.get('id')): r.get('reason', '') for r in result_list}
+            # 提取 JSON 字典
+            match = re.search(r'\{.*\}', content, re.DOTALL)
+            json_str = match.group() if match else "{}"
+            decision_dict = json.loads(json_str)
 
             verified_secrets = []
             for c in candidates:
                 curr_id = str(c['id'])
-                if decision_map.get(curr_id) != 'drop':
-                    c['reason'] = reason_map.get(curr_id, "Potential secret")
+                # 如果返回 1，或者模型没给结果，或者报错，都保留（宁可错杀）
+                decision = decision_dict.get(curr_id, 1)
+                if str(decision) == "1":
                     verified_secrets.append(c)
 
             return verified_secrets
 
         except Exception as e:
-            print(f"LLM Error: {e}. Fallback: Keeping all.")
+            print(f"LLM Error: {e}. Keeping batch.")
             return candidates
-
 
 # ==================== 封装函数 ====================
 def scan_js_code(js_code):
@@ -338,14 +340,13 @@ def remove_html_tags(html_text: str) -> str:
 
 
 def qwen_scan_js_code(js_code):
-    """
-    运行完整的敏感信息检测 pipeline (增加批处理支持)
-    """
     js_code = remove_html_tags(js_code)
     js_code = format_code(js_code, True)
     candidates = scan_js_code(js_code)
+
     if not candidates:
         return []
+
     candidate_objects = []
     for i, candidate in enumerate(candidates):
         secret_val = candidate['secret']
@@ -355,42 +356,39 @@ def qwen_scan_js_code(js_code):
         candidate_objects.append({
             "id": i,
             "value": secret_val,
-            "original": candidate
+            "original": candidate  # 包含 'line'
         })
         candidate_all.add(secret_val)
 
     if not candidate_objects:
-        print("   所有候选词已在历史记录中，跳过 LLM。")
         return []
-
 
     ollama_model = load_ollama_llm()
     verifier = LLMSecretVerifier(ollama_model)
 
-    # 针对 14B 模型，建议每批 15 条，既能保持语义理解，又不会让模型断掉
-    batch_size = 15
+    batch_size = 20  # 既然输出变短了，Batch Size 可以适当调大，进一步提速
     all_verified_results = []
+    total_batches = (len(candidate_objects) + batch_size - 1) // batch_size
 
-    print("开始抽取敏感信息")
-    for i in range(0, len(candidate_objects), batch_size):
+    for i in tqdm(range(0, len(candidate_objects), batch_size),
+                  desc="🧠 AI 正在审计",
+                  total=total_batches,
+                  unit="批次"):
         batch = candidate_objects[i: i + batch_size]
-
-        # 调用 verifier
         batch_results = verifier.verify_candidates(batch)
         all_verified_results.extend(batch_results)
 
-    # --- 结果汇总与最终去重 ---
+    # --- 最终输出：返回涉及到敏感信息的源代码行 ---
     final_results = []
     for result in all_verified_results:
-        original_candidate = result['original']
+        original_line = result['original']['line']  # 获取原始行
 
-        # 针对最终输出的全局去重（基于 Secret 内容）
-        if original_candidate['secret'] in original_candidate_all:
+        # 基于行内容去重，防止同一行出现多个 Key 导致重复输出
+        if original_line in original_candidate_all:
             continue
 
-        final_results.append(original_candidate['secret'])
-        original_candidate_all.add(original_candidate['secret'])
+        final_results.append(original_line)
+        original_candidate_all.add(original_line)
 
     return final_results
-
 
