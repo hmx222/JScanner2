@@ -68,10 +68,6 @@ class Scanner:
         if next_urls:
             self.tmp_urls |= next_urls
 
-        for i in next_urls:
-            print(f"next_urls:{i}")
-        print("\n")
-
         # 默认不进行API扫描，data_source = next_urls
         data_source = next_urls if not args.api else unprocessed_scan_info_list
         excel_handler.append_data(data_source)
@@ -91,6 +87,8 @@ class Scanner:
         for scan_info in scan_info_list:
             url = scan_info["url"]
             if scan_info["is_valid"] == 1 or url in self.initial_urls:
+                if ".js" not in scan_info["url"]:
+                    continue
                 if args.sensitiveInfoQwen:
                     sensitive_info = qwen_scan_js_code(scan_info["source_code"])
                 elif args.sensitiveInfo:
@@ -99,7 +97,11 @@ class Scanner:
                     continue
                 write2json(
                     "./result/sensitiveInfo.json",
-                    json.dumps({"url": url, "sensitive_info": sensitive_info})
+                    json.dumps(
+                        {"url": url, "sensitive_info": sensitive_info},
+                        indent=4,  # 加缩进，生成格式化JSON字符串
+                        ensure_ascii=False  # 避免非ASCII字符转义（和writer里的参数对齐）
+                    )
                 )
                 rich_print(
                     f"[bold orange]URL:[/bold orange] {url}\n"
