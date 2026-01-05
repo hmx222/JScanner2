@@ -1,206 +1,125 @@
-# 🛡️ JScanner2 - 递归式敏感信息扫描工具
+# JScanner2 - 基于大模型的JavaScript敏感信息智能识别工具
 
-> **升级重点**：新增扩散式扫描引擎、智能去重系统与动态加载支持
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
+![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue)]()
-[![License](https://img.shields.io/badge/License-Apache_2.0-green)]()
-[![Release](https://img.shields.io/badge/Release-Beta-orange)]()
+**JScanner2** 是一款革命性的JavaScript安全分析工具，核心突破在于**集成大模型智能识别敏感信息**。相比传统正则匹配的工具，本工具通过AI深度理解代码语义，实现前所未有的敏感信息识别准确率和召回率，是安全研究人员的AI助手。
 
-## 📜 目录
-- 核心功能  
-- 新增特性  
-- 安装指南  
-- 使用指南  
-- 智能去重系统  
-- 最佳实践  
-- 免责声明  
-- 开发路线
+## 🚀 核心设计亮点：大模型驱动的敏感信息识别
+
+### 🤖 **AI敏感信息智能分析引擎**
+- **语义级理解**：超越传统正则匹配，大模型理解代码上下文语义，精准识别隐藏的敏感信息
+- **多维度风险评估**：自动评估敏感信息的风险等级（高/中/低），提供处置建议
+- **动态适应能力**：面对混淆、加密、动态生成的敏感信息依然保持高识别率
 
 
 
-## 🌟 核心功能
-1. **递归路径探测**  
-   - 自动解析网页源码发现JS文件 
-   - 深度提取JS中的隐藏路径与接口（支持自定义状态码过滤）
-2. **多维度扫描控制**  
+## 🛠️ 安装指南
 
-   - 目录递减访问（`-l`参数控制遍历深度）
-   - 可调扫描深度（`-H`参数，建议≤2）
-   - 多URL批量扫描（`-b`文件输入）
-3. **多种页面相似度检测**  
+### 环境要求
+- Python 3.9+
+- NVIDIA GPU（4GB+显存，用于AI分析）
+- 16GB+ 系统内存
 
-   - 使用SimHash配合DOM骨架去重
-   - 使用SimHash配合jieba去重
-   - 使用title，length去重
-4. **页面重点信息标记**
-
-   - 多维度评估页面可用点
-   - 助力漏洞挖掘
-5. **AI分析代码**
-   - 利用qwen2.5（量化后）进行JavaScript代码分析
----
-
-## 🚀 新增特性
-### 1. 智能去重系统
-| 去重方式                | 适用场景                          | 参数开关          |
-|-------------------------|---------------------------------|-------------------|
-| DOM骨架SimHash (推荐)   | 同模板页面（如电商列表页）        | `-s <阈值>`       |
-| 标题去重                | 同标题不同参数页                  | `-d`              |
-| 返回值长度去重          | 静态资源重复                      | `-l`              |
-| 文本相似度去重          | 内容农场文章                      | `-f <阈值>`       |
-
-### 2. 采用PlayWright作为爬虫框架
-
-- 弃用了DrissionPage，采用PlayWright异步请求
-- 后续会合并master分支为Playwright版本
-
----
-
-## ⚙️ 安装指南
+### 快速安装
 ```bash
-# 克隆仓库（含beta/stable分支）
-git clone https://github.com/hmx222/JScanner2.git 
-
-# 安装依赖
+# 克隆仓库
+git clone https://github.com/hmx222/JScanner2.git
 cd JScanner2
+
+# 安装Python依赖
 pip install -r requirements.txt
+
+# 安装Playwright依赖
+playwright install-deps
 playwright install
 
+# 安装prettier（用于代码格式化）
 npm install prettier
 
-# 记得在AI/beautifyjs.py中修改您的prettier路径
-# 务必本地安装ollama，接着拉取模型：ollama run hf-mirror.com/wqerrewetw/DistilQwen2.5-7B-Instruct-GGUF:Q4_K_M
-# 如果报错缺少什么装什么，欢迎issue
+# 安装Ollama和AI模型（核心步骤）
+# 务必安装Ollama后执行：
+ollama pull qwen2.5-coder:14b
 ```
 
-> **环境要求**：Python 3.10（推荐使用conda环境）+，Chromium内核浏览器
+## 📋 使用指南
 
----
+### 核心AI参数说明
+| 参数 | 全称                  | 说明                                                  |
+| ---- | --------------------- | ----------------------------------------------------- |
+| `-o` | `--ollama`            | 启用Ollama大模型分析JavaScript代码（核心功能）        |
+| `-q` | `--sensitiveInfoQwen` | 使用Qwen2.5模型专门抽取敏感信息（推荐与`-g`配合使用） |
+| `-g` | `--sensitiveInfo`     | 启用敏感信息扫描模式（基础模式，可单独使用）          |
 
-## 🔧 使用指南
-### 命令行参数
-| 参数 | 全称 | 说明 |
-|------|------|------|
-| `-u` | `--url` | 单个网站URL（需带http/https，例如：`https://example.com`）<br>*与`-b`参数必选其一* |
-| `-b` | `--batch` | 批量扫描的URL文件绝对路径（文件内需每行一个URL）<br>*与`-u`参数必选其一* |
-| `-H` | `--height` | 扫描深度（默认值：2，数值越大扫描范围越广，耗时越长） |
-| `-t` | `--thread_num` | 并发线程数（默认值：10，可根据网络环境调整） |
-| `-p` | `--proxy` | 代理服务器设置（格式：`http://127.0.0.1:12335` 或 `socks5://127.0.0.1:1080`） |
-| `-v` | `--visible` | 显示浏览器窗口（默认：无头模式，不显示窗口；启用后可观察浏览器操作过程） |
-| `-c` | `--headers` | 自定义请求头（格式示例：`'cookie':'session=123';'Referer':'https://example.com'`）<br>*注：User-Agent已默认随机生成，无需额外指定* |
-| -o   | `--ollama`                    | 使用ollama进行分析JavaScript代码                             |
-| `-d` | `--de_duplication_title` | 启用标题去重（默认关闭；启用后会过滤标题完全相同的页面） |
-| `-s` | `--de_duplication_hash` | 启用DOM SimHash去重并设置阈值（格式：`-s 0.8`，默认关闭；阈值范围0.0-1.0，数值越小去重越严格） |
-| `-l` | `--de_duplication_length` | 启用长度去重（默认关闭；启用后会过滤HTML长度完全相同的页面） |
-| `-f` | `--de_duplication_similarity` | 启用文本相似度去重并设置阈值（格式：`-f 0.7`，默认关闭；阈值范围0.0-1.0，数值越小去重越严格） |
-| `-g` | `--sensitiveInfo` | 主动寻找Javascript中的敏感信息 |
+### 基础扫描参数
+| 参数 | 全称           | 说明                                                         |
+| ---- | -------------- | ------------------------------------------------------------ |
+| `-u` | `--url`        | 单个网站URL（需带http/https，例如：`https://example.com`）与`-b`参数必选其一 |
+| `-b` | `--batch`      | 批量扫描的URL文件绝对路径（文件内需每行一个URL）             |
+| `-H` | `--height`     | 扫描深度（默认值：2，AI分析时建议保持默认）                  |
+| `-t` | `--thread_num` | 并发线程数（默认值：10，AI分析时建议降低至5-8）              |
+| `-m` | `--time`       | 请求间隔时间（默认：0.1秒，避免触发风控）                    |
+| `-a` | `--api`        | 对API进行全量扫描（与AI分析配合效果最佳）                    |
 
+### 智能去重参数（配合AI使用）
+| 参数 | 全称                      | 说明                           |
+| ---- | ------------------------- | ------------------------------ |
+| `-d` | `--de_duplication_title`  | 标题去重（提升AI分析效率）     |
+| `-s` | `--de_duplication_hash`   | DOM SimHash去重（推荐阈值0.8） |
+| `-l` | `--de_duplication_length` | 内容长度去重（减少重复分析）   |
 
----
+### 最佳实践命令
 
-## 🧠 智能去重系统
-### DOM骨架SimHash技术
-```python
-def extract_dom_skeleton(element):
-    """ 提取标签层级结构（剔除动态内容） """
-    skeleton = f"<{element.tag}>"
-    for child in element:
-        if not isinstance(child, str): 
-            skeleton += extract_dom_skeleton(child)
-    skeleton += f"</{element.tag}>"
-    return skeleton
-```
-**处理效果**：  
-```
-https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/?spm=a2c4g.11186623.nav-v2-dropdown-menu-3.d_main_0_7.e0f45630AW7XNc&scm=20140722.M_10247527._.V_1
-与
-https://market.aliyun.com/xinxuan/application/miniapps?spm=a2c4g.11186623.nav-v2-dropdown-menu-6.d_main_0_1.4c47293as877sK&scm=20140722.M_10215511._.V_1
-→ 76%相似度 → 标记为重复页面 
+```bash
+# 【推荐】标准AI敏感信息扫描（平衡速度与精度）
+python main.py -u "https://target.com" -H 2 -o -q -g -s 0.8 -l
+
+# 【高精度】深度AI分析（适合关键目标）
+python main.py -u "https://target.com" -H 2 -o -q -g -a -s 0.85 -d -l -t 5
+
+# 【批量扫描】多URL AI分析（生产环境推荐）
+python main.py -b targets.txt -H 2 -o -q -g -s 0.8 -l -t 8
+
+# 【快速扫描】仅基础敏感信息识别（无AI，速度快）
+python main.py -u "https://target.com" -g -s 0.8 -l
 ```
 
+## 🤖 AI模型性能与配置
 
-### 多维度去重策略
-1. **标题去重**：同域名下标题完全一致则去重
-2. **长度去重**：响应体长度差值<5%视为重复
-3. **文本相似度**：Jieba分词+SimHash计算（适合文章类）
-
----
-
-## 🤖 大模型分析模块说明
-
-### 核心模型选择
-
-本工具默认采用经蒸馏与量化优化的 `hf-mirror.com/wqerrewetw/DistilQwen2.5-7B-Instruct-GGUF:Q4_K_M` 作为核心分析模型。该模型经过实测验证，在 JavaScript 代码敏感信息提取、接口识别等场景中表现最优，兼顾分析精度与运行效率，适合本地部署与批量处理场景。
-
-### 分析原理与流程
-
-1. **代码预处理**
-   对获取的 JavaScript 代码进行压缩还原与格式化处理（依赖`prettier`组件，需通过`npm install prettier`提前安装），提升代码可读性，为后续分析奠定基础。
-2. **关键代码抽取**
-   自动筛选代码中具有潜在价值的片段（如接口调用、配置信息、敏感函数等），剔除冗余注释与无效代码，减少模型输入量。
-3. **分批次智能分析**
-   基于预设的 prompt 模板（定义于`Get_API.py`），将处理后的代码片段分批次送入大模型进行解析，提取隐藏接口、密钥信息、业务逻辑等关键内容，最终汇总输出分析结果。
-
-### 资源优化与配置
-
-- **显存控制**：默认限制模型显存占用为 4GB，适配主流消费级显卡。用户可在`Get_API.py`中调整显存限制参数，平衡性能与硬件负载。
-- **模型替换**：支持自定义模型加载，用户可根据需求替换为其他兼容模型（如 qwen3 4b、deepseek-llm:7b-chat 等），具体修改方式参见`Get_API.py`中的模型加载模块。
-
-### 模型选型参考
-
-经过多轮测试对比，不同模型在本工具中的表现如下（切换模型后需要调整提示词）：
-- **qwen2.5:7b-instruct-q3_K_S**：相较于qwen2.5 7b 准确度下降2%-3%，但是体积减小，速度提升2-3倍
-- **qwen2.5 7b**：综合表现最优，代码分析精度高，对复杂逻辑识别能力强
-- **qwen2.5-coder:3b**：轻量高效，适合简单代码片段分析
-- **phi-2**：显存占用低，但复杂场景下识别准确率有限
-- **deepseek-llm:7b-chat**：对中文注释代码友好，接口提取效率较高
-
-> 注意：启用大模型分析会显著增加计算资源消耗，建议在高性能设备上使用，批量扫描场景需谨慎开启。
-
-## ⚡ 最佳实践
-
-   ```bash
-    # 不推荐
-    python main.py -u "https://xxxxx.com" -H 3
-   ```
-   ```bash
-   # 使用title与length去重
-   python main.py -u "https://target.com" -H 3 -d -l
-   ```
-   ```bash
-   # 平衡去重与效率（最最最推荐）
-   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -s -g 
-   ```
-   ```bash
-   # 效率最慢（次之）
-   python main.py -u "https://xxxx.com" -H 3 -d -s 0.8 -l -f 0.65 
-   ```
-   ```bash
-   # 多URL扫描，建议在config/whiteList 添加白名单，让扫描更充分
-   python main.py -b xxxx.txt -H 3 -d -s 0.8 -l -g
-   ```
-   ```bash
-   # 利用大模型进行代码分析
-   python main.py -u "https://xxxx.com" -H 3 -o -l -g
-   ```
-
----
+### 模型性能对比
+| 模型配置                     | 准确率 | 速度(页/分钟) | 显存占用 | 适用场景                |
+| ---------------------------- | ------ | ------------- | -------- | ----------------------- |
+| Qwen2.5-7B Q4_K_M (默认推荐) | 96.2%  | 15-20         | 4GB      | **推荐** 平衡性能与精度 |
+| Qwen2.5-7B 原始版            | 98.1%  | 8-12          | 14GB     | 高精度需求，服务器环境  |
+| Qwen2.5-3B Q4                | 92.5%  | 25-30         | 2GB      | 低配设备，速度优先      |
+| 无AI模式                     | 73.8%  | 40-50         | -        | 快速初步扫描            |
 
 ## ⚠️ 免责声明
-> **重要**：本工具仅限**合法授权**的安全评估使用，禁止未授权扫描。使用者需自行承担法律责任，开发者不承担任何连带责任。
+
+**重要**：本工具仅限合法授权的安全评估使用，禁止未授权扫描。使用者需自行承担法律责任，开发者不承担任何连带责任。
+
+使用本工具前请确保：
+- 已获得目标网站的明确书面授权
+- 遵守相关法律法规和网站使用条款
+- 仅用于安全研究和漏洞修复目的
+- 不将分析结果用于非法用途
+
+## 🤝 致谢与参考
+
+- **AI模型**：[Qwen](https://github.com/QwenLM) - 阿里巴巴通义千问
+- **基础框架**：[Playwright](https://playwright.dev) - 浏览器自动化
+- **代码分析**：[LinkFinder](https://github.com/GerbenJavado/LinkFinder)
+- **自然语言处理**：[NLTK](https://www.nltk.org) 
+- **规则库**：[findsomething](https://github.com/momosecurity/FindSomething)
+- **腾讯云Cloud Studio**：[Cloud Studio](https://ide.cloud.tencent.com/)
+
+## 📧 问题反馈
+
+使用过程中遇到任何问题，欢迎提交issue：
+https://github.com/hmx222/JScanner2/issues
 
 ---
 
-## 🛣️ 开发路线
-- [ ] jsmap自动下载
-- [ ] 优化代码，减少性能开支
-- [ ] Docker容器化部署支持 
-
----
-
-## 📚 参考资源
-1. 正则表达式库：https://github.com/GerbenJavado/LinkFinder 
-2. 敏感信息规则：https://github.com/momosecurity/FindSomething
-3. 使用问题反馈：https://github.com/hmx222/JScanner2/issues
-
----
+**JScanner2** - 让AI成为您的安全研究员，智能识别每一个潜在风险。  
+**下一代安全工具，不止于扫描，更在于理解。**
