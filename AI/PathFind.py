@@ -12,15 +12,15 @@ from config.config import LANGCHAIN_LOG_LEVEL, HTTPX_LOG_LEVEL, OLLAMA_MAX_GPU_M
     LOOP_PROTECTION_CHECK_INTERVAL, MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS, \
     CODE_SLICE_LINES, STOP_WORDS_FOR_MODEL
 
-try:
-    from sentence_transformers import SentenceTransformer
-    from sklearn.metrics.pairwise import cosine_similarity
-
-    SEMANTIC_ANALYSIS_AVAILABLE = True
-    _semantic_model = None
-except ImportError:
-    SEMANTIC_ANALYSIS_AVAILABLE = False
-    _semantic_model = None
+# try:
+#     from sentence_transformers import SentenceTransformer
+#     # from sklearn.metrics.pairwise import cosine_similarity
+#
+#     SEMANTIC_ANALYSIS_AVAILABLE = True
+#     _semantic_model = None
+# except ImportError:
+#     SEMANTIC_ANALYSIS_AVAILABLE = False
+#     _semantic_model = None
 
 logging.getLogger("langchain").setLevel(LANGCHAIN_LOG_LEVEL)
 logging.getLogger("httpx").setLevel(HTTPX_LOG_LEVEL)
