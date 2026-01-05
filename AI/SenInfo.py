@@ -1,10 +1,14 @@
 import json
 import math
+import random
 import re
 import sys
 from collections import Counter
-
+from pybloom_live import ScalableBloomFilter
+import nltk
 from bs4 import BeautifulSoup
+from nltk.corpus import words
+from nltk.corpus import wordnet
 from tqdm import tqdm
 
 from AI.beautifyjs import format_code
@@ -23,13 +27,15 @@ except ImportError:
     sys.exit(1)
 
 from config.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
-
+# 加载词库
+nltk.download('wordnet', quiet=True)
+nltk.download('omw-1.4', quiet=True)
 
 # ==================== 第一步：粗过滤器 ====================
 class CodeLineFilter:
     def __init__(self,
                  min_string_length=5,
-                 min_sensitive_length=8,
+                 min_sensitive_length=5,
                  max_string_length=500):
         self.min_string_length = min_string_length
         self.min_sensitive_length = min_sensitive_length
@@ -142,7 +148,12 @@ class AdvancedSecretFilter:
     def __init__(self, entropy_threshold=3.5, coverage_threshold=0.65):
         self.entropy_threshold = entropy_threshold
         self.coverage_threshold = coverage_threshold
-
+        self.bloom_filter = ScalableBloomFilter(
+    mode=ScalableBloomFilter.LARGE_SET_GROWTH,
+    error_rate=0.01  # 全局误判率控制在1%
+)
+        # 加载 NLTK 词典以实现 O(1) 查询
+        self.english_vocab = set(w.lower() for w in words.words())
         self.COMMON_SHORT_WORDS = {
             'i', 'j', 'k', 'x', 'y', 'z', 'a', 'b', 'c', 'n', 'm', 't', 'p',
             'id', 'db', 'ip', 'to', 'in', 'on', 'up', 'at', 'by', 'of', 'if',
@@ -171,23 +182,79 @@ class AdvancedSecretFilter:
                 entropy += -p_x * math.log(p_x, 2)
         return entropy
 
+    # def calculate_word_coverage(self, text):
+    #     if not text:
+    #         return 0.0, []
+    #     clean_text = ''.join(c for c in text if c.isalnum() or c == '_')
+    #     if not clean_text:
+    #         return 0.0, []
+    #     words = wordninja.split(clean_text)
+    #     valid_words = []
+    #     for word in words:
+    #         word_lower = word.lower()
+    #         if (len(word) > 2 or
+    #                 word_lower in self.COMMON_SHORT_WORDS or
+    #                 (word.isupper() and len(word) >= 2)):
+    #             valid_words.append(word)
+    #     valid_len = sum(len(w) for w in valid_words)
+    #     ratio = valid_len / len(text) if len(text) > 0 else 0
+    #     return ratio, words
+
     def calculate_word_coverage(self, text):
+        # 返回结果越大，越认为是非敏感信息
         if not text:
-            return 0.0, []
-        clean_text = ''.join(c for c in text if c.isalnum() or c == '_')
+            return 1.0, []
+
+        # 使用bloom filter 过滤掉已经出现过的单词
+        if text in self.bloom_filter:
+            return 1.0, []
+        # 加入bloom filter
+        self.bloom_filter.add(text)
+
+        # 1. 预处理：保留字母数字和下划线
+        clean_text = re.sub(r'[^a-zA-Z]', ' ', text)
         if not clean_text:
             return 0.0, []
-        words = wordninja.split(clean_text)
+
+        # 2. 智能分词
+        raw_words = wordninja.split(clean_text)
+
+        weighted_score = 0
         valid_words = []
-        for word in words:
+
+        for word in raw_words:
             word_lower = word.lower()
-            if (len(word) > 2 or
-                    word_lower in self.COMMON_SHORT_WORDS or
-                    (word.isupper() and len(word) >= 2)):
-                valid_words.append(word)
-        valid_len = sum(len(w) for w in valid_words)
-        ratio = valid_len / len(text) if len(text) > 0 else 0
-        return ratio, words
+            word_length = len(word)
+
+            if word_length >= 3:
+                # 验证单词是否为有效的英文单词或编程常用词
+                is_valid_word = bool(wordnet.synsets(word_lower.lower()))
+
+                if is_valid_word:
+                    valid_words.append(word)
+
+                    # 长单词奖励逻辑：单词越长，越不可能是密钥组成部分
+                    # 密钥哈希很少能拆解出多个有意义的长单词
+                    if word_length >= 5:
+                        weighted_score += word_length * 3.0  # 长单词给予3.0倍权重
+                    else:
+                        weighted_score += word_length * 2.0  # 中长单词给予2.0倍权重
+            else:
+                # 短词(<3字符)处理：通常是哈希片段或无意义字符
+                # 不给予权重加分，体现其"混乱性"
+                pass
+
+        # 3. 计算加权覆盖率
+        ratio = weighted_score / len(clean_text) if len(clean_text) > 0 else 0
+
+        # 归一化处理：防止ratio超过1.0（由于长单词奖励）
+        final_ratio = min(ratio, 1.0)
+        print("[DEBUG] 当前文本: ", text)
+        print("[DEBUG] 分词结果: ", valid_words)
+        print("[DEBUG] 惩罚分数: ", weighted_score)
+        print("[DEBUG] 加权覆盖率: ", final_ratio)
+
+        return final_ratio, valid_words
 
     def is_secret(self, text):
         """判断是否为密钥"""
@@ -197,6 +264,21 @@ class AdvancedSecretFilter:
         code_syntax_indicators = ['${', '||', '&&', '?', '+=', '-=', '===', '!==', '?.', '??']
         if any(indicator in text for indicator in code_syntax_indicators):
             return False
+
+        css_indicators = [
+            '-xs-', '-sm-', '-md-', '-lg-', '-xl-',  # 响应式断点
+            'ml-', 'mr-', 'mt-', 'mb-', 'mx-', 'my-',  # Margin
+            'pl-', 'pr-', 'pt-', 'pb-', 'px-', 'py-',  # Padding
+            'bg-', 'text-', 'border-', 'font-', 'w-', 'h-',  # 常见属性
+            'col-', 'row-', 'flex-', 'grid-'  # 布局
+            'chunk-','data-' # 自定义
+
+        ]
+        if any(ind in text for ind in css_indicators):
+            # 只有当它同时包含 "secret" 或 "key" 等敏感词时才放行
+            # 否则一律视为 CSS 类名垃圾
+            if not any(k in text.lower() for k in ['secret', 'key', 'token', 'auth']):
+                return False, "CSS Class Pattern"
 
         entropy = self.shannon_entropy(text)
 
@@ -280,21 +362,6 @@ class LLMSecretVerifier:
 def scan_js_code(js_code):
     """
     扫描JS代码，返回敏感信息列表
-
-    Args:
-        js_code (str): JS代码字符串
-
-    Returns:
-        list: 敏感信息列表，格式为:
-            [
-                {
-                    'secret': '密钥内容',
-                    'line': '原始代码行',
-                    'entropy': 3.85,
-                    'coverage': 0.25
-                },
-                ...
-            ]
     """
     line_filter = CodeLineFilter()
     adv_filter = AdvancedSecretFilter()
@@ -340,13 +407,17 @@ def remove_html_tags(html_text: str) -> str:
 
 
 def qwen_scan_js_code(js_code):
+    # 1. 预处理
     js_code = remove_html_tags(js_code)
     js_code = format_code(js_code, True)
+
+    # 2. 提取候选
     candidates = scan_js_code(js_code)
 
     if not candidates:
         return []
 
+    # 3. 转换为对象并去重
     candidate_objects = []
     for i, candidate in enumerate(candidates):
         secret_val = candidate['secret']
@@ -356,24 +427,45 @@ def qwen_scan_js_code(js_code):
         candidate_objects.append({
             "id": i,
             "value": secret_val,
-            "original": candidate  # 包含 'line'
+            "original": candidate
         })
         candidate_all.add(secret_val)
 
     if not candidate_objects:
         return []
 
+    # 随机熔断
+    MAX_LLM_CANDIDATES = 30  # 硬限制：单次最多只看 30 个
+
+    if len(candidate_objects) > MAX_LLM_CANDIDATES:
+        print(f"⚠️ 警告：发现 {len(candidate_objects)} 个候选项，触发熔断限制。")
+        print(f"   正在随机采样 {MAX_LLM_CANDIDATES} 个进行检测，其余丢弃...")
+
+        # 1. 随机打乱
+        random.shuffle(candidate_objects)
+
+        # 2. 强制截断
+        candidate_objects = candidate_objects[:MAX_LLM_CANDIDATES]
+
+        # 3. 重置 ID
+        for idx, obj in enumerate(candidate_objects):
+            obj['id'] = idx
+
+    print(f"🚀 准备将 {len(candidate_objects)} 个候选送入 LLM...")
+
     ollama_model = load_ollama_llm()
     verifier = LLMSecretVerifier(ollama_model)
 
-    batch_size = 20  # 既然输出变短了，Batch Size 可以适当调大，进一步提速
+    # 提高 batch_size，因为现在剩下的都是精英了，或者数量已经被我们限制住了
+    batch_size = 30
     all_verified_results = []
     total_batches = (len(candidate_objects) + batch_size - 1) // batch_size
 
+    # 使用 tqdm 显示进度
     for i in tqdm(range(0, len(candidate_objects), batch_size),
-                  desc="🧠 AI 正在审计",
+                  desc="🧠 AI 审计中",
                   total=total_batches,
-                  unit="批次"):
+                  unit="批"):
         batch = candidate_objects[i: i + batch_size]
         batch_results = verifier.verify_candidates(batch)
         all_verified_results.extend(batch_results)

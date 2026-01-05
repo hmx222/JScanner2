@@ -33,7 +33,7 @@ def format_code(js_code: str, fallback_on_error: bool = True) -> str:
 
         # 简单验证：美化后不应为空（除非原文就是空）
         if beautified is None or (len(beautified.strip()) == 0 and len(js_code.strip()) > 0):
-            raise ValueError("Beautifier returned empty result")
+            raise ValueError("Beautifier returned empty Result")
 
         return beautified
 

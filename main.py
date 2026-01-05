@@ -30,9 +30,9 @@ class Scanner:
 
     def run(self):
         """主运行逻辑"""
-        os.makedirs("./result", exist_ok=True)
-        clear_or_create_file("./result/scanInfo.json")
-        clear_or_create_file("./result/sensitiveInfo.json")
+        os.makedirs("Result", exist_ok=True)
+        # clear_or_create_file("Result/scanInfo.json")
+        clear_or_create_file("Result/sensitiveInfo.json")
 
         self.initial_urls = self._load_initial_urls()
         if not self.initial_urls and not self.args.url:
@@ -94,9 +94,10 @@ class Scanner:
                 elif args.sensitiveInfo:
                     sensitive_info = find_all_info_by_rex(scan_info["source_code"])
                 if len(sensitive_info) == 0:
+                    print(f"URL: {url} 没有敏感信息")
                     continue
                 write2json(
-                    "./result/sensitiveInfo.json",
+                    "Result/sensitiveInfo.json",
                     json.dumps(
                         {"url": url, "sensitive_info": sensitive_info},
                         indent=4,  # 加缩进，生成格式化JSON字符串
@@ -132,7 +133,7 @@ if __name__ == '__main__':
     args = parse_args()
     # load whiteList
     start_time = time.time()
-    excel_handler = SafePathExcelGenerator('./result/result.xlsx')
+    excel_handler = SafePathExcelGenerator('Result/Result.xlsx')
     scanner = Scanner(args)
     scanner.run()
     rich_print(f"[bold]请求失败的url：[/bold][underline]{str(fail_url)}[/underline]")

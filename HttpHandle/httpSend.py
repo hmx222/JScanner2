@@ -11,10 +11,8 @@ from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
-from AI.PathFind import run_analysis, clean_output
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from JsHandle.pathScan import get_root_domain, extract_pure_js, is_js_file
-from JsHandle.valid_page import check_valid_page
+from JsHandle.pathScan import get_root_domain
 from parse_args import parse_headers
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -165,7 +163,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "status": status,
             "title": get_webpage_title(html),
             "length": len(html),
-            "valid_Element": check_valid_page(html),
             "source_code": html,
             "is_valid": 0,
         }
@@ -185,7 +182,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             f"\t[bold green]Status:[/bold green] {escape(str(scan_info['status']))}\n"  # 状态码（整数）转字符串
             f"\t[bold cyan]Title:[/bold cyan] {escape(str(scan_info['title']))}\n"  # title可能为None，转字符串
             f"\t[bold yellow]Content Length:[/bold yellow] {escape(str(scan_info['length']))}\n"  # 长度（整数）转字符串
-            f"\t[bold magenta]Valid Elements:[/bold magenta] {escape(str(scan_info['valid_Element']))}\n"  # 确保是字符串
+#            f"\t[bold magenta]Valid Elements:[/bold magenta] {escape(str(scan_info['valid_Element']))}\n"  # 确保是字符串
         )
         scan_info_list.append(scan_info)
 
