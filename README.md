@@ -73,16 +73,11 @@ ollama pull qwen2.5-coder:14b
 
 ```bash
 # 【推荐】标准AI敏感信息扫描（平衡速度与精度）
-python main.py -u "https://target.com" -H 2 -o -q -g -s 0.8 -l
-
-# 【高精度】深度AI分析（适合关键目标）
-python main.py -u "https://target.com" -H 2 -o -q -g -a -s 0.85 -d -l -t 5
+python main.py -u "https://target.com" -H 4 -l -q -o
 
 # 【批量扫描】多URL AI分析（生产环境推荐）
-python main.py -b targets.txt -H 2 -o -q -g -s 0.8 -l -t 8
+python main.py -b targets.txt -H 4 -l -q -o
 
-# 【快速扫描】仅基础敏感信息识别（无AI，速度快）
-python main.py -u "https://target.com" -g -s 0.8 -l
 ```
 
 ## 🤖 AI模型性能与配置
