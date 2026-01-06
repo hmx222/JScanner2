@@ -249,10 +249,6 @@ class AdvancedSecretFilter:
 
         # 归一化处理：防止ratio超过1.0（由于长单词奖励）
         final_ratio = min(ratio, 1.0)
-        print("[DEBUG] 当前文本: ", text)
-        print("[DEBUG] 分词结果: ", valid_words)
-        print("[DEBUG] 惩罚分数: ", weighted_score)
-        print("[DEBUG] 加权覆盖率: ", final_ratio)
 
         return final_ratio, valid_words
 

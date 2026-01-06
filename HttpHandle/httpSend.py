@@ -150,6 +150,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
     unprocessed_scan_info_list = []
     all_next_urls = set()
     for html, url, status in results:
+        html = html.decode("utf-8", errors="ignore")
         if not html:
             continue
 
