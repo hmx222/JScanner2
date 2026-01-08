@@ -4,6 +4,8 @@
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
+[简体中文](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
+
 **JScanner2** is a revolutionary JavaScript security analysis tool with a core breakthrough in **integrating large language models (LLMs) for intelligent sensitive information identification**. Unlike traditional regex-based tools, this tool deeply understands code semantics through AI, achieving unprecedented accuracy and recall rates in sensitive information detection—serving as an AI assistant for security researchers.
 
 ## 🚀 Core Design Highlight: LLM-Driven Sensitive Information Identification
