@@ -55,7 +55,7 @@ class Scanner:
         if depth > self.args.height:
             return
 
-        unprocessed_scan_info_list, scan_info_list, next_urls = asyncio.run(
+        all_next_urls_with_source, scan_info_list, next_urls = asyncio.run(
             get_source_async(
                 urls=urls,
                 thread_num=self.args.thread_num,
@@ -69,11 +69,19 @@ class Scanner:
             self.tmp_urls |= next_urls
 
         # 默认不进行API扫描，data_source = next_urls
-        data_source = next_urls if not args.api else unprocessed_scan_info_list
-        excel_handler.append_data(data_source)
+        excel_handler.append_data(all_next_urls_with_source)
+        """
+        2026 01 07 修改
+        next_urls 现在变动为
+        {
+            "next_urls":next_urls_without_source,
+            "sourceURL":url
+        }
+        
+        """
 
-        if not args.api:
-            next_urls = [url for url in next_urls if ".js" in url]
+        # if not args.api:
+        #     next_urls = [url for url in next_urls if ".js" in url]
 
         if args.sensitiveInfo or args.sensitiveInfoQwen:
             self._extract_sensitive_info(scan_info_list)
