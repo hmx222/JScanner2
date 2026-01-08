@@ -1,7 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
+import requests
+from playwright.async_api import Request
+from urllib3.exceptions import InsecureRequestWarning
+
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 import requests
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Browser
@@ -16,7 +21,8 @@ from JsHandle.pathScan import get_root_domain
 from parse_args import parse_headers
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
+# 定义不需要加载的资源类型，节省带宽和渲染时间
+BLOCKED_RESOURCE_TYPES = {"image", "media", "font", "stylesheet"}
 
 def fix_encoding(text):
     """尝试修复乱码字符串"""
@@ -32,37 +38,68 @@ def fix_encoding(text):
     # 如果所有尝试都失败，返回原始字符串
     return text
 
+
 @asynccontextmanager
 async def get_playwright_page(browser: Browser):
     """异步上下文管理器：创建和自动关闭页面"""
-    page = await browser.new_page()
+    # 使用 new_context 可以更安全地隔离 Cookie 和 Session
+    context = await browser.new_context(
+        user_agent=generate_user_agent(),
+        ignore_https_errors=True
+    )
+    page = await context.new_page()
     try:
         yield page
     finally:
         await page.close()
+        await context.close()
+
 
 fail_url = set()
 
-async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers_: dict):
-    """异步获取单个页面源码（核心请求逻辑）"""
-    try:
-        headers = {"User-Agent": generate_user_agent()}
-        if headers_ is not None:
-            headers.update(parse_headers(headers_))
-        await page.set_extra_http_headers(headers)
-        await page.route("**/*.{png,jpg,jpeg,gif,css,font,ico}", lambda route: route.abort())
 
-        # 导航到页面
-        response = await page.goto(url, wait_until="networkidle")
+async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers_: dict):
+    """
+    保持原有返回值结构: (html_content, url, status)
+    但通过监听，确保 html_content 包含了所有动态发现的 JS
+    """
+    discovered_js = set()
+
+    try:
+        # 1. 拦截无关资源（提速核心）
+        await page.route("**/*", lambda route: route.abort()
+        if route.request.resource_type in BLOCKED_RESOURCE_TYPES
+        else route.continue_())
+
+        # 2. 监听所有 JS 请求
+        def handle_request(request: Request):
+            if request.resource_type == "script" or request.url.split('?')[0].endswith('.js'):
+                discovered_js.add(request.url)
+
+        page.on("request", handle_request)
+
+        if headers_:
+            await page.set_extra_http_headers(parse_headers(headers_))
+
+        # 3. 导航
+        response = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
         status = response.status if response else 500
-        html = await page.content()
-        return html, url, status
+
+        # 4. 获取当前页面的 HTML
+        html_content = await page.content()
+
+        if discovered_js:
+            extra_scripts = "".join([f'<script src="{escape(js)}"></script>' for js in discovered_js])
+            html_content = html_content.replace("</body>", f"{extra_scripts}</body>")
+
+        return html_content, url, status
 
     except Exception:
         fail_url.add(url)
         return None, url, None
     finally:
         progress.update(1)
+
 
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
