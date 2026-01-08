@@ -30,6 +30,7 @@ from config.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
 # 加载词库
 nltk.download('wordnet', quiet=True)
 nltk.download('omw-1.4', quiet=True)
+nltk.download('words', quiet=True)
 nltk.data.path.append('../config/nltk_data')
 
 # ==================== 第一步：粗过滤器 ====================
@@ -237,9 +238,9 @@ class AdvancedSecretFilter:
                     # 长单词奖励逻辑：单词越长，越不可能是密钥组成部分
                     # 密钥哈希很少能拆解出多个有意义的长单词
                     if word_length >= 5:
-                        weighted_score += word_length * 3.0  # 长单词给予3.0倍权重
+                        weighted_score += word_length * 2.0  # 长单词给予2.0倍权重
                     else:
-                        weighted_score += word_length * 2.0  # 中长单词给予2.0倍权重
+                        weighted_score += word_length * 1.5  # 中长单词给予1.5倍权重
             else:
                 # 短词(<3字符)处理：通常是哈希片段或无意义字符
                 # 不给予权重加分，体现其"混乱性"
@@ -267,7 +268,7 @@ class AdvancedSecretFilter:
             'ml-', 'mr-', 'mt-', 'mb-', 'mx-', 'my-',  # Margin
             'pl-', 'pr-', 'pt-', 'pb-', 'px-', 'py-',  # Padding
             'bg-', 'text-', 'border-', 'font-', 'w-', 'h-',  # 常见属性
-            'col-', 'row-', 'flex-', 'grid-'  # 布局
+            'col-', 'row-', 'flex-', 'grid-' , # 布局
             'chunk-','data-' # 自定义
 
         ]
@@ -432,7 +433,7 @@ def qwen_scan_js_code(js_code):
         return []
 
     # 随机熔断
-    MAX_LLM_CANDIDATES = 30  # 硬限制：单次最多只看 30 个
+    MAX_LLM_CANDIDATES = 50  # 硬限制：单次最多只看 50 个
 
     if len(candidate_objects) > MAX_LLM_CANDIDATES:
         print(f"⚠️ 警告：发现 {len(candidate_objects)} 个候选项，触发熔断限制。")
