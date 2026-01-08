@@ -9,9 +9,9 @@ import os
 import traceback
 from typing import List, Dict, Any, Iterable, Optional
 
-# 类型别名，提高代码可读性
+# 类型别名，匹配你的实际输入格式
 UrlData = Dict[str, str]
-InputData = Iterable[Any]  # 支持 list/set 等可迭代类型
+InputData = List[Dict[str, Any]]  # 实际输入：列表，元素是含next_urls/sourceURL的字典
 
 # 啊啊啊啊 ，这文件是ai写的，我也不知道为什么有这些函数😒
 def sort_by_domain_and_url(data: List[UrlData]) -> List[UrlData]:
@@ -29,13 +29,12 @@ def normalize_url(url: str) -> str:
         normalized = urlunparse((scheme, netloc, path, '', '', ''))
         return normalized.lower()
     except Exception as e:
-
         return url.strip().lower()
 
 
 class SafePathExcelGenerator:
-    # 类常量：表头和样式配置，集中管理便于修改
-    HEADERS = ["id", "Domain", "URL", "Path", "Status", "Length", "Title"]
+    # 类常量：表头和样式配置
+    HEADERS = ["id", "Domain", "URL", "Path", "sourceURL"]
 
     def __init__(self, output_file: str):
         self.output_file = output_file
@@ -44,10 +43,9 @@ class SafePathExcelGenerator:
         self.all_data: List[UrlData] = []
         # 去重集合：存储（domain, 归一化url, path）的元组
         self.existing_row_signatures: set[tuple[str, str, str]] = set()
-        # 兼容旧逻辑的 URL 去重集合（可逐步迁移）
         self.existing_normalized_urls: set[str] = set()
 
-        # 样式定义（一次定义，多次使用）
+        # 样式定义
         self.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
         self.header_font = Font(bold=True, name="Arial")
         self.thin_border = Border(
@@ -58,7 +56,6 @@ class SafePathExcelGenerator:
         )
         self.del_old_file()
         self._init_file_safely()
-
 
     def del_old_file(self) -> None:
         """删除旧文件，创建新文件"""
@@ -100,13 +97,15 @@ class SafePathExcelGenerator:
                 if all(self.ws.cell(row=row, column=col).value is None for col in (1, 2)):
                     continue
 
-                # 提取核心字段
+                # 提取核心字段（适配新表头）
                 domain = str(self.ws.cell(row=row, column=2).value).strip() if self.ws.cell(row=row,
                                                                                             column=2).value is not None else ""
                 url = str(self.ws.cell(row=row, column=3).value).strip() if self.ws.cell(row=row,
                                                                                          column=3).value is not None else ""
                 path = str(self.ws.cell(row=row, column=4).value).strip() if self.ws.cell(row=row,
                                                                                           column=4).value is not None else ""
+                sourceURL = str(self.ws.cell(row=row, column=5).value).strip() if self.ws.cell(row=row,
+                                                                                               column=5).value is not None else ""
 
                 if not url:
                     continue  # 跳过空 URL 行
@@ -123,27 +122,19 @@ class SafePathExcelGenerator:
                         "domain": domain,
                         "url": url,
                         "path": path,
-                        "status": str(self.ws.cell(row=row, column=5).value).strip() if self.ws.cell(row=row,
-                                                                                                     column=5).value is not None else "",
-                        "length": str(self.ws.cell(row=row, column=6).value).strip() if self.ws.cell(row=row,
-                                                                                                     column=6).value is not None else "",
-                        "title": str(self.ws.cell(row=row, column=7).value).strip() if self.ws.cell(row=row,
-                                                                                                    column=7).value is not None else ""
+                        "sourceURL": sourceURL
                     })
 
             # 更新内存数据
             self.all_data = unique_historical_data
             self.existing_row_signatures = existing_signatures
             self.existing_normalized_urls = existing_urls
-            # print(f"✅ 加载历史数据完成，过滤 {self.ws.max_row - 1 - len(unique_historical_data)} 条重复数据")
 
         except (ValueError, IndexError) as e:
-            # print(f"⚠️ 加载历史数据时格式错误：{str(e)}，使用空数据初始化")
             self.all_data = []
             self.existing_row_signatures = set()
             self.existing_normalized_urls = set()
         except Exception as e:
-            # print(f"⚠️ 加载历史数据失败：{str(e)}，使用空数据初始化")
             self.all_data = []
             self.existing_row_signatures = set()
             self.existing_normalized_urls = set()
@@ -159,55 +150,56 @@ class SafePathExcelGenerator:
                 self.wb.read_only = False
 
             self.wb.save(self.output_file)
-            # print(f"✅ 已成功保存至：{self.output_file}")
             self._init_file_safely()  # 重新加载最新文件
         except Exception as e:
-            # print(f"❌ 保存失败：{str(e)}")
             backup_file = self.output_file.replace(".xlsx", "_backup.xlsx")
             try:
                 self.wb.save(backup_file)
-                # print(f"📌 已创建备份文件：{backup_file}")
             except Exception as be:
-                pass# print(f"❌ 备份文件创建失败：{str(be)}")
+                pass
 
     def _process_input_data(self, input_data: InputData) -> List[UrlData]:
         """
-        处理输入数据，统一转换为标准格式
-        支持：list/set 的字典或字符串（URL）
+        完全适配你的实际输入格式：
+        input_data = [{"next_urls": 集合/列表, "sourceURL": 字符串}, ...]
         """
         normalized_input: List[UrlData] = []
 
-        # 统一转换为列表处理（支持 set 等可迭代类型）
-        input_list = list(input_data) if isinstance(input_data, Iterable) else []
+        # 第一步：校验输入是否为列表
+        if not isinstance(input_data, list):
+            print("⚠️ 输入数据格式错误，必须是列表：[{'next_urls': 集合/列表, 'sourceURL': 字符串}, ...]")
+            return normalized_input
 
-        for item in input_list:
-            try:
-                if isinstance(item, dict):
-                    # 处理完整信息字典
-                    normalized_input.append({
-                        "domain": str(item.get("domain", "")).strip(),
-                        "url": str(item.get("url", "")).strip(),
-                        "path": str(item.get("path", "")).strip(),
-                        "status": str(item.get("status", "")).strip(),
-                        "length": str(item.get("length", "")).strip(),
-                        "title": str(item.get("title", "")).strip()
-                    })
-                elif isinstance(item, str):
-                    # 处理纯 URL 字符串
-                    url = item.strip()
-                    if url:
-                        normalized_input.append({
-                            "url": url,
-                            "domain": self._extract_domain_from_url(url),
-                            "path": self._extract_path_from_url(url),
-                            "status": "",
-                            "length": "",
-                            "title": ""
-                        })
-                else:
-                  pass  # print(f"⚠️ 跳过无效数据类型：{type(item)}（值：{item}）")
-            except Exception as e:
-                pass # print(f"⚠️ 处理数据项失败：{str(item)}，错误：{str(e)}")
+        # 第二步：遍历列表中的每个字典元素
+        for item in input_data:
+            # 校验每个元素是否是字典，且包含next_urls和sourceURL
+            if not isinstance(item, dict) or "next_urls" not in item or "sourceURL" not in item:
+                print(f"⚠️ 列表元素格式错误，跳过该元素：{item}，要求：{'next_urls': 集合/列表, 'sourceURL': 字符串}")
+                continue
+
+            # 提取当前元素的next_urls（集合/列表）和sourceURL
+            next_urls = item.get("next_urls", [])
+            sourceURL = str(item.get("sourceURL", "")).strip()
+
+            # 校验next_urls是否为可迭代类型（集合/列表，排除字符串）
+            if not isinstance(next_urls, Iterable) or isinstance(next_urls, str):
+                print(f"⚠️ next_urls格式错误（必须是集合/列表），跳过该元素：{item}")
+                continue
+
+            # 第三步：遍历当前元素的每个next URL，绑定sourceURL
+            for url in next_urls:
+                # 过滤无效URL（非字符串/空字符串）
+                if not isinstance(url, str) or not url.strip():
+                    continue
+                url_str = url.strip()
+
+                # 构建标准UrlData字典
+                normalized_input.append({
+                    "url": url_str,
+                    "domain": self._extract_domain_from_url(url_str),
+                    "path": self._extract_path_from_url(url_str),
+                    "sourceURL": sourceURL
+                })
 
         return normalized_input
 
@@ -217,7 +209,6 @@ class SafePathExcelGenerator:
             parsed = urlparse(url)
             return parsed.netloc if parsed.netloc else (parsed.path.split('/')[0] if parsed.path else '')
         except Exception as e:
-            # print(f"⚠️ 域名提取失败：{url}，错误：{str(e)}")
             return ''
 
     def _extract_path_from_url(self, url: str) -> str:
@@ -226,7 +217,6 @@ class SafePathExcelGenerator:
             parsed = urlparse(url)
             return parsed.path if parsed.path else ''
         except Exception as e:
-            # print(f"⚠️ 路径提取失败：{url}，错误：{str(e)}")
             return ''
 
     def _filter_new_data(self, normalized_input: List[UrlData]) -> List[UrlData]:
@@ -235,12 +225,8 @@ class SafePathExcelGenerator:
 
         for item in normalized_input:
             try:
-                # 跳过无效标记或空 URL
-                if item.get("is_valid") == 1:
-                    continue
                 url = item["url"]
                 if not url:
-                    # print(f"⚠️ 跳过空 URL 数据")
                     continue
 
                 # 提取核心字段
@@ -251,29 +237,26 @@ class SafePathExcelGenerator:
                 # 构建行特征（domain + 归一化 url + path）
                 row_signature = (domain.lower(), normalized_url, path.lower())
 
-                # 去重检查（同时检查 URL 和行特征）
+                # 去重检查
                 if (row_signature in self.existing_row_signatures
                         or normalized_url in self.existing_normalized_urls):
-                    # print(f"⚠️ 跳过重复数据：{item}（URL 或行特征已存在）")
                     continue
 
                 new_data.append(item)
                 self.existing_row_signatures.add(row_signature)
                 self.existing_normalized_urls.add(normalized_url)
             except Exception as e:
-               pass # print(f"⚠️ 过滤数据失败：{str(item)}，错误：{str(e)}")
+                pass
 
         return new_data
 
-    def clean_illegal_chars(text):
+    def clean_illegal_chars(self, text):
         if not isinstance(text, str):
             return text
-        # 正则表达式，匹配 ASCII 控制字符（除了常见的空白符等可显示的）
-        # 这里保留了常见的空白符（如空格、换行等），如果不需要可调整正则
         return re.sub(r'[\x00-\x08\x0b-\x1f]', '', text)
 
     def _render_excel(self) -> None:
-        """渲染 Excel 内容（表头、数据、样式）"""
+        """渲染 Excel 内容（仅适配新表头和新数据）"""
         if not self.ws or not self.wb:
             print("❌ 工作表未初始化，无法渲染数据")
             return
@@ -303,9 +286,7 @@ class SafePathExcelGenerator:
                 item["domain"],
                 item["url"],
                 item["path"],
-                item["status"],
-                item["length"],
-                item["title"]
+                item["sourceURL"]
             ]
             try:
                 self.ws.append(row_data)
@@ -320,46 +301,40 @@ class SafePathExcelGenerator:
                 cell.alignment = self.alignment
                 cell.border = self.thin_border
 
-        # 🚀 优化列宽计算：仅对关键列（URL=第3列, Title=第7列）采样前1000行
-        KEY_COLS = {3, 7}  # URL 和 Title 列
+        # 优化列宽计算：URL（3列）、sourceURL（5列）
+        KEY_COLS = {3, 5}
         DEFAULT_WIDTH = 15
         MAX_SAMPLE_ROWS = 10
 
         for col_idx in range(1, self.ws.max_column + 1):
             try:
                 if col_idx in KEY_COLS and self.ws.max_row > 1:
-                    # 采样前 MAX_SAMPLE_ROWS 行计算最大宽度
                     sample_rows = min(MAX_SAMPLE_ROWS, self.ws.max_row)
                     max_length = max(
                         len(str(self.ws.cell(row=row, column=col_idx).value or ""))
                         for row in range(1, sample_rows + 1)
                     )
-                    width = min(max_length, 50) + 2  # 限制最大宽度为50
+                    width = min(max_length, 50) + 2
                 else:
                     width = DEFAULT_WIDTH
 
                 col_letter = get_column_letter(col_idx)
                 self.ws.column_dimensions[col_letter].width = width
             except Exception as e:
-                # 可选：记录日志或忽略
                 pass
 
     def append_data(self, input_data: InputData, auto_save: bool = True) -> None:
         """
-        追加数据，支持多种输入格式：
-        1. 字典列表：[{"domain": "...", "url": "...", ...}]
-        2. URL 列表/集合：["http://example.com", ...] 或 {"http://a.com", ...}
+        追加你的实际格式数据：[{'next_urls': 集合, 'sourceURL': 字符串}, ...]
         """
         # 1. 处理输入数据
         normalized_input = self._process_input_data(input_data)
         if not normalized_input:
-            # print("ℹ️ 无有效输入数据")
             return
 
-        # 2. 过滤新数据（按完整行特征去重）
+        # 2. 过滤新数据
         new_data = self._filter_new_data(normalized_input)
         if not new_data:
-            # print("ℹ️ 无新数据可写入")
             return
 
         # 3. 合并并排序数据
@@ -379,6 +354,4 @@ class SafePathExcelGenerator:
             if self.wb:
                 self.wb.close()
         except Exception as e:
-            pass# print(f"⚠️ 关闭工作簿失败：{str(e)}")
-
-
+            pass

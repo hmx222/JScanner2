@@ -30,6 +30,7 @@ from config.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
 # 加载词库
 nltk.download('wordnet', quiet=True)
 nltk.download('omw-1.4', quiet=True)
+nltk.data.path.append('../config/nltk_data')
 
 # ==================== 第一步：粗过滤器 ====================
 class CodeLineFilter:

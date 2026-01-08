@@ -18,6 +18,20 @@ from parse_args import parse_headers
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
+def fix_encoding(text):
+    """尝试修复乱码字符串"""
+    encodings = ['utf-8', 'gbk', 'gb2312', 'latin1', 'iso-8859-1']
+
+    for enc in encodings:
+        try:
+            # 先用当前编码编码，再用utf-8解码
+            return text.encode(enc).decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+
+    # 如果所有尝试都失败，返回原始字符串
+    return text
+
 @asynccontextmanager
 async def get_playwright_page(browser: Browser):
     """异步上下文管理器：创建和自动关闭页面"""
@@ -147,12 +161,14 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
     # 处理请求结果（生成scan_info并去重）
     scan_info_list = []
     # 未处理的scan_info_list(主要是给excel传值，靠北了)
-    unprocessed_scan_info_list = []
+    all_next_urls_with_source = []
     all_next_urls = set()
     for html, url, status in results:
-        html = html.decode("utf-8", errors="ignore")
         if not html:
             continue
+
+        # 修复编码
+        html = fix_encoding(html)
 
         # 生成基础扫描信息
         parsed = urlparse(url)
@@ -168,15 +184,22 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "is_valid": 0,
         }
         # 又tnd绕了一圈
-        scan_info.pop("source_code")
-        unprocessed_scan_info_list.append(scan_info)
-        scan_info["source_code"] = html
+        # scan_info.pop("source_code")
+        # all_next_urls_with_source.append(scan_info)
+        # scan_info["source_code"] = html
 
         # 去重并提取下一层URL
-        is_valid, next_urls = await process_scan_result(scan_info, checker, args)
+        is_valid, next_urls_without_source = await process_scan_result(scan_info, checker, args)
         if is_valid:
             scan_info["is_valid"] = 1
-            all_next_urls.update(next_urls)
+
+            next_urls_with_source = {
+                "next_urls":next_urls_without_source,
+                "sourceURL":url
+            }
+
+            all_next_urls_with_source.append(next_urls_with_source)
+            all_next_urls.update(next_urls_without_source)
 
         print(
             f"[bold blue]URL:[/bold blue] {escape(str(scan_info['url']))}\n"  # 确保转为字符串
@@ -187,4 +210,4 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         )
         scan_info_list.append(scan_info)
 
-    return unprocessed_scan_info_list, scan_info_list, all_next_urls
+    return all_next_urls_with_source, scan_info_list, all_next_urls
