@@ -4,6 +4,8 @@ import os
 import time
 import warnings
 
+from tqdm import tqdm
+
 from AI.SenInfo import qwen_scan_js_code
 
 warnings.filterwarnings("ignore")
@@ -55,39 +57,88 @@ class Scanner:
         if depth > self.args.height:
             return
 
-        all_next_urls_with_source, scan_info_list, next_urls = asyncio.run(
-            get_source_async(
-                urls=urls,
-                thread_num=self.args.thread_num,
-                args=self.args,
-                checker=self.checker
+        # 转换为列表，确保顺序
+        urls_list = list(urls) if isinstance(urls, set) else urls
+
+        # 清理URL空格
+        urls_list = [url.strip() for url in urls_list if url.strip()]
+
+        print(f"[bold green]🔍 深度 {depth} 扫描开始，URL总数: {len(urls_list)}[/bold green]")
+
+        # 分批次处理（每批1000个）
+        batch_size = 1000
+        total_batches = (len(urls_list) + batch_size - 1) // batch_size
+
+        # 存储所有批次的结果（只用于递归和敏感信息提取）
+        all_scan_info_list = []
+        all_next_urls = set()
+
+        for batch_idx in range(0, len(urls_list), batch_size):
+            batch_urls = urls_list[batch_idx:batch_idx + batch_size]
+            current_batch = batch_idx // batch_size + 1
+
+            print(
+                f"\n[bold cyan]📦 深度 {depth} - URL扫描批次 {current_batch}/{total_batches} (URL数量: {len(batch_urls)})[/bold cyan]")
+
+            # 调用get_source_async处理当前批次
+            batch_all_next_urls_with_source, batch_scan_info_list, batch_next_urls = asyncio.run(
+                get_source_async(
+                    urls=batch_urls,
+                    thread_num=self.args.thread_num,
+                    args=self.args,
+                    checker=self.checker
+                )
             )
-        )
 
-        next_urls = next_urls - self.tmp_urls
-        if next_urls:
-            self.tmp_urls |= next_urls
+            # 去重处理
+            batch_next_urls = batch_next_urls - self.tmp_urls
+            if batch_next_urls:
+                self.tmp_urls |= batch_next_urls
 
-        # 默认不进行API扫描，data_source = next_urls
-        excel_handler.append_data(all_next_urls_with_source)
-        """
-        2026 01 07 修改
-        next_urls 现在变动为
-        {
-            "next_urls":next_urls_without_source,
-            "sourceURL":url
-        }
-        
-        """
+            # 统计当前批次的URL数量
+            current_batch_urls_count = 0
+            for item in batch_all_next_urls_with_source:
+                if isinstance(item, dict) and "next_urls" in item:
+                    next_urls = item["next_urls"]
+                    if isinstance(next_urls, (list, set, tuple)):
+                        current_batch_urls_count += len(next_urls)
 
-        # if not args.api:
-        #     next_urls = [url for url in next_urls if ".js" in url]
+            # 立即将当前批次结果写入Excel
+            if batch_all_next_urls_with_source:
+                print(f"[bold blue]💾 立即写入深度 {depth} - 批次 {current_batch} 的数据到Excel "
+                      f"({len(batch_all_next_urls_with_source)} 个批次条目，约 {current_batch_urls_count} 个URL)[/bold blue]")
 
-        if args.sensitiveInfo or args.sensitiveInfoQwen:
-            self._extract_sensitive_info(scan_info_list)
+                try:
+                    excel_handler.append_data_batch(
+                        input_data=batch_all_next_urls_with_source,
+                        batch_size=1000,
+                        show_progress=False  # 避免嵌套进度条
+                    )
+                    print(f"[green]✅ 深度 {depth} - 批次 {current_batch} 数据写入Excel成功[/green]")
+                except Exception as e:
+                    print(f"[red]❌ 深度 {depth} - 批次 {current_batch} 数据写入Excel失败: {str(e)}[/red]")
 
-        if next_urls:
-            self._scan_recursive(next_urls, depth + 1)
+            # 合并结果用于后续处理
+            all_scan_info_list.extend(batch_scan_info_list)
+            all_next_urls.update(batch_next_urls)
+
+            # 批次间休息，释放资源
+            if current_batch < total_batches:
+                print(f"[yellow]⏳ 深度 {depth} - URL扫描批次 {current_batch} 完成，等待 1 秒释放资源...[/yellow]")
+                time.sleep(1)
+
+        # 处理敏感信息（所有批次完成后统一处理）
+        if self.args.sensitiveInfo or self.args.sensitiveInfoQwen:
+            print(f"[bold magenta]🔍 开始敏感信息提取，总数据量: {len(all_scan_info_list)}[/bold magenta]")
+            self._extract_sensitive_info(all_scan_info_list)
+
+        # 递归下一层
+        if all_next_urls:
+            print(
+                f"[bold blue]➡️  深度 {depth} 完成，发现 {len(all_next_urls)} 个新URL，进入深度 {depth + 1}[/bold blue]")
+            self._scan_recursive(all_next_urls, depth + 1)
+        else:
+            print(f"[bold green]✅ 深度 {depth} 完成，未发现新URL[/bold green]")
 
     def _extract_sensitive_info(self, scan_info_list):
         """提取敏感信息（从有效扫描结果中）"""

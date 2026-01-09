@@ -174,7 +174,7 @@ def check_url(original_url,splicing_url):
 
     if any(ext in urlparse2.path for ext in (
             '.png', '.jpg', '.jpeg', '.ico', '.mp4', '.mp3', '.gif', 'ttf',
-            '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.ttf', '.eot',
+            '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.ttf', '.eot','shtml',
             '.otf', '.apk', '.exe', '.swf','.webp','.html','.htm','.vue','.ts','.tsx','.vue'
     )):
         return False
