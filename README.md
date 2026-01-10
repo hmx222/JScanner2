@@ -139,6 +139,3 @@ If you encounter any problems during use, please submit an issue:
 
 ---
 
-
-3. 保留了所有实操命令和参数说明的准确性，可直接用于英文环境下的工具使用，同时支持中文README与该英文版本的双向切换（默认展示英文版本）。
-> （注：文档部分内容可能由 AI 生成）
