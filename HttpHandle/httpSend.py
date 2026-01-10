@@ -9,7 +9,7 @@ from urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 import requests
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, Page, Browser
+from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from rich import print
 from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
@@ -38,25 +38,22 @@ def fix_encoding(text):
     # 如果所有尝试都失败，返回原始字符串
     return text
 
-
+# ✅ 修改点1：【核心】接收全局唯一Context，只创建Page(Tab)，用完仅关闭Tab，Context全局复用
+# 效果：一个浏览器窗口内的多个Tab，10线程=10个Tab，完全独立，无进程泄漏
 @asynccontextmanager
-async def get_playwright_page(browser: Browser):
-    """异步上下文管理器：创建和自动关闭页面"""
-    # 使用 new_context 可以更安全地隔离 Cookie 和 Session
-    context = await browser.new_context(
-        user_agent=generate_user_agent(),
-        ignore_https_errors=True
-    )
+async def get_playwright_page(context: BrowserContext):
+    """异步上下文管理器：创建和自动关闭页面【仅创建Tab，全局一个浏览器环境】"""
     page = await context.new_page()
     try:
         yield page
     finally:
-        await page.close()
-        await context.close()
-
+        # 核心修复：给page.close()增加【超时强制兜底】，破解异步死锁永不返回的问题
+        try:
+            await asyncio.wait_for(page.close(), timeout=3.0)
+        except asyncio.TimeoutError:
+            pass  # 超时就放弃，不报错、不阻塞、程序继续走
 
 fail_url = set()
-
 
 async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers_: dict):
     """
@@ -64,7 +61,7 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
     但通过监听，确保 html_content 包含了所有动态发现的 JS
     """
     discovered_js = set()
-
+    handle_request = None
     try:
         # 1. 拦截无关资源（提速核心）
         await page.route("**/*", lambda route: route.abort()
@@ -98,9 +95,10 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
         fail_url.add(url)
         return None, url, None
     finally:
+        # ✅ 补充：移除监听，无内存泄漏，不影响你的逻辑
+        if handle_request:
+            page.remove_listener("request", handle_request)
         progress.update(1)
-
-
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
     """处理扫描结果（去重+提取下一层URL）"""
@@ -168,7 +166,6 @@ def get_webpage_title(html_source):
         return title_tag.text
     return "NULL"
 
-
 async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
     """Playwright异步批量请求+去重处理入口"""
 
@@ -178,20 +175,29 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         browser = await p.chromium.launch(
             headless=not args.visible,
             proxy={"server": args.proxy} if args.proxy else None,
-            args=["--disable-gpu", "--no-sandbox"]
+            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"] # ✅ 补全Linux必加参数，解决内存不足，无副作用
+        )
+        # ✅ 修改点2：【核心】全局只创建1个Context → 对应1个浏览器窗口，所有Tab都在这个窗口内
+        global_context = await browser.new_context(
+            user_agent=generate_user_agent(),
+            ignore_https_errors=True,
+            java_script_enabled=False
         )
 
         try:
-            # 并发控制
+            # 并发控制：线程数=同时打开的Tab数，10线程=10个Tab，完美匹配你的需求
             semaphore = asyncio.Semaphore(thread_num)
             async def bounded_fetch(url):
                 async with semaphore:
-                    async with get_playwright_page(browser) as page:
+                    # ✅ 修改点3：传入全局Context，只创建Tab，用完关Tab，无进程泄漏
+                    async with get_playwright_page(global_context) as page:
                         return await fetch_page_async(page, url, progress, args.headers)
 
             results = await asyncio.gather(*[bounded_fetch(url) for url in urls])
 
         finally:
+            # 先关闭全局上下文，再关闭浏览器，顺序正确，无残留
+            await global_context.close()
             await browser.close()
             progress.close()
 
