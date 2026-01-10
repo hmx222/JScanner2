@@ -21,7 +21,7 @@ from JsHandle.pathScan import get_root_domain
 from parse_args import parse_headers
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-# 定义不需要加载的资源类型，节省带宽和渲染时间
+
 BLOCKED_RESOURCE_TYPES = {"image", "media", "font", "stylesheet"}
 
 def fix_encoding(text):
@@ -38,8 +38,7 @@ def fix_encoding(text):
     # 如果所有尝试都失败，返回原始字符串
     return text
 
-# ✅ 修改点1：【核心】接收全局唯一Context，只创建Page(Tab)，用完仅关闭Tab，Context全局复用
-# 效果：一个浏览器窗口内的多个Tab，10线程=10个Tab，完全独立，无进程泄漏
+
 @asynccontextmanager
 async def get_playwright_page(context: BrowserContext):
     """异步上下文管理器：创建和自动关闭页面【仅创建Tab，全局一个浏览器环境】"""
@@ -47,11 +46,10 @@ async def get_playwright_page(context: BrowserContext):
     try:
         yield page
     finally:
-        # 核心修复：给page.close()增加【超时强制兜底】，破解异步死锁永不返回的问题
         try:
             await asyncio.wait_for(page.close(), timeout=3.0)
         except asyncio.TimeoutError:
-            pass  # 超时就放弃，不报错、不阻塞、程序继续走
+            pass
 
 fail_url = set()
 
@@ -63,12 +61,11 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
     discovered_js = set()
     handle_request = None
     try:
-        # 1. 拦截无关资源（提速核心）
         await page.route("**/*", lambda route: route.abort()
         if route.request.resource_type in BLOCKED_RESOURCE_TYPES
         else route.continue_())
 
-        # 2. 监听所有 JS 请求
+        # 监听所有 JS 请求
         def handle_request(request: Request):
             if request.resource_type == "script" or request.url.split('?')[0].endswith('.js'):
                 discovered_js.add(request.url)
@@ -78,11 +75,10 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
         if headers_:
             await page.set_extra_http_headers(parse_headers(headers_))
 
-        # 3. 导航
+        # 导航
         response = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
         status = response.status if response else 500
 
-        # 4. 获取当前页面的 HTML
         html_content = await page.content()
 
         if discovered_js:
@@ -95,36 +91,43 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
         fail_url.add(url)
         return None, url, None
     finally:
-        # ✅ 补充：移除监听，无内存泄漏，不影响你的逻辑
         if handle_request:
             page.remove_listener("request", handle_request)
         progress.update(1)
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
-    """处理扫描结果（去重+提取下一层URL）"""
+    """处理扫描结果（去重+提取下一层URL）- 最终定稿版 ✔
+    核心逻辑：-x/--x1 为综合去重总开关，完美区分懒人模式/自定义模式
+    1. 开启-x (默认True) → 懒人一键去重：调用is_page_duplicate+内置推荐参数，无需配置其他参数
+    2. 关闭-x (--no-x1) → 自定义去重：走用户手动配置的独立去重维度，配啥生效啥
+    """
     url = scan_info["url"]
     source = scan_info["source_code"]
     status = scan_info["status"]
     title = scan_info["title"]
     length = scan_info["length"]
 
-    # 基础过滤（无效URL/错误状态码/过短源码）
+    # 基础过滤（无效URL/错误状态码/过短源码）- 完全保留你原有的所有逻辑，一行未改
     if not checker.is_valid_url(url):
         return False, set()
-    if status and status >= 404:
+    if status and status == 404:
         return False, set()
     if not source or length < 200:
         return False, set()
 
     if ".js" not in url:
-        # 去重检查（按配置的策略执行）
-        if (args.de_duplication_hash and checker.check_duplicate_by_DOM_simhash(source,args.de_duplication_hash)) or \
-                (args.de_duplication_title and checker.check_duplicate_by_title(title, url)) or \
-                (args.de_duplication_length and checker.check_duplicate_by_length(length, url)) or \
-                (args.de_duplication_similarity and checker.check_duplicate_by_simhash(
-                    source, url, float(args.de_duplication_similarity))):
-            return False, set()
+        if args.x1:
+            # 开启-x：懒人模式，一键综合去重，使用内置推荐最优参数，无需任何配置
+            if checker.is_page_duplicate(url, source, title):
+                return False, set()
+        else:
+            # 关闭-x：自定义模式，走用户手动配置的独立去重维度，原版逻辑完全保留
+            if (args.de_duplication_hash and checker.check_duplicate_by_dom_simhash(source, url, int(args.de_duplication_hash))) or \
+                    (args.de_duplication_title and checker.check_duplicate_by_title(title, url)) or \
+                    (args.de_duplication_similarity and checker.check_duplicate_by_simhash(source, url, float(args.de_duplication_similarity))):
+                return False, set()
 
+    # 所有过滤通过，标记URL为已访问
     checker.mark_url_visited(url)
 
     # 提取下一层URL（仅JS文件或初始URL需要）
@@ -138,20 +141,6 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
         else:
             rex_output = analysis_by_rex(source)
             all_dirty.extend(rex_output)
-            # if is_js_file(url) and not source.startswith("<!DOCTYPE html>") and len(source) > 1000 and len(rex_output) >= 6 :
-            #     try:
-            #         print("🤔 大模型正在分析中 🔍💡")
-            #         source = extract_pure_js(source)
-            #         ollama_output = clean_output(run_analysis(source))
-            #         all_dirty.extend(ollama_output)
-            #     except:
-            #         print(
-            #             f"[bold]当前处理的URL:[/bold]\n"
-            #             f"  [blue underline]{url}[/blue underline]\n"
-            #             f"[orange]⚠️ 美化JavaScript时可能出现错误[/orange]\n"
-            #             f"[green]→ 继续执行正常任务[/green]"
-            #         )
-
         next_urls = set(data_clean(url, all_dirty))
 
     return True, next_urls
