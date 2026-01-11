@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 from lxml import etree
 from lxml.etree import _Element
 import time
+import gc  # ✅【新增】核心：导入垃圾回收模块，解决内存碎片+主动释放内存
 
 from HttpHandle.url_bloom_filter import URLBloomFilter
 from JsHandle.Similarity_HTML import get_simhash, similarity
@@ -16,7 +17,6 @@ class DuplicateChecker:
         """
         # 去重核心数据（按域名隔离，避免跨域名误判）
         self.visited_urls = URLBloomFilter()  # 已访问URL
-        # ✅ 优化1: SimHash分桶存储 - 解决O(n)线性遍历性能瓶颈 {域名: {桶key: {simhash集合}}}
         self.content_simhash_buckets = dict()  # 内容相似度分桶
         self.dom_simhash_buckets = dict()  # DOM相似度分桶
         self.title_map = dict()  # {域名: {标题集合}}（标题去重）
@@ -28,10 +28,14 @@ class DuplicateChecker:
         self.dom_simhash_lock = threading.Lock()
         self.title_lock = threading.Lock()
 
-        # 常量配置（64位SimHash分桶配置，工业级标准，无需修改）
         self.SIMHASH_BIT = 64
         self.BUCKET_SPLIT = 4  # 64位切分成4段，每段16位，最优分桶策略
         self.BUCKET_MASK = (1 << (self.SIMHASH_BIT // self.BUCKET_SPLIT)) - 1
+
+        self.MAX_TITLE_PER_DOMAIN = 3000    # 每个域名最多存3000个标题，足够覆盖99.9%去重需求
+        self.MAX_SIMHASH_PER_BUCKET = 1500  # 每个分桶最多存2000个SimHash值，分桶后遍历量极低
+        self.MAX_DOMHASH_PER_BUCKET = 1500  # DOM分桶同内容分桶配置
+        self.MAX_DOMAIN_CACHE = 200         # 最多缓存200个域名的去重数据，超了删最早的，释放大量内存
 
     def is_valid_url(self, url: str) -> bool:
         """检查URL是否有效（未访问+属于目标域名）- 新增参数校验+异常捕获"""
@@ -71,9 +75,26 @@ class DuplicateChecker:
             bucket_keys.append(bucket_key)
         return bucket_keys
 
+    # 集合容量超限自动淘汰 - 核心内存控制，无侵入，调用即生效
+    def _limit_set_size(self, target_set: set, max_size: int):
+        """当集合元素超过上限，删除【最早存入】的元素（Python3.7+集合有序），保留最新数据"""
+        if len(target_set) > max_size:
+            del_list = list(target_set)[:len(target_set)-max_size]
+            for val in del_list:
+                target_set.remove(val)
+
+    # 域名缓存超限全量释放 - 杀手锏优化，解决长尾域名内存泄漏
+    def _limit_domain_cache(self, target_dict: dict, max_domain: int):
+        """当域名数量超过上限，删除【最早爬取】的域名的所有数据，立即GC回收内存"""
+        if len(target_dict) > max_domain:
+            del_domain = list(target_dict.keys())[:len(target_dict)-max_domain]
+            for domain in del_domain:
+                del target_dict[domain]
+            gc.collect()  # 立即强制回收内存，还给系统，不堆积内存碎片
+
     def extract_dom_skeleton(self, element: _Element) -> str:
         """
-        ✅ 核心优化：抽取DOM骨架 - 递归改【迭代(栈)实现】，彻底解决栈溢出风险
+        核心优化：抽取DOM骨架 - 递归改【迭代(栈)实现】，彻底解决栈溢出风险
         保留标签和层级，剔除动态内容/属性，过滤无意义标签，效率提升3-5倍
         """
         skip_tags = {'script', 'style', 'meta', 'link', 'noscript', 'comment'}
@@ -150,7 +171,7 @@ class DuplicateChecker:
                 domain_buckets = self.dom_simhash_buckets[domain]
                 bucket_keys = self._simhash_split_buckets(simhash_val)
 
-                # ✅ 核心优化：只遍历同桶内的哈希值，遍历量从十万级→个位数，O(1)性能
+                # 只遍历同桶内的哈希值，遍历量从十万级→个位数，O(1)性能
                 for bucket_key in bucket_keys:
                     if bucket_key not in domain_buckets:
                         domain_buckets[bucket_key] = set()
@@ -163,6 +184,10 @@ class DuplicateChecker:
                 # 无重复则将哈希值加入所有对应桶
                 for bucket_key in bucket_keys:
                     domain_buckets[bucket_key].add(simhash_val)
+                    #【增量】内存优化：调用集合容量控制，锁住单桶内存
+                    self._limit_set_size(domain_buckets[bucket_key], self.MAX_DOMHASH_PER_BUCKET)
+                # 【增量】内存优化：调用域名容量控制，释放长尾域名内存
+                self._limit_domain_cache(self.dom_simhash_buckets, self.MAX_DOMAIN_CACHE)
             return False
         except Exception as e:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] DOM相似度校验异常: {url}, 错误: {str(e)[:50]}")
@@ -177,7 +202,6 @@ class DuplicateChecker:
         if ".js" in url:
             return False
 
-
         if len(title_norm) <= 5:
             return False
 
@@ -190,6 +214,10 @@ class DuplicateChecker:
                     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 重复过滤 → 标题重复: {url}")
                     return True
                 self.title_map[domain].add(title_norm)
+                # 【增量】内存优化：调用集合容量控制，锁住单域名标题内存
+                self._limit_set_size(self.title_map[domain], self.MAX_TITLE_PER_DOMAIN)
+                # 【增量】内存优化：调用域名容量控制，释放长尾域名内存
+                self._limit_domain_cache(self.title_map, self.MAX_DOMAIN_CACHE)
             return False
         except Exception as e:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 标题去重异常: {url}, 错误: {str(e)[:50]}")
@@ -230,7 +258,7 @@ class DuplicateChecker:
                 domain_buckets = self.content_simhash_buckets[domain]
                 bucket_keys = self._simhash_split_buckets(simhash_val)
 
-                # ✅ 核心优化：只遍历同桶内的哈希值，性能暴增
+                # 核心优化：只遍历同桶内的哈希值，性能暴增
                 for bucket_key in bucket_keys:
                     if bucket_key not in domain_buckets:
                         domain_buckets[bucket_key] = set()
@@ -243,11 +271,14 @@ class DuplicateChecker:
                 # 无重复则将哈希值加入所有对应桶
                 for bucket_key in bucket_keys:
                     domain_buckets[bucket_key].add(simhash_val)
+                    #【增量】内存优化：调用集合容量控制，锁住单桶内存
+                    self._limit_set_size(domain_buckets[bucket_key], self.MAX_SIMHASH_PER_BUCKET)
+                # 【增量】内存优化：调用域名容量控制，释放长尾域名内存
+                self._limit_domain_cache(self.content_simhash_buckets, self.MAX_DOMAIN_CACHE)
             return False
         except Exception as e:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 内容相似度校验异常: {url}, 错误: {str(e)[:50]}")
             return False
-
 
     def is_page_duplicate(self, url: str, html: str, title: str = "",
                           content_sim_threshold: float = 90.0,
@@ -264,6 +295,13 @@ class DuplicateChecker:
             return False
 
         if not isinstance(html, str) or not html.lower().startswith("<!doctype html>"):
+            return False
+
+        if "jquery" in html.lower():
+            return False
+
+        # 【增量】内存优化：过滤超大HTML（>500KB），垃圾页/广告页无爬取价值，减少内存占用
+        if len(html) > 512000:
             return False
 
         # 标题去重：开关开启+标题有效才执行

@@ -1,6 +1,7 @@
 import asyncio
+import gc
 from contextlib import asynccontextmanager
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 
 import requests
 from playwright.async_api import Request
@@ -9,7 +10,7 @@ from urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 import requests
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from playwright.async_api import async_playwright, Page, BrowserContext
 from rich import print
 from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
@@ -96,7 +97,7 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
         progress.update(1)
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
-    """处理扫描结果（去重+提取下一层URL）- 最终定稿版 ✔
+    """处理扫描结果（去重+提取下一层URL）- 最终定稿版 ✔ 新增内存极致优化，根治内存堆积
     核心逻辑：-x/--x1 为综合去重总开关，完美区分懒人模式/自定义模式
     1. 开启-x (默认True) → 懒人一键去重：调用is_page_duplicate+内置推荐参数，无需配置其他参数
     2. 关闭-x (--no-x1) → 自定义去重：走用户手动配置的独立去重维度，配啥生效啥
@@ -109,22 +110,40 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
 
     # 基础过滤（无效URL/错误状态码/过短源码）- 完全保留你原有的所有逻辑，一行未改
     if not checker.is_valid_url(url):
+        del source, scan_info, title, length
+        gc.collect()
         return False, set()
     if status and status == 404:
+        del source, scan_info, title, length
+        gc.collect()
         return False, set()
     if not source or length < 200:
+        del source, scan_info, title, length
+        gc.collect()
+        return False, set()
+
+    # 减少无效去重计算+释放大量内存，无任何业务副作用，内存收益显著
+    if len(source) > 512000:
+        del source, scan_info, title, length
+        gc.collect()
         return False, set()
 
     if ".js" not in url:
         if args.x1:
             # 开启-x：懒人模式，一键综合去重，使用内置推荐最优参数，无需任何配置
             if checker.is_page_duplicate(url, source, title):
+                del source, scan_info, title, length
+                gc.collect()
                 return False, set()
         else:
             # 关闭-x：自定义模式，走用户手动配置的独立去重维度，原版逻辑完全保留
-            if (args.de_duplication_hash and checker.check_duplicate_by_dom_simhash(source, url, int(args.de_duplication_hash))) or \
+            if (args.de_duplication_hash and checker.check_duplicate_by_dom_simhash(source, url,
+                                                                                    int(args.de_duplication_hash))) or \
                     (args.de_duplication_title and checker.check_duplicate_by_title(title, url)) or \
-                    (args.de_duplication_similarity and checker.check_duplicate_by_simhash(source, url, float(args.de_duplication_similarity))):
+                    (args.de_duplication_similarity and checker.check_duplicate_by_simhash(source, url, float(
+                        args.de_duplication_similarity))):
+                del source, scan_info, title, length
+                gc.collect()
                 return False, set()
 
     # 所有过滤通过，标记URL为已访问
@@ -143,7 +162,12 @@ async def process_scan_result(scan_info, checker: DuplicateChecker, args):
             all_dirty.extend(rex_output)
         next_urls = set(data_clean(url, all_dirty))
 
+    # 保留next_urls（需要返回），其余无用变量全部删除，最大化释放内存
+    del source, scan_info, title, length, all_dirty
+    gc.collect()
+
     return True, next_urls
+
 
 def get_webpage_title(html_source):
     """
@@ -164,9 +188,8 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         browser = await p.chromium.launch(
             headless=not args.visible,
             proxy={"server": args.proxy} if args.proxy else None,
-            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"] # ✅ 补全Linux必加参数，解决内存不足，无副作用
+            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"]
         )
-        # ✅ 修改点2：【核心】全局只创建1个Context → 对应1个浏览器窗口，所有Tab都在这个窗口内
         global_context = await browser.new_context(
             user_agent=generate_user_agent(),
             ignore_https_errors=True,
@@ -174,18 +197,15 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
         )
 
         try:
-            # 并发控制：线程数=同时打开的Tab数，10线程=10个Tab，完美匹配你的需求
             semaphore = asyncio.Semaphore(thread_num)
             async def bounded_fetch(url):
                 async with semaphore:
-                    # ✅ 修改点3：传入全局Context，只创建Tab，用完关Tab，无进程泄漏
                     async with get_playwright_page(global_context) as page:
                         return await fetch_page_async(page, url, progress, args.headers)
 
             results = await asyncio.gather(*[bounded_fetch(url) for url in urls])
 
         finally:
-            # 先关闭全局上下文，再关闭浏览器，顺序正确，无残留
             await global_context.close()
             await browser.close()
             progress.close()
@@ -215,10 +235,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             "source_code": html,
             "is_valid": 0,
         }
-        # 又tnd绕了一圈
-        # scan_info.pop("source_code")
-        # all_next_urls_with_source.append(scan_info)
-        # scan_info["source_code"] = html
 
         # 去重并提取下一层URL
         is_valid, next_urls_without_source = await process_scan_result(scan_info, checker, args)

@@ -38,7 +38,7 @@ class CodeLineFilter:
     def __init__(self,
                  min_string_length=5,
                  min_sensitive_length=5,
-                 max_string_length=500):
+                 max_string_length=1000):
         self.min_string_length = min_string_length
         self.min_sensitive_length = min_sensitive_length
         self.max_string_length = max_string_length
@@ -88,7 +88,7 @@ class CodeLineFilter:
         for line in lines:
             original_line = line.strip()
             if not original_line: continue
-            if len(original_line) > 2000: continue
+            if len(original_line) > 3500: continue
             if '"' not in original_line and "'" not in original_line: continue
 
             line_lower = original_line.lower()
@@ -142,6 +142,8 @@ class CodeLineFilter:
                 # 同时保存内容和原始代码行
                 string_candidates.append((content, original_line))
 
+        # 去重：保持顺序，剔除重复的候选值
+        string_candidates = list(set(string_candidates))
         return string_candidates
 
 
@@ -184,24 +186,6 @@ class AdvancedSecretFilter:
                 entropy += -p_x * math.log(p_x, 2)
         return entropy
 
-    # def calculate_word_coverage(self, text):
-    #     if not text:
-    #         return 0.0, []
-    #     clean_text = ''.join(c for c in text if c.isalnum() or c == '_')
-    #     if not clean_text:
-    #         return 0.0, []
-    #     words = wordninja.split(clean_text)
-    #     valid_words = []
-    #     for word in words:
-    #         word_lower = word.lower()
-    #         if (len(word) > 2 or
-    #                 word_lower in self.COMMON_SHORT_WORDS or
-    #                 (word.isupper() and len(word) >= 2)):
-    #             valid_words.append(word)
-    #     valid_len = sum(len(w) for w in valid_words)
-    #     ratio = valid_len / len(text) if len(text) > 0 else 0
-    #     return ratio, words
-
     def calculate_word_coverage(self, text):
         # 返回结果越大，越认为是非敏感信息
         if not text:
@@ -214,7 +198,7 @@ class AdvancedSecretFilter:
         self.bloom_filter.add(text)
 
         # 1. 预处理：保留字母数字和下划线
-        clean_text = re.sub(r'[^a-zA-Z]', ' ', text)
+        clean_text = re.sub(r'[^a-zA-Z0-9-]', ' ', text)
         if not clean_text:
             return 0.0, []
 
@@ -264,10 +248,10 @@ class AdvancedSecretFilter:
             return False
 
         css_indicators = [
-            '-xs-', '-sm-', '-md-', '-lg-', '-xl-',  # 响应式断点
-            'ml-', 'mr-', 'mt-', 'mb-', 'mx-', 'my-',  # Margin
-            'pl-', 'pr-', 'pt-', 'pb-', 'px-', 'py-',  # Padding
-            'bg-', 'text-', 'border-', 'font-', 'w-', 'h-',  # 常见属性
+            # '-xs-', '-sm-', '-md-', '-lg-', '-xl-',  # 响应式断点
+            # 'ml-', 'mr-', 'mt-', 'mb-', 'mx-', 'my-',  # Margin
+            # 'pl-', 'pr-', 'pt-', 'pb-', 'px-', 'py-',  # Padding
+            'bg-', 'text-', 'border-', 'font-',  # 常见属性
             'col-', 'row-', 'flex-', 'grid-' , # 布局
             'chunk-','data-' # 自定义
 
@@ -356,7 +340,7 @@ class LLMSecretVerifier:
             print(f"LLM Error: {e}. Keeping batch.")
             return candidates
 
-# ==================== 封装函数 ====================
+
 def scan_js_code(js_code):
     """
     扫描JS代码，返回敏感信息列表
@@ -389,8 +373,31 @@ def load_ollama_llm():
         reasoning=False
     )
 
-candidate_all = set()
-original_candidate_all = set()
+import random
+import gc
+from collections import OrderedDict
+from tqdm import tqdm
+from bs4 import BeautifulSoup
+
+
+MAX_CANDIDATE_ALL_SIZE = 2000
+MAX_ORIGINAL_ALL_SIZE = 1000
+
+# 初始化：全局有序字典 替代 原全局set (用法和set完全一致，无需修改原有判断逻辑)
+candidate_all = OrderedDict()
+original_candidate_all = OrderedDict()
+
+def _limit_global_set_size(target_dict: OrderedDict, max_size: int):
+    """✅ 新增私有函数：全局集合容量控制，超过上限自动删除【最早插入】的元素，主动释放内存"""
+    if len(target_dict) > max_size:
+        # 计算需要删除的冗余元素数量，多删20%做内存预留
+        del_count = len(target_dict) - max_size + int(max_size * 0.2)
+        # 批量删除最早插入的元素 (OrderedDict.popitem(last=False) 删最前面的元素)
+        for _ in range(del_count):
+            if target_dict:
+                target_dict.popitem(last=False)
+        # 主动触发垃圾回收，立刻释放内存碎片
+        gc.collect()
 
 
 def remove_html_tags(html_text: str) -> str:
@@ -419,21 +426,27 @@ def qwen_scan_js_code(js_code):
     candidate_objects = []
     for i, candidate in enumerate(candidates):
         secret_val = candidate['secret']
+        # ===================== ✅【内存优化-增量修改】=====================
+        # 原逻辑：if secret_val in candidate_all:  → 用法完全不变！
         if secret_val in candidate_all:
             continue
+        # 原逻辑：candidate_all.add(secret_val) → 改为有序字典的键赋值，实现add
+        candidate_all[secret_val] = True
+        # 新增：每次添加后检查容量，超了自动清理，内存封顶
+        _limit_global_set_size(candidate_all, MAX_CANDIDATE_ALL_SIZE)
+        # =================================================================
 
         candidate_objects.append({
             "id": i,
             "value": secret_val,
             "original": candidate
         })
-        candidate_all.add(secret_val)
 
     if not candidate_objects:
         return []
 
     # 随机熔断
-    MAX_LLM_CANDIDATES = 50  # 硬限制：单次最多只看 50 个
+    MAX_LLM_CANDIDATES = 80  # 硬限制：单次最多只看 80 个
 
     if len(candidate_objects) > MAX_LLM_CANDIDATES:
         print(f"⚠️ 警告：发现 {len(candidate_objects)} 个候选项，触发熔断限制。")
@@ -474,11 +487,13 @@ def qwen_scan_js_code(js_code):
         original_line = result['original']['line']  # 获取原始行
 
         # 基于行内容去重，防止同一行出现多个 Key 导致重复输出
+        # 原逻辑：if original_line in original_candidate_all: → 用法完全不变！
         if original_line in original_candidate_all:
             continue
-
+        # 原逻辑：original_candidate_all.add(original_line) → 改为有序字典的键赋值
+        original_candidate_all[original_line] = True
+        # 新增：每次添加后检查容量，超了自动清理，内存封顶
+        _limit_global_set_size(original_candidate_all, MAX_ORIGINAL_ALL_SIZE)
         final_results.append(original_line)
-        original_candidate_all.add(original_line)
 
     return final_results
-

@@ -46,8 +46,7 @@ def parse_args():
     parser.add_argument('-c', '--headers', type=str, default=None,
                         help='user_agent已经随机，请求头字符串，格式如：\'cookie\':\'session=123\';\'Referer\':\'https://example.com\'')
 
-    # 结果导出参数
-    # parser.add_argument('-e', '--excel', default=False, action='store_true', help="导出结果到result目录下")
+    parser.add_argument('-x','--x1',action='store_true',default=False,help="是否进行综合去重")
 
     # 去重参数优化方案
     parser.add_argument('-d', '--de_duplication_title', action='store_true', default=False,
@@ -64,13 +63,12 @@ def parse_args():
 
     parser.add_argument('-m','--time',type=float,default=0.1,help="请求间隔时间")
 
-    # parser.add_argument('-a','--api', action='store_true', default=False, help="是否对api进行扫描（全量扫描）")
-
     parser.add_argument('-g','--sensitiveInfo', default=False, action='store_true',help="是否对收集JS敏感信息")
 
     parser.add_argument('-o','--ollama', action='store_true', default=False, help="是否使用qwen2.5模型辅助分析JavaScript代码")
 
     parser.add_argument('-q','--sensitiveInfoQwen', action='store_true', default=False, help="是否使用qwen2.5模型抽取敏感信息")
+
     args = parser.parse_args()
 
     # 动态开启去重功能（当用户指定阈值时启用）
