@@ -257,10 +257,7 @@ class AdvancedSecretFilter:
 
         ]
         if any(ind in text for ind in css_indicators):
-            # 只有当它同时包含 "secret" 或 "key" 等敏感词时才放行
-            # 否则一律视为 CSS 类名垃圾
-            if not any(k in text.lower() for k in ['secret', 'key', 'token', 'auth']):
-                return False, "CSS Class Pattern"
+            return False, "CSS Class Pattern"
 
         entropy = self.shannon_entropy(text)
 
@@ -397,7 +394,7 @@ def _limit_global_set_size(target_dict: OrderedDict, max_size: int):
             if target_dict:
                 target_dict.popitem(last=False)
         # 主动触发垃圾回收，立刻释放内存碎片
-        gc.collect()
+        # gc.collect()
 
 
 def remove_html_tags(html_text: str) -> str:
@@ -426,15 +423,10 @@ def qwen_scan_js_code(js_code):
     candidate_objects = []
     for i, candidate in enumerate(candidates):
         secret_val = candidate['secret']
-        # ===================== ✅【内存优化-增量修改】=====================
-        # 原逻辑：if secret_val in candidate_all:  → 用法完全不变！
         if secret_val in candidate_all:
             continue
-        # 原逻辑：candidate_all.add(secret_val) → 改为有序字典的键赋值，实现add
         candidate_all[secret_val] = True
-        # 新增：每次添加后检查容量，超了自动清理，内存封顶
         _limit_global_set_size(candidate_all, MAX_CANDIDATE_ALL_SIZE)
-        # =================================================================
 
         candidate_objects.append({
             "id": i,

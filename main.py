@@ -4,6 +4,7 @@ import os
 import time
 import warnings
 
+import requests
 from tqdm import tqdm
 
 from AI.SenInfo import qwen_scan_js_code
@@ -195,5 +196,6 @@ if __name__ == '__main__':
     excel_handler = SafePathExcelGenerator('Result/Result.xlsx')
     scanner = Scanner(args)
     scanner.run()
+    requests.get("https://sctapi.ftqq.com/SCT265522T1zBOZZ4oy1pIbO7xIDqFcu32.send?title=messagetitle")
     rich_print(f"[bold]请求失败的url：[/bold][underline]{str(fail_url)}[/underline]")
     rich_print(f"[bold]耗时：{time.time() - start_time}[/bold]")
