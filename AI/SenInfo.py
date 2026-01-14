@@ -4,14 +4,19 @@ import random
 import re
 import sys
 from collections import Counter
-from pybloom_live import ScalableBloomFilter
+from collections import OrderedDict
+
 import nltk
 from bs4 import BeautifulSoup
-from nltk.corpus import words
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from nltk.corpus import wordnet
+from nltk.corpus import words
+from pybloom_live import ScalableBloomFilter
 from tqdm import tqdm
 
 from AI.beautifyjs import format_code
+from config import config
 
 try:
     import wordninja
@@ -26,7 +31,6 @@ except ImportError:
     print("⚠️  缺少 langchain 依赖库，请运行: pip install langchain-community langchain-core")
     sys.exit(1)
 
-from config.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
 # 加载词库
 nltk.download('wordnet', quiet=True)
 nltk.download('omw-1.4', quiet=True)
@@ -287,7 +291,31 @@ class AdvancedSecretFilter:
         return True
 
 
-# ==================== 第三步：LLM 验证器 ====================
+candidate_all = OrderedDict()
+original_candidate_all = OrderedDict()
+
+def remove_html_tags(html_text: str) -> str:
+    """
+    去除HTML标签，保留纯文本（处理嵌套/带属性/自闭合标签）
+    """
+    # 创建解析对象（推荐用lxml解析器，速度快；无lxml则用html.parser）
+    soup = BeautifulSoup(html_text, "lxml")  # 或 "html.parser"
+    # 提取所有纯文本（自动忽略标签，合并换行/空格）
+    pure_text = soup.get_text(strip=False)  # strip=False 保留原换行/空格，True则去除首尾空白
+    return pure_text
+
+def _limit_global_set_size(target_dict: OrderedDict, max_size: int):
+    """✅ 新增私有函数：全局集合容量控制，超过上限自动删除【最早插入】的元素，主动释放内存"""
+    if len(target_dict) > max_size:
+        # 计算需要删除的冗余元素数量，多删20%做内存预留
+        del_count = len(target_dict) - max_size + int(max_size * 0.2)
+        # 批量删除最早插入的元素 (OrderedDict.popitem(last=False) 删最前面的元素)
+        for _ in range(del_count):
+            if target_dict:
+                target_dict.popitem(last=False)
+        # 主动触发垃圾回收，立刻释放内存碎片
+        # gc.collect()
+
 class LLMSecretVerifier:
     def __init__(self, model_instance):
         self.llm = model_instance
@@ -339,9 +367,7 @@ class LLMSecretVerifier:
 
 
 def scan_js_code(js_code):
-    """
-    扫描JS代码，返回敏感信息列表
-    """
+    """扫描JS代码，返回敏感信息列表"""
     line_filter = CodeLineFilter()
     adv_filter = AdvancedSecretFilter()
 
@@ -360,53 +386,42 @@ def scan_js_code(js_code):
 
     return results
 
-
 def load_ollama_llm():
     return ChatOllama(
-        model=MODEL_NAME,
-        temperature=MODEL_TEMPERATURE,
-        max_tokens=MODEL_MAX_TOKENS,
+        model=config.MODEL_NAME,
+        temperature=config.MODEL_TEMPERATURE,
+        max_tokens=config.MODEL_MAX_TOKENS,
         keep_alive=-1,
         reasoning=False
     )
 
-import random
-import gc
-from collections import OrderedDict
-from tqdm import tqdm
-from bs4 import BeautifulSoup
+def load_bailian_llm():
+    """加载阿里云百炼模型（OpenAI兼容模式）"""
+    return ChatOpenAI(
+        model=config.BAILIAN_MODEL_NAME,
+        temperature=config.MODEL_TEMPERATURE,  # 复用原有温度配置，分类任务必须0
+        max_tokens=config.MODEL_MAX_TOKENS,
+        api_key=config.DASHSCOPE_API_KEY,
+        base_url=config.DASHSCOPE_BASE_URL,
+        stream=False,  # 重中之重：结构化JSON输出必须关闭流式，否则解析失败
+        timeout=60     # 超时兜底，防止云端请求卡死
+    )
 
 
-MAX_CANDIDATE_ALL_SIZE = 2000
-MAX_ORIGINAL_ALL_SIZE = 1000
-
-# 初始化：全局有序字典 替代 原全局set (用法和set完全一致，无需修改原有判断逻辑)
-candidate_all = OrderedDict()
-original_candidate_all = OrderedDict()
-
-def _limit_global_set_size(target_dict: OrderedDict, max_size: int):
-    """✅ 新增私有函数：全局集合容量控制，超过上限自动删除【最早插入】的元素，主动释放内存"""
-    if len(target_dict) > max_size:
-        # 计算需要删除的冗余元素数量，多删20%做内存预留
-        del_count = len(target_dict) - max_size + int(max_size * 0.2)
-        # 批量删除最早插入的元素 (OrderedDict.popitem(last=False) 删最前面的元素)
-        for _ in range(del_count):
-            if target_dict:
-                target_dict.popitem(last=False)
-        # 主动触发垃圾回收，立刻释放内存碎片
-        # gc.collect()
-
-
-def remove_html_tags(html_text: str) -> str:
+def load_llm_model():
     """
-    去除HTML标签，保留纯文本（处理嵌套/带属性/自闭合标签）
+    自动判断加载哪个LLM模型：
+    1. 如果config中有阿里云的有效配置 → 返回阿里云百炼模型实例
+    2. 否则 → 返回本地Ollama模型实例
     """
-    # 创建解析对象（推荐用lxml解析器，速度快；无lxml则用html.parser）
-    soup = BeautifulSoup(html_text, "lxml")  # 或 "html.parser"
-    # 提取所有纯文本（自动忽略标签，合并换行/空格）
-    pure_text = soup.get_text(strip=False)  # strip=False 保留原换行/空格，True则去除首尾空白
-    return pure_text
-
+    # 判断条件：API密钥不为空 + 地址不为空 → 用阿里云
+    if config.DASHSCOPE_API_KEY and config.DASHSCOPE_BASE_URL:
+        print(f"\n🔵 检测到阿里云配置，使用【远程API】模式 - 模型: {config.BAILIAN_MODEL_NAME}")
+        return load_bailian_llm()
+    # 否则使用本地Ollama
+    else:
+        print(f"\n🟢 未检测到阿里云配置，使用【本地Ollama】模式 - 模型: {config.MODEL_NAME}")
+        return load_ollama_llm()
 
 def qwen_scan_js_code(js_code):
     # 1. 预处理
@@ -426,7 +441,7 @@ def qwen_scan_js_code(js_code):
         if secret_val in candidate_all:
             continue
         candidate_all[secret_val] = True
-        _limit_global_set_size(candidate_all, MAX_CANDIDATE_ALL_SIZE)
+        _limit_global_set_size(candidate_all, config.MAX_CANDIDATE_ALL_SIZE)
 
         candidate_objects.append({
             "id": i,
@@ -456,8 +471,8 @@ def qwen_scan_js_code(js_code):
 
     print(f"🚀 准备将 {len(candidate_objects)} 个候选送入 LLM...")
 
-    ollama_model = load_ollama_llm()
-    verifier = LLMSecretVerifier(ollama_model)
+    llm_model = load_llm_model()
+    verifier = LLMSecretVerifier(llm_model)
 
     # 提高 batch_size，因为现在剩下的都是精英了，或者数量已经被我们限制住了
     batch_size = 30
@@ -479,13 +494,10 @@ def qwen_scan_js_code(js_code):
         original_line = result['original']['line']  # 获取原始行
 
         # 基于行内容去重，防止同一行出现多个 Key 导致重复输出
-        # 原逻辑：if original_line in original_candidate_all: → 用法完全不变！
         if original_line in original_candidate_all:
             continue
-        # 原逻辑：original_candidate_all.add(original_line) → 改为有序字典的键赋值
         original_candidate_all[original_line] = True
-        # 新增：每次添加后检查容量，超了自动清理，内存封顶
-        _limit_global_set_size(original_candidate_all, MAX_ORIGINAL_ALL_SIZE)
+        _limit_global_set_size(original_candidate_all, config.MAX_ORIGINAL_ALL_SIZE)
         final_results.append(original_line)
 
     return final_results

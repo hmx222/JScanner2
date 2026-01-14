@@ -163,7 +163,7 @@ class SafePathExcelGenerator:
 
         return result
 
-    def append_data_batch(self, input_data: InputData, batch_size: int = 1000, show_progress: bool = True) -> None:
+    def append_data_batch(self, input_data: InputData, batch_size: int = 500, show_progress: bool = True) -> None:
         """
         批量追加数据，每批写入后保存文件
         """

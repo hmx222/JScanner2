@@ -228,13 +228,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker):
             all_next_urls_with_source.append(next_urls_with_source)
             all_next_urls.update(next_urls_without_source)
 
-#         print(
-#             f"[bold blue]URL:[/bold blue] {escape(str(scan_info['url']))}\n"  # 确保转为字符串
-#             f"\t[bold green]Status:[/bold green] {escape(str(scan_info['status']))}\n"  # 状态码（整数）转字符串
-#             f"\t[bold cyan]Title:[/bold cyan] {escape(str(scan_info['title']))}\n"  # title可能为None，转字符串
-#             f"\t[bold yellow]Content Length:[/bold yellow] {escape(str(scan_info['length']))}\n"  # 长度（整数）转字符串
-#             f"\t[bold magenta]Valid Elements:[/bold magenta] {escape(str(scan_info['valid_Element']))}\n"  # 确保是字符串
-#         )
         scan_info_list.append(scan_info)
 
     return all_next_urls_with_source, scan_info_list, all_next_urls

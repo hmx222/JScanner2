@@ -1,7 +1,8 @@
+import gc
 import threading
 from urllib.parse import urlparse
 import time
-import gc
+
 
 from HttpHandle.url_bloom_filter import URLBloomFilter
 
@@ -88,6 +89,8 @@ class DuplicateChecker:
         except Exception as e:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 标题去重异常: {url}, 错误: {str(e)[:50]}")
             return False
+        finally:
+            gc.collect()  # ✅ 新增，释放内存
 
     def is_page_duplicate(self, url: str, html: str, title: str = "",
                           enable_title_check: bool = True):

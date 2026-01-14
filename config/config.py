@@ -7,6 +7,15 @@ OLLAMA_MAX_GPU_MEMORY = "4GB"
 LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
+DASHSCOPE_API_KEY = "sk-0b4caaf9257d41e89a6884d4793a3050"  # 你的阿里云密钥 sk-xxx
+
+DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+BAILIAN_MODEL_NAME = "qwen2.5-coder-14b-instruct"  # 阿里代码模型最优选择
+
+MAX_CANDIDATE_ALL_SIZE = 2000
+
+MAX_ORIGINAL_ALL_SIZE = 1000
 # 调用的OLLAMA模型名称，需确保本地已下载该模型
 MODEL_NAME = "qwen2.5-coder:14b"
 # 模型生成参数：温度值（0-1，越低输出越稳定）
