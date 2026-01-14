@@ -188,7 +188,7 @@ class Scanner:
                     f"\t[bold orange]敏感信息:[/bold orange] {sensitive_info}"
                 )
 
-FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/dd6d650c-7727-4127-afa8-3582606dec70"
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 
 def send_feishu_notify(title, content=""):
