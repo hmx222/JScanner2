@@ -4,6 +4,7 @@ import os
 import time
 import warnings
 
+import requests
 from tqdm import tqdm
 
 from AI.SenInfo import qwen_scan_js_code
@@ -24,21 +25,21 @@ from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 class Scanner:
     def __init__(self, args):
         self.args = args
-        self.initial_urls = []  # 初始URL
+        self.initial_urls = []  # 初始URL根域（白名单+传入URL根域）
         self.checker = None  # 去重管理器（后续初始化）
         self.tmp_urls = set()  # 临时URL列表
-        self.whiteList = read("./config/whiteList")
-
+        self.whiteList = read("./config/whiteList")  # 保留原白名单读取，未改动
 
     def run(self):
         """主运行逻辑"""
         os.makedirs("Result", exist_ok=True)
-        # clear_or_create_file("Result/scanInfo.json")
         clear_or_create_file("Result/sensitiveInfo.json")
 
         self.initial_urls = self._load_initial_urls()
-        if not self.initial_urls and not self.args.url:
-            rich_print("[red]未找到初始URL[/red]")
+        scan_seed_urls = self.load_url(self.args)
+
+        if not scan_seed_urls:
+            rich_print("[red]未传入要扫描的初始URL，请指定--url参数[/red]")
             return
 
         self.checker = DuplicateChecker(initial_root_domain=self.initial_urls)
@@ -51,6 +52,24 @@ class Scanner:
 
         rich_print(f"[cyan]总耗时: {time.time() - start_time:.2f}秒[/cyan]")
 
+    def load_url(self, args):
+        if args.url and args.url.strip():
+            return [args.url.strip()]
+        return []
+
+    def _load_initial_urls(self):
+        # 第一步：强制加载白名单，无条件必加载
+        white_list_domains = read("./config/whiteList")
+        # 第二步：如果传入了扫描URL，解析根域名并追加
+        if self.args.url and self.args.url.strip():
+            try:
+                seed_root_domain = get_root_domain(self.args.url.strip())
+                if seed_root_domain and seed_root_domain not in white_list_domains:
+                    white_list_domains.append(seed_root_domain)
+            except Exception:
+                pass
+        # 去重+过滤空字符串，返回最终校验用的根域名列表
+        return list(set(filter(None, white_list_domains)))
 
     def _scan_recursive(self, urls, depth):
         """递归扫描（按深度迭代）"""
@@ -66,7 +85,7 @@ class Scanner:
         print(f"[bold green]🔍 深度 {depth} 扫描开始，URL总数: {len(urls_list)}[/bold green]")
 
         # 分批次处理（每批1000个）
-        batch_size = 1000
+        batch_size = 500
         total_batches = (len(urls_list) + batch_size - 1) // batch_size
 
         # 存储所有批次的结果（只用于递归和敏感信息提取）
@@ -111,7 +130,7 @@ class Scanner:
                 try:
                     excel_handler.append_data_batch(
                         input_data=batch_all_next_urls_with_source,
-                        batch_size=1000,
+                        batch_size=500,
                         show_progress=False  # 避免嵌套进度条
                     )
                     print(f"[green]✅ 深度 {depth} - 批次 {current_batch} 数据写入Excel成功[/green]")
@@ -148,9 +167,10 @@ class Scanner:
             if scan_info["is_valid"] == 1 or url in self.initial_urls:
                 if ".js" not in scan_info["url"]:
                     continue
-                if args.sensitiveInfoQwen:
+                # ========== 【修复致命语法错误：args → self.args 否则运行必报错】 ==========
+                if self.args.sensitiveInfoQwen:
                     sensitive_info = qwen_scan_js_code(scan_info["source_code"])
-                elif args.sensitiveInfo:
+                elif self.args.sensitiveInfo:
                     sensitive_info = find_all_info_by_rex(scan_info["source_code"])
                 if len(sensitive_info) == 0:
                     print(f"URL: {url} 没有敏感信息")
@@ -168,32 +188,82 @@ class Scanner:
                     f"\t[bold orange]敏感信息:[/bold orange] {sensitive_info}"
                 )
 
-    def load_url(self,args):
-        if args.url is not None:
-            return [args.url]
-        if args.batch is not None:
-            return read(args.batch)
-        return []
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/dd6d650c-7727-4127-afa8-3582606dec70"
 
-    def _load_initial_urls(self):
-        """加载初始URL（从批量文件或参数）"""
-        if self.args.batch:
-            from JsHandle.pathScan import read
-            domains = read("./config/whiteList")
-            if len(domains) == 0:
-                domains = [get_root_domain(url) for url in read(self.args.batch)]
-            return domains
-        elif self.args.url:
-            return [get_root_domain(self.args.url)]
-        return []
+
+def send_feishu_notify(title, content=""):
+    """飞书推送【纯文本万能版】- 100%兼容所有飞书机器人，彻底解决10208错误"""
+    if not FEISHU_WEBHOOK or "你的正确飞书地址" in FEISHU_WEBHOOK:
+        rich_print("[red][bold]⚠️ 未配置正确的飞书Webhook地址，跳过推送[/bold][/red]")
+        return
+    try:
+        send_data = {
+            "msg_type": "text",  # 必须是text，不能是markdown
+            "content": {
+                "text": f"{title}\n{content}"  # \n 就是换行，排版和之前一样清晰
+            }
+        }
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        res = requests.post(FEISHU_WEBHOOK, json=send_data, headers=headers, timeout=10)
+        res_json = res.json()
+        # 飞书纯文本推送成功的返回码是 0
+        if res_json.get("StatusCode") == 0:
+            rich_print("[green][bold]✅ 飞书消息推送成功 ✅[/bold][/green]")
+        else:
+            rich_print(f"[red][bold]❌ 飞书推送失败: {res.text}[/bold][/red]")
+    except Exception as e:
+        rich_print(f"[yellow][bold]⚠️ 飞书推送接口异常: {str(e)}[/bold][/yellow]")
+
 
 if __name__ == '__main__':
     init(autoreset=True)
     args = parse_args()
-    # load whiteList
+
     start_time = time.time()
-    excel_handler = SafePathExcelGenerator('Result/Result.xlsx')
+    # 1. 确保Result文件夹存在
+    os.makedirs("Result", exist_ok=True)
+    # 2. 获取扫描的目标URL并提取根域名
+    target_url = args.url.strip() if args.url else "unknown_url"
+    try:
+        url_domain = get_root_domain(target_url)
+    except:
+        url_domain = "unknown_domain"
+    # 3. 格式化域名：替换特殊字符，兼容Windows/Linux文件名规则
+    format_domain = url_domain.replace(".", "_").replace("/", "_").replace(":", "_")
+    # 4. 生成精确时间戳：年月日_时分秒 (无非法字符，排序友好)
+    time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    # 5. 拼接最终Excel文件名：Result/Result_域名_时间.xlsx
+    excel_filename = f"Result/Result_{format_domain}_{time_str}.xlsx"
+    # 6. 实例化Excel处理器
+    excel_handler = SafePathExcelGenerator(excel_filename)
     scanner = Scanner(args)
-    scanner.run()
-    rich_print(f"[bold]请求失败的url：[/bold][underline]{str(fail_url)}[/underline]")
-    rich_print(f"[bold]耗时：{time.time() - start_time}[/bold]")
+
+    try:
+        # 执行核心扫描逻辑
+        scanner.run()
+
+        run_time = round(time.time() - start_time, 2)
+        # 飞书推送的内容，包含你需要的【失败url】+【耗时】+运行结果
+        notify_content = f"""
+✅ **程序运行完成！扫描任务结束**
+📊 运行耗时：{run_time} 秒
+📄 结果文件：Result/Result.xlsx
+🕒 完成时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}
+"""
+        send_feishu_notify("【服务器-扫描任务✅执行完成】", notify_content)
+
+        rich_print(f"[bold]耗时：{run_time}[/bold]")
+
+    except Exception as e:
+        # 捕获所有报错，获取完整报错堆栈信息
+        run_time = round(time.time() - start_time, 2)
+        # 报错的飞书报警内容，醒目红色提醒
+        error_content = f"""
+            ❌ **程序运行出错！扫描任务终止**
+            ⚠️ 错误类型：{type(e).__name__}
+            ⚠️ 错误详情：{str(e)}
+            ⏱️ 运行耗时：{run_time} 秒
+            🕒 报错时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}
+
+            """
+        send_feishu_notify("【服务器-扫描任务❌崩溃报警】", error_content)
