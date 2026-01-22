@@ -1,117 +1,141 @@
-# JScanner2 - 基于大模型的JavaScript敏感信息智能识别工具
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+# JScanner2
+
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
-**JScanner2** 是一款革命性的JavaScript安全分析工具，核心突破在于**集成大模型智能识别敏感信息**。相比传统正则匹配的工具，本工具通过AI深度理解代码语义，实现前所未有的敏感信息识别准确率和召回率，是安全研究人员的AI助手。
-
-## 🚀 核心设计亮点：大模型驱动的敏感信息识别
-
-### 🤖 **AI敏感信息智能分析引擎**
-- **语义级理解**：超越传统正则匹配，大模型理解代码上下文语义，精准识别隐藏的敏感信息
-- **多维度风险评估**：自动评估敏感信息的风险等级（高/中/低），提供处置建议
-- **动态适应能力**：面对混淆、加密、动态生成的敏感信息依然保持高识别率
-
-
-
-## 🛠️ 安装指南
-
-### 环境要求
-- Python 3.9+
-- NVIDIA GPU（4GB+显存，用于AI分析）
-- 16GB+ 系统内存
-
-### 快速安装
-```bash
-# 克隆仓库
-git clone https://github.com/hmx222/JScanner2.git
-cd JScanner2
-
-# 安装Python依赖
-pip install -r requirements.txt
-
-# 安装Playwright依赖
-playwright install-deps
-playwright install
-
-# 安装prettier（用于代码格式化）
-npm install prettier
-
-# 安装Ollama和AI模型（核心步骤）
-# 务必安装Ollama后执行：
-ollama pull qwen2.5-coder:14b
-```
-
-## 📋 使用指南
-
-### 核心AI参数说明
-| 参数 | 全称                  | 说明                                                  |
-| ---- | --------------------- | ----------------------------------------------------- |
-| `-o` | `--ollama`            | 启用Ollama大模型分析JavaScript代码（核心功能）        |
-| `-q` | `--sensitiveInfoQwen` | 使用Qwen2.5模型专门抽取敏感信息（推荐与`-g`配合使用） |
-| `-g` | `--sensitiveInfo`     | 启用敏感信息扫描模式（基础模式，可单独使用）          |
-
-### 基础扫描参数
-| 参数 | 全称           | 说明                                                         |
-| ---- | -------------- | ------------------------------------------------------------ |
-| `-u` | `--url`        | 单个网站URL（需带http/https，例如：`https://example.com`）与`-b`参数必选其一 |
-| `-b` | `--batch`      | 批量扫描的URL文件绝对路径（文件内需每行一个URL）             |
-| `-H` | `--height`     | 扫描深度（默认值：2，AI分析时建议保持默认）                  |
-| `-t` | `--thread_num` | 并发线程数（默认值：10，AI分析时建议降低至5-8）              |
-| `-m` | `--time`       | 请求间隔时间（默认：0.1秒，避免触发风控）                    |
-| `-a` | `--api`        | 对API进行全量扫描（与AI分析配合效果最佳）                    |
-
-### 智能去重参数（配合AI使用）
-| 参数 | 全称                      | 说明                           |
-| ---- | ------------------------- | ------------------------------ |
-| `-d` | `--de_duplication_title`  | 标题去重（提升AI分析效率）     |
-| `-s` | `--de_duplication_hash`   | DOM SimHash去重（推荐阈值0.8） |
-| `-l` | `--de_duplication_length` | 内容长度去重（减少重复分析）   |
-
-### 最佳实践命令
-
-```bash
-# 【推荐】标准AI敏感信息扫描（平衡速度与精度）
-python main.py -u "https://target.com" -H 4 -o -q -g -s 0.8 -l
-
-# 【高精度】深度AI分析（适合关键目标）
-python main.py -u "https://target.com" -H 4 -o -q -g -a -s 0.85 -d -l -t 5
-
-# 【批量扫描】多URL AI分析（生产环境推荐）
-python main.py -b targets.txt -H 2 -o -q -g -s 0.8 -l -t 8
-
-# 【快速扫描】仅基础敏感信息识别（无AI，速度快）
-python main.py -u "https://target.com" -g -s 0.8 -l
-```
-
-
-## ⚠️ 免责声明
-
-**重要**：本工具仅限合法授权的安全评估使用，禁止未授权扫描。使用者需自行承担法律责任，开发者不承担任何连带责任。
-
-使用本工具前请确保：
-- 已获得目标网站的明确书面授权
-- 遵守相关法律法规和网站使用条款
-- 仅用于安全研究和漏洞修复目的
-- 不将分析结果用于非法用途
-
-## 🤝 致谢与参考
-
-- **AI模型**：[Qwen](https://github.com/QwenLM) - 阿里巴巴通义千问
-- **基础框架**：[Playwright](https://playwright.dev) - 浏览器自动化
-- **代码分析**：[LinkFinder](https://github.com/GerbenJavado/LinkFinder)
-- **自然语言处理**：[NLTK](https://www.nltk.org) 
-- **规则库**：[findsomething](https://github.com/momosecurity/FindSomething)
-- **腾讯云Cloud Studio**：[Cloud Studio](https://ide.cloud.tencent.com/)
-
-## 📧 问题反馈
-
-使用过程中遇到任何问题，欢迎提交issue：
-https://github.com/hmx222/JScanner2/issues
+**JScanner2** is a JavaScript sensitive information mining tool designed exclusively for **large-scale asset mapping**.
 
 ---
 
-**JScanner2** - 让AI成为您的安全研究员，智能识别每一个潜在风险。  
-**下一代安全工具，不止于扫描，更在于理解。**
+## 🚀 Core Features
+
+- **🛡️ Memory Meltdown Protection**
+
+- **🧠 Dual-Mode AI Engine**
+
+- **💾 Persistent Deduplication**
+
+- **🔍 Intelligent Data Cleansing**
+
+---
+
+## 🛠️ Quick Start
+
+### 1. Installation
+
+```Bash
+
+git clone https://github.com/hmx222/JScanner2.git
+cd JScanner2
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Playwright browsers
+playwright install-deps
+playwright install
+
+# (Optional) Pull local AI model - Required only for local mode
+ollama pull qwen2.5-coder:14b
+```
+
+### 2. Configuration (`config/config.py`)
+
+All runtime parameters are managed in `config/config.py`, and the program automatically determines the running mode based on the configuration:
+
+#### 🤖 AI Model Configuration (Choose One)
+
+- **Mode A: Alibaba Cloud DashScope/Other Platforms (Recommended, Fast & High Precision)**
+
+    - Fill in your `DASHSCOPE_API_KEY` in `config.py`.
+
+    - The program will automatically detect the key and prioritize the cloud model (`qwen2.5-coder-14b-instruct`).
+
+```Python
+
+DASHSCOPE_API_KEY = "sk-xxxxxxxxxxxxxxxx" 
+```
+
+- **Mode B: Local Ollama (High Privacy, VRAM Required)**
+
+    - Keep `DASHSCOPE_API_KEY` as an empty string `""`.
+
+    - The program will automatically fall back to the local Ollama service.
+
+    - Adjust `OLLAMA_MAX_GPU_MEMORY` according to your graphics card (default: "4GB").
+
+#### 📨 Notification Configuration
+
+- **Lark Notification**:
+
+    - Configure `FEISHU_WEBHOOK`, and the tool will send notifications when **errors occur** or **all tasks are completed**.
+
+```Python
+
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/..."
+```
+
+### 3. Run (Recommended for Production)
+
+**Do not run ** **`python main.py`** ** directly**. Use our encapsulated Shell script to activate the automatic meltdown and task relay features:
+
+```Bash
+
+# Method 1: Pipe input (Recommended)
+echo urls.txt | ./run_scan.sh
+
+# Method 2: File parameter
+./run_scan.sh urls.txt
+```
+
+**Tip**: The program automatically monitors memory, processes overflow tasks, and merges the final Excel results without manual intervention.
+
+### 4. Reset Tasks
+
+If you need to scan a new batch of targets, **be sure to** execute the cleanup script to reset the deduplication records; otherwise, new tasks will be marked as "scanned" and skipped:
+
+```Bash
+
+./clean_scan.sh
+```
+
+---
+
+## 📂 Result Output
+
+Result files are automatically archived by **date** in the `Result/` directory:
+
+- **Excel Report**: `Result/Result_Domain_2023xxxx.xlsx` (Contains all discovered URLs and hierarchical relationships, supports breakpoint resumption)
+
+- **Sensitive Information**: `Result/sensitiveInfo.json` (Keys/Tokens/Secrets identified by AI auditing)
+
+- **Runtime Logs**: `Log_Data/scan_run_log.log`
+
+---
+
+## ⚙️ Core Parameters (For Debugging)
+
+If you need to debug the core script manually (without meltdown protection):
+
+```Bash
+
+python3 main.py -u https://example.com [options]
+```
+
+- `-o` / `--ollama`: Enable AI code auditing
+
+- `-q`: Use Qwen model to extract sensitive information
+
+- `-x`: Enable intelligent deduplication (Enabled by default)
+
+- `-H 5`: Crawling depth (Default: 5)
+
+- `-t 10`: Number of threads (Default: 10)
+
+---
+
+## ⚠️ Disclaimer
+
+This tool is for **security research and authorized testing only**. Unauthorized penetration testing or illegal attacks are strictly prohibited. Users shall bear all legal consequences arising from the use of this tool.
