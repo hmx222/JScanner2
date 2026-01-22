@@ -73,5 +73,7 @@ def clear_or_create_file(file_path):
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    with open(file_path, 'w', encoding='utf-8') as file:
-        file.write('')
+    if not os.path.exists(file_path):
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write('')
+
