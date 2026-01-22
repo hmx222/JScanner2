@@ -30,8 +30,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="网站扫描工具 - 支持URL扫描、批量处理及结果导出")
 
     # 核心目标参数（必选其一）
-    parser.add_argument('-u', '--url', type=str, help="输入带有http/https的单个网站URL（如：https://example.com）")
-    # parser.add_argument('-b', '--batch', type=str, help="批量扫描的URL文件绝对路径（每行一个URL）")
+    parser.add_argument('-u', '--url', type=lambda x: x.strip().rstrip('\r'),
+                        help="输入带有http/https的单个网站URL（如：https://example.com）")    # parser.add_argument('-b', '--batch', type=str, help="批量扫描的URL文件绝对路径（每行一个URL）")
 
     # 扫描配置参数
     parser.add_argument('-H', '--height', type=int, default=2, help="扫描深度（默认：2）")
@@ -57,8 +57,5 @@ def parse_args():
     parser.add_argument('-q','--sensitiveInfoQwen', action='store_true', default=False, help="是否使用qwen2.5模型抽取敏感信息")
 
     args = parser.parse_args()
-
-    # if not args.url and not args.batch:
-    #     parser.error("必须指定 -u/--url（单个URL）或 -b/--batch（批量文件）中的一个")
 
     return args

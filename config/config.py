@@ -7,7 +7,9 @@ OLLAMA_MAX_GPU_MEMORY = "4GB"
 LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
-DASHSCOPE_API_KEY = "sk-0b4caaf9257d41e89a6884d4793a3050"  # 你的阿里云密钥 sk-xxx
+DASHSCOPE_API_KEY = ""  # 你的阿里云密钥 sk-xxx
+
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxx-xxxxxx-4722-bb21-xxxxxxxxxxxxx"
 
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 

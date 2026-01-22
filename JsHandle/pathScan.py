@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-from esprima import esprima
 from tldextract import tldextract
 
 from FileIO.filerw import read
@@ -8,36 +7,34 @@ from FileIO.filerw import read
 whiteList = read("./config/whiteList")
 
 
-def analysis_by_rex(source)->list:
+def analysis_by_rex(source) -> list:
     """analysis source code by rex"""
-
     pattern_raw = r"""
-              (?:"|')                               # Start newline delimiter
+              (?:"|')                               # Start delimiter
               (
-                ((?:[a-zA-Z]{1,10}://|//)           # Match a scheme [a-Z]*1-10 or //
-                [^"'/]{1,}\.                        # Match a domainname (any character + dot)
-                [a-zA-Z]{2,}(?!png|css|jpeg|mp4|mp3|gif|ico)[^"']{0,})              # The domainextension and/or path, not ending with png/css/jpeg/mp4/mp3
+                ((?:[a-zA-Z]{1,10}://|//)           # Scheme
+                [^"'/]{1,}\.                        # Domain
+                [a-zA-Z]{2,}(?!png|css|jpeg|mp4|mp3|gif|ico)[^"']{0,}) # Path
                 |
-                ((?:/|\.\./|\./)                    # Start with /,../,./
-                [^"'><,;| *()(%%$^/\\\[\]]          # Next character can't be...
-                [^"'><,;|()]{1,})                   # Rest of the characters can't be
+                ((?:/|\.\./|\./)                    # Path start
+                [^"'><,;| *()(%%$^/\\\[\]]+         # Allowed chars
+                [^"'><,;|()]{1,})                   # End chars
                 |
-                ([a-zA-Z0-9_\-/]{1,}/               # Relative endpoint with /
-                [a-zA-Z0-9_\-/]{1,}                 # Resource name
-                \.(?:[a-zA-Z]{1,4}|action)          # Rest + extension (length 1-4 or action)
-                (?:[\?|/][^"|']{0,}|))              # ? mark with parameters
+                ([a-zA-Z0-9_\-/]{1,}/               # Path
+                [a-zA-Z0-9_\-/]{1,}                 # Name
+                \.(?:[a-zA-Z]{1,4}|action)          # Extension
+                (?:\?[^"|']{0,}|))                  # Params
                 |
-                ([a-zA-Z0-9_\-]{1,}                 # filename
+                ([a-zA-Z0-9_\-]{1,}                 # Filename
                 \.(?:php|asp|aspx|jsp|json|
-                     action|html|js|txt|xml)             # . + extension
-                (?:\?[^"|']{0,}|))                  # ? mark with parameters
+                     action|html|js|txt|xml)        # Extensions
+                (?:\?[^"|']{0,}|))                  # Params
               )
-              (?:"|')                               # End newline delimiter
+              (?:"|')                               # End delimiter
             """
     pattern = re.compile(pattern_raw, re.VERBOSE)
     links = pattern.findall(source)
     relist = [link[0] for link in links]
-
     return list(set(relist))
 
 

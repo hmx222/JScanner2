@@ -1,5 +1,4 @@
 import asyncio
-import gc
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
@@ -11,14 +10,12 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 import requests
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, BrowserContext
-from rich import print
 from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
 from urllib3.exceptions import InsecureRequestWarning
 from user_agent import generate_user_agent
 
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from JsHandle.pathScan import get_root_domain
 from parse_args import parse_headers
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -82,71 +79,59 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio, headers
             page.remove_listener("request", handle_request)
         progress.update(1)
 
+
 async def process_scan_result(scan_info, checker: DuplicateChecker, args):
-    """处理扫描结果（去重+提取下一层URL）- 最终定稿版 ✔ 新增内存极致优化，根治内存堆积
-    核心逻辑：-x/--x1 为综合去重总开关，完美区分懒人模式/自定义模式
-    1. 开启-x (默认True) → 懒人一键去重：调用is_page_duplicate+内置推荐参数，无需配置其他参数
-    2. 关闭-x (--no-x1) → 自定义去重：走用户手动配置的独立去重维度，配啥生效啥
-    """
+    """处理扫描结果（去重+提取下一层URL）- 最终定稿版"""
     url = scan_info["url"]
     source = scan_info["source_code"]
     status = scan_info["status"]
     title = scan_info["title"]
     length = scan_info["length"]
 
-    # 基础过滤（无效URL/错误状态码/过短源码）- 完全保留你原有的所有逻辑，一行未改
-    if not checker.is_valid_url(url):
+    if not checker.is_within_scope(url):
         del source, scan_info, title, length
-        # gc.collect()
         return False, set()
+
     if status and status == 404:
         del source, scan_info, title, length
-        # gc.collect()
         return False, set()
+
     if not source or length < 200:
         del source, scan_info, title, length
-        # gc.collect()
         return False, set()
 
-    # 减少无效去重计算+释放大量内存，无任何业务副作用，内存收益显著
+    # 过滤超大响应
     if len(source) > 712000:
         del source, scan_info, title, length
-        # gc.collect()
         return False, set()
 
+    # --- 2. 内容去重 (仅针对非JS文件) ---
     if ".js" not in url:
-        if args.x1:
-            # 开启-x：懒人模式，一键综合去重，使用内置推荐最优参数，无需任何配置
-            if checker.is_page_duplicate(url, source, title):
-                del source, scan_info, title, length
-                # gc.collect()
-                return False, set()
-        else:
-            # 关闭-x：自定义模式 ✅【仅保留标题去重维度】，已删除无用的DOM/内容SimHash判断，无报错
-            if args.de_duplication_title and checker.check_duplicate_by_title(title, url):
-                del source, scan_info, title, length
-                # gc.collect()
-                return False, set()
+        if checker.is_page_duplicate(url, source, title):
+            del source, scan_info, title, length
+            return False, set()
 
-    # 所有过滤通过，标记URL为已访问
     checker.mark_url_visited(url)
-
-    # 提取下一层URL（仅JS文件或初始URL需要）
+    # --- 4. 提取下一层 URL ---
     next_urls = set()
-    all_dirty = []
-    if ".js" in url or get_root_domain(url) in args.initial_urls:
-        from JsHandle.pathScan import analysis_by_rex, data_clean
 
-        if not args.ollama:
-            all_dirty = analysis_by_rex(source)
-        else:
+    try:
+        if ".js" in url or (args.url == url):
+            from JsHandle.pathScan import analysis_by_rex, data_clean
+            all_dirty = []
+
+            # 对目标域名下的有效页面进行正则提取
+            # 无论是 JS 文件还是 HTML 页面，都可能包含新的接口或链接
             rex_output = analysis_by_rex(source)
             all_dirty.extend(rex_output)
-        next_urls = set(data_clean(url, all_dirty))
+            # 清洗提取到的链接
+            next_urls = set(data_clean(url, all_dirty))
+    except Exception:
+        pass
 
-    # 保留next_urls（需要返回），其余无用变量全部删除，最大化释放内存
-    del source, scan_info, title, length, all_dirty
-    # gc.collect()
+    # --- 5. 资源清理 ---
+    del source, scan_info, title, length
+    if 'all_dirty' in locals(): del all_dirty
 
     return True, next_urls
 
