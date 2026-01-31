@@ -9,7 +9,7 @@ HTTPX_LOG_LEVEL = logging.ERROR
 
 DASHSCOPE_API_KEY = ""  # 你的阿里云密钥 sk-xxx
 
-FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxx-xxxxxx-4722-bb21-xxxxxxxxxxxxx"
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/"
 
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
