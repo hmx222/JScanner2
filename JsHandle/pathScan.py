@@ -1,6 +1,7 @@
+import re
+from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from tldextract import tldextract
-
 from FileIO.filerw import read
 
 # load whiteList
@@ -34,150 +35,162 @@ def analysis_by_rex(source) -> list:
             """
     pattern = re.compile(pattern_raw, re.VERBOSE)
     links = pattern.findall(source)
+    # findall返回的是元组，取第一个元素(整个匹配组)
     relist = [link[0] for link in links]
     return list(set(relist))
 
 
-import re
-from urllib.parse import urlparse, urljoin
-
-
 def is_potential_domain(url: str) -> bool:
     """
-    智能判断URL是否包含有效域名（无需额外依赖）
-
-    :param url: 要检查的URL片段
-    :return: 是否包含有效域名
+    智能判断URL是否包含有效域名
     """
-    # 基本检查：必须包含点且点不在开头/结尾
     if '.' not in url or url.startswith('.') or url.endswith('.'):
         return False
-
-    # 检查点前后是否有字母（排除纯数字IP，但允许带路径的IP）
     parts = url.split('.', 1)
     if not any(c.isalpha() for c in parts[0]):
         return False
-
-    # 检查TLD部分（简单验证）
-    tld = parts[1].split('/')[0]  # 取路径前的部分
+    tld = parts[1].split('/')[0]
     if len(tld) < 2 or not any(c.isalpha() for c in tld):
         return False
-
     return True
 
 
-def data_clean(base_url: str, dirty_data) -> list:
+def data_clean(base_url: str, dirty_data: list) -> list:
     """
-    智能清洗URL数据，正确区分域名和路径
-
-    :param base_url: 基础URL（用于相对路径解析）
-    :param dirty_data: 待清洗的URL列表
-    :return: 清洗后的完整URL列表
+    智能清洗URL数据 - 最终增强版
+    策略：
+    1. 提取所有 Host 和 Path。
+    2. API 路径 -> 全排列拼接所有 Host (宁可错杀)。
+    3. JS/静态资源路径 -> 仅拼接当前 Base URL (减少垃圾请求)。
     """
-    return_url_list = []
     if not dirty_data:
         return []
 
-
-    # 解析基础URL
+    # 1. 初始化 Base URL
     base_parsed = urlparse(base_url)
-
-    # 确保基础URL有协议
     if not base_parsed.scheme:
         base_url = "https://" + base_url
         base_parsed = urlparse(base_url)
 
-    Protocol = base_parsed.scheme
-    Domain = base_parsed.netloc
-    Path = base_parsed.path.rstrip('/') or '/'
+    current_root_url = f"{base_parsed.scheme}://{base_parsed.netloc}"
 
-    for main_url in dirty_data:
-        # 增加部分黑名单
+    # 候选 Host 集合 (包含当前域名)
+    candidate_hosts = {current_root_url}
+
+    # 分两个 Path 集合
+    api_paths = set()
+    static_paths = set()
+
+    final_urls = set()
+
+    for item in dirty_data:
+        # 黑名单与基础过滤
         SKIP_CONTENT_TYPES = {
-            "text/html",
-            "text/plain",
-            "image/gif",
-            "image/jpg",
-            "image/jpeg",
-            "image/svg+xml"
+            "text/html", "text/plain", "image/gif", "image/jpg",
+            "image/jpeg", "image/svg+xml", "application/json"
         }
+        if item in SKIP_CONTENT_TYPES: continue
+        if not item or " " in item: continue
 
-        if main_url in SKIP_CONTENT_TYPES:
-            continue
+        item = item.replace('\\', '/').strip()
+        if item.startswith(('javascript:', 'mailto:', 'tel:', 'data:')): continue
 
-        if not main_url:
-            continue
+        if item.startswith(('http://', 'https://')):
+            final_urls.add(item)
+            # 尝试提取 Host，用于后续拼接
+            try:
+                p = urlparse(item)
+                path_lower = p.path.lower()
+                if not path_lower.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.ico')):
+                    host = f"{p.scheme}://{p.netloc}"
+                    candidate_hosts.add(host)
+            except:
+                pass
 
-        if " " in main_url:
-            continue
+        # 情况B: 协议相对 URL
+        elif item.startswith('//'):
+            url = f"{base_parsed.scheme}:{item}"
+            final_urls.add(url)
+            try:
+                p = urlparse(url)
+                candidate_hosts.add(f"{p.scheme}://{p.netloc}")
+            except:
+                pass
 
-        # 清理反斜杠和多余空格
-        main_url = main_url.replace('\\', '/').strip()
-
-        # 跳过javascript:等非HTTP协议
-        if main_url.startswith(('javascript:', 'mailto:', 'tel:', 'data:')):
-            continue
-
-        # 情况1: 以//开头的协议相对URL
-        if main_url.startswith('//'):
-            return_url = f"{Protocol}:{main_url}"
-
-        # 情况2: 以/开头的绝对路径
-        elif main_url.startswith('/'):
-            return_url = f"{Protocol}://{Domain}{main_url}"
-
-        # 情况3: 以./或../开头的相对路径
-        elif main_url.startswith(('./', '../')):
-            # 使用urljoin处理相对路径（最可靠的方式）
-            return_url = urljoin(base_url, main_url)
-
-        # 情况4: 以http/https开头的绝对URL
-        elif main_url.startswith(('http://', 'https://')):
-            return_url = main_url
-
-        # 情况5: 可能缺少协议的完整URL (如 www.baidu.com/aaa)
-        elif is_potential_domain(main_url):
-            # 检查是否有路径部分
-            if '/' in main_url:
-                return_url = f"{Protocol}://{main_url}"
-            else:
-                return_url = f"{Protocol}://{main_url}/"
-
-        # 情况6: 相对路径 (如 aaa/bbbb/ccc)
         else:
-            # 检查是否包含路径分隔符且不像是域名
-            if '/' in main_url and not is_potential_domain(main_url.split('/')[0]):
-                return_url = f"{Protocol}://{Domain}{Path.rstrip('/')}/{main_url.lstrip('/')}"
+            # 1. 判定是否为静态资源
+            is_static = False
+            static_exts = ('.js', '.css', '.png', '.jpg', '.jpeg', '.gif',
+                           '.svg', '.woff', '.ttf', '.ico', '.eot', '.xml')
+
+            # 去掉参数后判断后缀
+            path_no_query = item.split('?')[0].lower()
+            if path_no_query.endswith(static_exts):
+                is_static = True
+
+            # 2. 格式化路径 (确保以 / 开头，方便统一处理，除非是 ../)
+            if not item.startswith('/') and not item.startswith('.'):
+                item = '/' + item
+
+            # 3. 分类入库
+            if is_static:
+                static_paths.add(item)
             else:
-                # 可能是查询参数或片段
-                return_url = f"{Protocol}://{Domain}{Path}?{main_url}"
-
-        # 规范化URL（移除多余斜杠等）
-        return_url = re.sub(r'(?<!:)//+', '/', return_url)
-
-        # 验证并添加到结果
-        if check_url(base_url, return_url):
-            return_url_list.append(return_url)
-
-    return return_url_list
+                api_paths.add(item)
 
 
-def check_url(original_url,splicing_url):
-    """check the url,and it is a blacklist of url"""
+    for host in candidate_hosts:
+        for path in api_paths:
+            try:
+                combined = urljoin(host, path)
+                # 规范化 // 为 /
+                combined = re.sub(r'(?<!:)//+', '/', combined)
+                final_urls.add(combined)
+            except:
+                pass
+
+    for path in static_paths:
+        try:
+
+            combined = urljoin(base_url, path)
+            combined = re.sub(r'(?<!:)//+', '/', combined)
+            final_urls.add(combined)
+        except:
+            pass
+
+
+    return_url_list = []
+    for url in final_urls:
+        if check_url(base_url, url):
+            return_url_list.append(url)
+
+    return list(return_url_list)
+
+
+def check_url(original_url, splicing_url):
+    """
+    校验域名范围，防止爬虫跑偏
+    策略：
+    1. 必须是同一根域名
+    2.或者是白名单内的域名
+    """
     try:
         urlparse2 = urlparse(splicing_url)
     except:
         return False
 
-    if any(ext in urlparse2.path for ext in (
-            '.png', '.jpg', '.jpeg', '.ico', '.mp4', '.mp3', '.gif', 'ttf',
-            '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.ttf', '.eot','shtml',
-            '.otf', '.apk', '.exe', '.swf','.webp','.html','.htm','.vue','.ts','.tsx','.vue'
+    if any(ext in urlparse2.path.lower() for ext in (
+            '.png', '.jpg', '.jpeg', '.ico', '.mp4', '.mp3', '.gif', '.ttf',
+            '.css', '.svg', '.m4v', '.aac', '.woff', '.woff2', '.eot',
+            '.otf', '.apk', '.exe', '.swf', '.webp'
     )):
         return False
 
-    if ((get_root_domain(original_url) == get_root_domain(splicing_url)) or
-            (get_root_domain(splicing_url) in whiteList)):
+    # 域名校验
+    root_orig = get_root_domain(original_url)
+    root_split = get_root_domain(splicing_url)
+
+    if (root_orig == root_split) or (root_split in whiteList):
         return True
     else:
         return False
@@ -185,40 +198,38 @@ def check_url(original_url,splicing_url):
 
 def get_root_domain(url):
     """
-    get root domain
+    提取根域名 (例如: www.baidu.com -> baidu.com)
     """
+    try:
+        parsed_url = urlparse(url)
+        full_domain = parsed_url.netloc
+        extracted = tldextract.extract(full_domain)
+        # 处理 IP 地址的情况
+        if not extracted.suffix:
+            return full_domain
+        root_domain = f"{extracted.domain}.{extracted.suffix}"
+        return root_domain
+    except:
+        return "unknown"
 
-    parsed_url = urlparse(url)
-    full_domain = parsed_url.netloc
-    extracted = tldextract.extract(full_domain)
-    root_domain = f"{extracted.domain}.{extracted.suffix}"
-    return root_domain
 
 def is_js_file(url):
-    js_pattern = re.compile(r'\.js(?=[^a-zA-Z]|$)')  # 关键规则
+    js_pattern = re.compile(r'\.js(?=[^a-zA-Z]|$)')
     json_pattern = re.compile(r'\.json')
     return not json_pattern.search(url) and bool(js_pattern.search(url))
 
 
 def extract_pure_js(html_content):
     """从包含HTML标签的内容中提取<pre>标签内的JS代码"""
-    # 解析HTML内容
-    soup = BeautifulSoup(html_content, 'html.parser')
-
-    # 精准匹配带有特定style的<pre>标签（根据你的响应结构定制）
-    pre_tag = soup.find(
-        'pre',
-        style="word-wrap: break-word; white-space: pre-wrap;"
-    )
-
-    if pre_tag:
-        # 提取标签内文本并去除首尾空白
-        js_code = pre_tag.get_text().strip()
-        return js_code
-    else:
-        # 如果未找到目标标签，尝试查找第一个<pre>标签作为备选
-        fallback_pre = soup.find('pre')
-        if fallback_pre:
-            return fallback_pre.get_text().strip()
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        pre_tag = soup.find('pre', style="word-wrap: break-word; white-space: pre-wrap;")
+        if pre_tag:
+            return pre_tag.get_text().strip()
         else:
-            raise ValueError("未在响应中找到包含JS代码的<pre>标签")
+            fallback_pre = soup.find('pre')
+            if fallback_pre:
+                return fallback_pre.get_text().strip()
+            return html_content
+    except:
+        return html_content

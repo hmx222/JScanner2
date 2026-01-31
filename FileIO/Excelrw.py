@@ -4,10 +4,10 @@ import time
 from typing import List, Dict, Any, Iterable, Optional, Set, Tuple
 from urllib.parse import urlparse, urlunparse
 from tqdm import tqdm
-from openpyxl import Workbook, load_workbook  # ✅ 新增 load_workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, Border, Side
-from rich import print
+# from rich import print
 
 # 类型别名
 UrlData = Dict[str, str]
@@ -57,14 +57,14 @@ class SafePathExcelGenerator:
         # ✅ [核心修改] 检测文件是否存在，实现续写逻辑
         if os.path.exists(self.output_file):
             try:
-                print(f"[yellow]📂 检测到已存在结果文件: {self.output_file}，加载以进行续写...[/yellow]")
+                print(f"📂 检测到已存在结果文件: {self.output_file}，加载以进行续写...")
                 self.wb = load_workbook(self.output_file)
                 self.ws = self.wb.active
                 # 获取当前最大行数，作为新 ID 的起点
                 self.row_count = self.ws.max_row
-                print(f"[green]✅ 文件加载成功，当前行数: {self.row_count}[/green]")
+                print(f"✅ 文件加载成功，当前行数: {self.row_count}")
             except Exception as e:
-                print(f"[red]❌ 加载旧文件失败，将创建新文件 (旧文件可能已损坏): {e}[/red]")
+                print(f"❌ 加载旧文件失败，将创建新文件 (旧文件可能已损坏): {e}")
                 self._create_new_workbook()
         else:
             self._create_new_workbook()
@@ -166,7 +166,7 @@ class SafePathExcelGenerator:
         # 3. 写入逻辑
         # 注意：这里不再显示总进度条，因为是追加写入
         # 如果需要显示，可以用简单的 print
-        print(f"[bold blue]📊 [Excel追加] 正在写入 {len(sorted_data)} 条新数据...[/bold blue]")
+        print(f"📊 [Excel追加] 正在写入 {len(sorted_data)} 条新数据...")
 
         # 批量写入
         current_rows = []
@@ -190,10 +190,10 @@ class SafePathExcelGenerator:
 
         # 保存文件
         self.save()
-        print(f"[green]✅ [Excel追加] 完成，当前总行数: {self.row_count}[/green]")
+        print(f"✅ [Excel追加] 完成，当前总行数: {self.row_count}")
 
     def save(self) -> None:
         try:
             self.wb.save(self.output_file)
         except Exception as e:
-            print(f"[red]❌ 保存文件失败 (请检查文件是否被占用): {str(e)}[/red]")
+            print(f"❌ 保存文件失败 (请检查文件是否被占用): {str(e)}")
