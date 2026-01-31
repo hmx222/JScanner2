@@ -11,7 +11,7 @@ from config.config import FEISHU_WEBHOOK
 
 warnings.filterwarnings("ignore")
 from colorama import init
-from rich import print as rich_print
+# from rich import print as print
 
 from FileIO.Excelrw import SafePathExcelGenerator
 from HttpHandle.DuplicateChecker import DuplicateChecker
@@ -53,17 +53,17 @@ class Scanner:
                 self.checker.visited_urls.add(url)
                 scan_seed_urls.append(url)
             else:
-                rich_print(f"[yellow]⏩ 初始URL已在历史记录中，自动跳过: {url}[/yellow]")
+                print(f"⏩ 初始URL已在历史记录中，自动跳过: {url}")
 
         if not scan_seed_urls:
-            rich_print("[red]没有新的有效URL需要扫描（可能全部已过滤）[/red]")
+            print("没有新的有效URL需要扫描（可能全部已过滤）")
             return
 
         # 开始扫描
         start_time = time.time()
         self._scan_recursive(scan_seed_urls, 0)
 
-        rich_print(f"[cyan]总耗时: {time.time() - start_time:.2f}秒[/cyan]")
+        print(f"总耗时: {time.time() - start_time:.2f}秒")
 
     def load_url(self, args):
         if args.url and args.url.strip():
@@ -108,7 +108,7 @@ class Scanner:
         if not urls_list:
             return
 
-        print(f"[bold green]🔍 深度 {depth} 扫描开始，URL总数: {len(urls_list)}[/bold green]")
+        print(f"🔍 深度 {depth} 扫描开始，URL总数: {len(urls_list)}")
 
         batch_size = 200
         total_batches = (len(urls_list) + batch_size - 1) // batch_size
@@ -122,7 +122,7 @@ class Scanner:
             current_batch = batch_idx // batch_size + 1
 
             print(
-                f"\n[bold cyan]📦 深度 {depth} - URL扫描批次 {current_batch}/{total_batches} (URL数量: {len(batch_urls)})[/bold cyan]")
+                f"\n📦 深度 {depth} - URL扫描批次 {current_batch}/{total_batches} (URL数量: {len(batch_urls)})")
 
             # 2. 执行扫描
             # 注意：checker 已经初始化好了，传进去给 process_scan_result 用
@@ -144,9 +144,9 @@ class Scanner:
                 try:
                     excel_handler.append_data_batch(batch_all_next_urls_with_source, batch_size=500,
                                                     show_progress=False)
-                    print(f"[green]✅ 深度 {depth} - 批次 {current_batch} 数据写入Excel成功[/green]")
+                    print(f"✅ 深度 {depth} - 批次 {current_batch} 数据写入Excel成功")
                 except Exception as e:
-                    print(f"[red]❌ 深度 {depth} - 批次 {current_batch} 数据写入Excel失败: {str(e)}[/red]")
+                    print(f"❌ 深度 {depth} - 批次 {current_batch} 数据写入Excel失败: {str(e)}")
 
             # 添加到总列表
             all_scan_info_list.extend(batch_scan_info_list)
@@ -160,7 +160,7 @@ class Scanner:
 
             # 阈值 70%
             if mem_percent > 70.0:
-                rich_print(f"\n[bold red]⚠️  内存告警: 当前 {mem_percent}% > 70% | 触发循环内熔断保护[/bold red]")
+                print(f"\n⚠️  内存告警: 当前 {mem_percent}% > 70% | 触发循环内熔断保护.")
 
                 overflow_dir = "Overflow_Queue"
                 os.makedirs(overflow_dir, exist_ok=True)
@@ -180,8 +180,8 @@ class Scanner:
                     with open(filename_child, "w", encoding="utf-8") as f:
                         for u in final_children_urls:
                             f.write(f"{u}\n")
-                    rich_print(
-                        f"[yellow]💾 [熔断-子集] 已保存 {len(final_children_urls)} 个发现的URL (下层) 到: {filename_child}[/yellow]")
+                    print(
+                        f"💾 [熔断-子集] 已保存 {len(final_children_urls)} 个发现的URL (下层) 到: {filename_child}")
 
                 # --- 任务B: 保存【本层未完成】的任务 (Siblings) ---
                 rem_height_siblings = self.args.height - depth
@@ -194,8 +194,8 @@ class Scanner:
                         for u in unprocessed_urls:
                             if ".js" in u:
                                 f.write(f"{u}\n")
-                    rich_print(
-                        f"[yellow]💾 [熔断-同层] 已保存 {len(unprocessed_urls)} 个未扫URL (本层) 到: {filename_sibling}[/yellow]")
+                    print(
+                        f"💾 [熔断-同层] 已保存 {len(unprocessed_urls)} 个未扫URL (本层) 到: {filename_sibling}")
 
                 # --- 紧急处理：释放内存并退出 ---
                 if (self.args.sensitiveInfo or self.args.sensitiveInfoQwen) and all_scan_info_list:
@@ -211,21 +211,21 @@ class Scanner:
                 import gc
                 gc.collect()
 
-                rich_print(f"[bold red]🛑 进程已终止递归，等待 Shell 脚本接力...[/bold red]")
+                print(f"🛑 进程已终止递归，等待 Shell 脚本接力...")
                 return
 
         # 循环正常结束
         if self.args.sensitiveInfo or self.args.sensitiveInfoQwen:
-            print(f"[bold magenta]🔍 开始敏感信息提取，总数据量: {len(all_scan_info_list)}[/bold magenta]")
+            print(f"🔍 开始敏感信息提取，总数据量: {len(all_scan_info_list)}")
             self._extract_sensitive_info(all_scan_info_list)
 
         # 递归下一层
         if all_next_urls:
             print(
-                f"[bold blue]➡️  深度 {depth} 完成，发现 {len(all_next_urls)} 个新URL，进入深度 {depth + 1}[/bold blue]")
+                f"➡️  深度 {depth} 完成，发现 {len(all_next_urls)} 个新URL，进入深度 {depth + 1}")
             self._scan_recursive(all_next_urls, depth + 1)
         else:
-            print(f"[bold green]✅ 深度 {depth} 完成，未发现新URL[/bold green]")
+            print(f"✅ 深度 {depth} 完成，未发现新URL")
 
     def _extract_sensitive_info(self, scan_info_list):
         """提取敏感信息"""
@@ -253,15 +253,15 @@ class Scanner:
                         ensure_ascii=False
                     )
                 )
-                rich_print(
-                    f"[bold orange]URL:[/bold orange] {url}\n"
-                    f"\t[bold orange]敏感信息:[/bold orange] {sensitive_info}"
+                print(
+                    f"URL: {url}\n"
+                    f"\t敏感信息: {sensitive_info}"
                 )
 
 def send_feishu_notify(title, content=""):
     """飞书推送"""
     if not FEISHU_WEBHOOK or "你的正确飞书地址" in FEISHU_WEBHOOK:
-        rich_print("[red][bold]⚠️ 未配置正确的飞书Webhook地址，跳过推送[/bold][/red]")
+        print("⚠️ 未配置正确的飞书Webhook地址，跳过推送")
         return
     try:
         send_data = {
@@ -274,11 +274,11 @@ def send_feishu_notify(title, content=""):
         res = requests.post(FEISHU_WEBHOOK, json=send_data, headers=headers, timeout=10)
         res_json = res.json()
         if res_json.get("StatusCode") == 0:
-            rich_print("[green][bold]✅ 飞书消息推送成功 ✅[/bold][/green]")
+            print("✅ 飞书消息推送成功 ✅")
         else:
-            rich_print(f"[red][bold]❌ 飞书推送失败: {res.text}[/bold][/red]")
+            print(f"❌ 飞书推送失败: {res.text}")
     except Exception as e:
-        rich_print(f"[yellow][bold]⚠️ 飞书推送接口异常: {str(e)}[/bold][/yellow]")
+        print(f"⚠️ 飞书推送接口异常: {str(e)}")
 
 
 if __name__ == '__main__':
@@ -306,7 +306,7 @@ if __name__ == '__main__':
         scanner.run()
         run_time = round(time.time() - start_time, 2)
 
-        rich_print(f"[bold]本轮进程耗时：{run_time}[/bold]")
+        print(f"本轮进程耗时：{run_time}")
 
     except Exception as e:
         run_time = round(time.time() - start_time, 2)

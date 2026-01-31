@@ -105,7 +105,7 @@ class CodeLineFilter:
             'createElement', 'appendChild', 'innerHTML', 'textContent',
             '.css(', '.html(', '.text(', '.val(', '.attr(',
             '<div', '<span', '<a ', '<img', '<link', '<script', '<style',
-            'window.location', 'document.cookie',
+            'window.location', 'document.cookie','_sentryDebugIds'
         }
 
         self.EXCLUDE_VALUES = {
@@ -116,9 +116,6 @@ class CodeLineFilter:
             'input', 'form', 'https', 'localhost', 'base64', 'unicode',
         }
 
-        # ✅ 正则前缀过滤规则 (编译一次，多次使用)
-        # 匹配：(开头可选的非单词字符)(特定前缀)(任意后续)
-        # 包含了 Webpack chunk, Vue data-v, 以及常见 CSS 类前缀
         self.IGNORE_PREFIX_PATTERN = re.compile(
             r'^[\W_]*(chunk-|app-|vendors-|manifest-|data-v-|vue-|bg-|text-|border-|font-|col-|row-|flex-|grid-|btn-|icon-|fa-|el-|mat-)',
             re.IGNORECASE
