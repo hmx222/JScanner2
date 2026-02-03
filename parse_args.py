@@ -50,9 +50,9 @@ def parse_args():
 
     parser.add_argument('-m','--time',type=float,default=0.1,help="请求间隔时间")
 
-    parser.add_argument('-g','--sensitiveInfo', default=False, action='store_true',help="是否对收集JS敏感信息")
+    parser.add_argument('-g','--sensitiveInfo', default=False, action='store_true',help="是否利用正则表达式收集JS敏感信息")
 
-    parser.add_argument('-o','--ollama', action='store_true', default=False, help="是否使用qwen2.5模型辅助分析JavaScript代码")
+    parser.add_argument('-ps', '--paramScan', action='store_true', default=False, help="是否进行参数扫描")
 
     parser.add_argument('-q','--sensitiveInfoQwen', action='store_true', default=False, help="是否使用qwen2.5模型抽取敏感信息")
 

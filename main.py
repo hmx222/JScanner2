@@ -228,35 +228,59 @@ class Scanner:
             print(f"✅ 深度 {depth} 完成，未发现新URL")
 
     def _extract_sensitive_info(self, scan_info_list):
-        """提取敏感信息"""
-        sensitive_info = []
+        """提取敏感信息 (支持多引擎聚合)"""
+
         for scan_info in scan_info_list:
             url = scan_info["url"]
-            if scan_info["is_valid"] == 1 or url in self.initial_urls:
-                if ".js" not in scan_info["url"]:
-                    continue
+            # 基础过滤：只扫 JS，或者是初始入口
+            if not (scan_info["is_valid"] == 1 or url in self.initial_urls):
+                continue
+            if ".js" not in scan_info["url"]:
+                continue
 
-                if self.args.sensitiveInfoQwen:
-                    sensitive_info = qwen_scan_js_code(scan_info["source_code"])
-                elif self.args.sensitiveInfo:
-                    sensitive_info = find_all_info_by_rex(scan_info["source_code"])
+            # 使用集合去重，存储本文件的所有敏感信息
+            combined_sensitive_info = set()
 
-                if len(sensitive_info) == 0:
-                    # print(f"URL: {url} 没有敏感信息") # 减少刷屏
-                    continue
+            # 引擎 1: Qwen AI (深度语义分析)
+            if self.args.sensitiveInfoQwen:
+                try:
+                    qwen_results = qwen_scan_js_code(scan_info["source_code"])
+                    if qwen_results:
+                        combined_sensitive_info.update(qwen_results)
+                except Exception as e:
+                    print(f"⚠️ Qwen AI 引擎出错: {e}")
 
-                write2json(
-                    "Result/sensitiveInfo.json",
-                    json.dumps(
-                        {"url": url, "sensitive_info": sensitive_info},
-                        indent=4,
-                        ensure_ascii=False
-                    )
+            # 引擎 2: 正则 (传统快速匹配)
+            if self.args.sensitiveInfo:
+                try:
+                    rex_results = find_all_info_by_rex(scan_info["source_code"])
+                    if rex_results:
+                        combined_sensitive_info.update(rex_results)
+                except Exception as e:
+                    print(f"⚠️ 正则引擎出错: {e}")
+
+            # 如果没有任何发现，跳过
+            if not combined_sensitive_info:
+                continue
+
+            # 转回列表以便序列化
+            final_results = list(combined_sensitive_info)
+
+            # 写入结果
+            write2json(
+                "Result/sensitiveInfo.json",
+                json.dumps(
+                    {"url": url, "sensitive_info": final_results},
+                    indent=4,
+                    ensure_ascii=False
                 )
-                print(
-                    f"URL: {url}\n"
-                    f"\t敏感信息: {sensitive_info}"
-                )
+            )
+
+            print(
+                f"URL: {url}\n"
+                f"\t敏感信息: {final_results}"
+            )
+
 
 def send_feishu_notify(title, content=""):
     """飞书推送"""
