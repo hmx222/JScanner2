@@ -4,31 +4,99 @@ import os
 import time
 import uuid
 import warnings
+import logging
+import atexit
+from traceback import print_exc
+
 import psutil
 import requests
-from AI.SenInfo import qwen_scan_js_code
+
+from FileIO.db_manager import SQLiteStorage
+from FileIO.filerw import write2json, clear_or_create_file, read
+from HttpHandle.DuplicateChecker import DuplicateChecker
+from HttpHandle.httpSend import get_source_async
+from JsHandle.pathScan import get_root_domain
+from JsHandle.sensitiveInfoScan import find_all_info_by_rex
+from ai_security_scanner.analysis import AISecurityAuditor
+from ai_security_scanner.analysis.secret_scanner import remove_html_tags, SensitiveInfoScanner, \
+    cleanup_bloom_filters
 from config.config import FEISHU_WEBHOOK
+from parse_args import parse_args
+from HttpHandle.AI_Req import client
 
 warnings.filterwarnings("ignore")
 from colorama import init
-# from rich import print as print
 
-from FileIO.Excelrw import SafePathExcelGenerator
-from HttpHandle.DuplicateChecker import DuplicateChecker
-from HttpHandle.httpSend import get_source_async, fail_url
-from JsHandle.pathScan import get_root_domain
-from FileIO.filerw import write2json, clear_or_create_file, read
-from parse_args import parse_args
-from JsHandle.sensitiveInfoScan import find_all_info_by_rex
+# 初始化日志
+logger = logging.getLogger(__name__)
+
+proxies = {
+    "http": "",
+    "https": "",
+    "no_proxy": "*"
+}
 
 
 class Scanner:
-    def __init__(self, args):
+    """
+    主扫描器类
+    """
+
+    def __init__(self, args, db_handler):
+        """
+        初始化扫描器
+        """
         self.args = args
-        self.initial_urls = []  # 初始URL根域
-        # checker 在 run 中初始化，确保能拿到完整的 initial_root_domain
+        self.db_handler = db_handler
+
+        self.initial_urls = []
         self.checker = None
         self.whiteList = read("./config/whiteList")
+        self.param_file = None
+
+        self.ai_auditor = None
+        if self.args.automaticallyConstructPoc:
+            try:
+                self.ai_auditor = AISecurityAuditor()
+                print("[AI] AI 安全审计器初始化成功")
+            except Exception as e:
+                print(f"[AI] AI 安全审计器初始化失败：{e}")
+                self.ai_auditor = None
+
+        self.sensitive_scanner = None
+        if self.args.analyzeSensitiveInfoAI:
+            try:
+
+                # 初始化扫描器 (传入 db_handler 实现统一存储)
+                self.sensitive_scanner = SensitiveInfoScanner(
+                    client=client,
+                    db=self.db_handler,
+                    max_ast_analysis=50,  # AST 溯源数量限制 (性能保护)
+                    max_llm=80  # LLM 验证数量限制 (成本保护)
+                )
+            except Exception as e:
+                print(f"[Scanner] 敏感信息扫描器初始化失败：{e}")
+                self.sensitive_scanner = None
+
+        atexit.register(self._cleanup_resources)
+
+    def _cleanup_resources(self):
+        """
+        清理资源 (程序退出时自动调用)
+        """
+        try:
+            # 1. 清理布隆过滤器
+            try:
+                cleanup_bloom_filters()
+            except Exception:
+                pass
+
+            # 2. 关闭数据库连接
+            if self.db_handler:
+                self.db_handler.close()
+
+        except Exception as e:
+            print(f"[Cleanup] 清理失败：{e}")
 
     def run(self):
         """主运行逻辑"""
@@ -36,44 +104,46 @@ class Scanner:
         clear_or_create_file("Result/sensitiveInfo.json")
 
         self.initial_urls = self._load_initial_urls()
-
         self.checker = DuplicateChecker(initial_root_domain=self.initial_urls)
         self.args.initial_urls = self.initial_urls
 
-        # 加载并清洗种子URL
-        raw_seed_urls = self.load_url(self.args)
+        raw_seed_urls = self.load_url()
         scan_seed_urls = []
+
+        # 参数提取结果文件名
+        target_url_for_name = self.args.url.strip() if self.args.url else "batch_task"
+        try:
+            domain_part = get_root_domain(target_url_for_name).replace(".", "_")
+        except:
+            domain_part = "unknown"
+        time_part = time.strftime("%Y%m%d", time.localtime())
+        self.param_file = f"Result/params_{domain_part}_{time_part}.txt"
 
         for url in raw_seed_urls:
             url = url.strip()
-            if not url: continue
-
+            if not url:
+                continue
             if not self.checker.visited_urls.contains(url):
-                # 标记为已访问 (防止本次运行重复)
                 self.checker.visited_urls.add(url)
                 scan_seed_urls.append(url)
             else:
-                print(f"⏩ 初始URL已在历史记录中，自动跳过: {url}")
+                print(f"初始 URL 已在历史记录中，跳过：{url}")
 
         if not scan_seed_urls:
-            print("没有新的有效URL需要扫描（可能全部已过滤）")
+            print("没有新的有效 URL 需要扫描")
             return
 
-        # 开始扫描
         start_time = time.time()
         self._scan_recursive(scan_seed_urls, 0)
+        print(f"🏁 任务结束 | 总耗时：{time.time() - start_time:.2f}秒")
 
-        print(f"总耗时: {time.time() - start_time:.2f}秒")
-
-    def load_url(self, args):
-        if args.url and args.url.strip():
-            return [args.url.strip()]
+    def load_url(self):
+        if self.args.url and self.args.url.strip():
+            return [self.args.url.strip()]
         return []
 
     def _load_initial_urls(self):
-        # 第一步：强制加载白名单
         white_list_domains = read("./config/whiteList")
-        # 第二步：如果传入了扫描URL，解析根域名并追加
         if self.args.url and self.args.url.strip():
             try:
                 seed_root_domain = get_root_domain(self.args.url.strip())
@@ -83,21 +153,83 @@ class Scanner:
                 pass
         return list(set(filter(None, white_list_domains)))
 
+    def _process_ai_batch(self, batch_all_next_urls_with_source, batch_scan_info_list):
+        """
+        批量处理 AI 审计任务
+        """
+        if not self.ai_auditor:
+            return
+
+        # 1. 构建源码索引
+        source_map = {}
+        for info in batch_scan_info_list:
+            if info.get("source_code") and info.get("url") and ".js" in info["url"]:
+                try:
+                    clean_code = remove_html_tags(info["source_code"])
+                    source_map[info["url"]] = clean_code
+                except:
+                    source_map[info["url"]] = info["source_code"]
+
+        # 2. 遍历 JS 文件并分析其中的 API
+        processed_count = 0
+        for item in batch_all_next_urls_with_source:
+            js_url = item.get("sourceURL")
+            found_apis = item.get("next_paths", [])
+
+            if not js_url or js_url not in source_map:
+                continue
+
+            js_source = source_map[js_url]
+
+            # 3. 过滤高质量待分析 API
+            unique_apis = set(found_apis)
+            apis_to_scan = []
+            for api_path in unique_apis:
+                if len(api_path) < 4 or api_path.startswith("http") or api_path.startswith("//"):
+                    continue
+                if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
+                    continue
+                apis_to_scan.append(api_path)
+
+            # 4. 批量执行 AI 审计建议生成
+            if apis_to_scan and getattr(self.args, 'automaticallyConstructPoc', False):
+                try:
+                    # 调用重构后的顾问模式 scan_multiple_apis
+                    batch_ai_advisories = self.ai_auditor.scan_multiple_apis(
+                        js_code=js_source,
+                        api_paths=apis_to_scan,
+                        target_url=self.args.url.strip()
+                    )
+
+                    for api_path, advisory_report in batch_ai_advisories.items():
+                        if not advisory_report:
+                            continue
+
+                        processed_count += 1
+
+                        self.db_handler.save_ai_result(
+                            js_url=js_url,
+                            api_endpoint=api_path,
+                            advisory_report=advisory_report
+                        )
+
+                except Exception:
+                    print_exc()
+
+        if processed_count > 0:
+            print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
+
     def _scan_recursive(self, urls, depth):
-        """递归扫描（按深度迭代）- 修正版：循环内内存熔断 + 持久化去重"""
+        """递归扫描主流程"""
         if depth > self.args.height:
             return
 
-        # 转换为列表
-        raw_urls_list = list(urls) if isinstance(urls, set) else urls
-        raw_urls_list = [url.strip() for url in raw_urls_list if url.strip()]
-
+        raw_urls_list = [url.strip() for url in urls if url.strip()]
         urls_list = []
+
         if depth > 0:
-            # 深度>0，严格检查是否已访问
             for u in raw_urls_list:
                 if self.checker.should_scan(u):
-                    # 立即占位，防止同批次其他逻辑重复
                     self.checker.visited_urls.add(u)
                     urls_list.append(u)
         else:
@@ -108,7 +240,7 @@ class Scanner:
         if not urls_list:
             return
 
-        print(f"🔍 深度 {depth} 扫描开始，URL总数: {len(urls_list)}")
+        print(f"🔍 深度 {depth} 扫描开始 | URL 数：{len(urls_list)}")
 
         batch_size = 200
         total_batches = (len(urls_list) + batch_size - 1) // batch_size
@@ -117,16 +249,12 @@ class Scanner:
         all_next_urls = set()
 
         for batch_idx in range(0, len(urls_list), batch_size):
-            # 1. 准备当前批次
             batch_urls = urls_list[batch_idx:batch_idx + batch_size]
             current_batch = batch_idx // batch_size + 1
 
-            print(
-                f"\n📦 深度 {depth} - URL扫描批次 {current_batch}/{total_batches} (URL数量: {len(batch_urls)})")
+            print(f"\n[D{depth}] 批次 {current_batch}/{total_batches} (Size: {len(batch_urls)})")
 
-            # 2. 执行扫描
-            # 注意：checker 已经初始化好了，传进去给 process_scan_result 用
-            batch_all_next_urls_with_source, batch_scan_info_list, batch_next_urls = asyncio.run(
+            batch_all_next_urls_with_source, batch_scan_info_list, batch_next_urls, batch_all_next_paths_with_source = asyncio.run(
                 get_source_async(
                     urls=batch_urls,
                     thread_num=self.args.thread_num,
@@ -135,174 +263,140 @@ class Scanner:
                 )
             )
 
+            # 收集下一层 URL
             for n_url in batch_next_urls:
                 if self.checker.should_scan(n_url):
                     all_next_urls.add(n_url)
 
-            # 写入Excel
             if batch_all_next_urls_with_source:
                 try:
-                    excel_handler.append_data_batch(batch_all_next_urls_with_source, batch_size=500,
-                                                    show_progress=False)
-                    print(f"✅ 深度 {depth} - 批次 {current_batch} 数据写入Excel成功")
+                    self.db_handler.append_data_batch(batch_all_next_urls_with_source, depth=depth)
+                    print(f"✅ [DB] 基础数据已存入")
                 except Exception as e:
-                    print(f"❌ 深度 {depth} - 批次 {current_batch} 数据写入Excel失败: {str(e)}")
+                    print(f"❌ [DB] 基础数据存储失败：{e}")
 
-            # 添加到总列表
+            if self.args.automaticallyConstructPoc and self.ai_auditor:
+                print(f"🤖 [AI] 正在进行 API 逻辑审计...")
+                self._process_ai_batch(batch_all_next_paths_with_source, batch_scan_info_list)
+
             all_scan_info_list.extend(batch_scan_info_list)
 
-            # 批次间休息
             if current_batch < total_batches:
                 time.sleep(0.2)
 
-            mem = psutil.virtual_memory()
-            mem_percent = mem.percent
+            try:
+                mem = psutil.virtual_memory()
+                if mem.percent > 99.0:
+                    print(f"\n⚠️  内存告警：{mem.percent}% > 99% | 触发熔断保护.")
 
-            # 阈值 70%
-            if mem_percent > 70.0:
-                print(f"\n⚠️  内存告警: 当前 {mem_percent}% > 70% | 触发循环内熔断保护.")
+                    overflow_dir = "Overflow_Queue"
+                    os.makedirs(overflow_dir, exist_ok=True)
+                    file_id = uuid.uuid4().hex[:8]
 
-                overflow_dir = "Overflow_Queue"
-                os.makedirs(overflow_dir, exist_ok=True)
-                file_id = uuid.uuid4().hex[:8]
+                    # 保存未完成的任务到文件，供下次 Resume
+                    rem_height_children = self.args.height - (depth + 1)
+                    final_children_urls = [u for u in all_next_urls if self.checker.should_scan(u)]
+                    if final_children_urls and rem_height_children >= 0:
+                        with open(f"{overflow_dir}/overflow_depth_{rem_height_children}_{file_id}_children.txt",
+                                  "w") as f:
+                            f.write("\n".join(final_children_urls))
 
-                # --- 任务A: 保存【下一层】的任务 (Children) ---
-                rem_height_children = self.args.height - (depth + 1)
+                    unprocessed_urls = urls_list[batch_idx + batch_size:]
+                    rem_height_siblings = self.args.height - depth
+                    if unprocessed_urls and rem_height_siblings >= 0:
+                        with open(f"{overflow_dir}/overflow_depth_{rem_height_siblings}_{file_id}_siblings.txt",
+                                  "w") as f:
+                            f.write("\n".join([u for u in unprocessed_urls if ".js" in u]))
 
-                # 双重保险：写入前确保 filter 里的 url 确实是新的
-                final_children_urls = []
-                for u in all_next_urls:
-                    if self.checker.should_scan(u):
-                        final_children_urls.append(u)
+                    self.db_handler.close()
+                    print(f"🛑 进程主动退出 (Memory Safety)")
+                    return
+            except Exception:
+                pass
 
-                if final_children_urls and rem_height_children >= 0:
-                    filename_child = f"{overflow_dir}/overflow_depth_{rem_height_children}_{file_id}_children.txt"
-                    with open(filename_child, "w", encoding="utf-8") as f:
-                        for u in final_children_urls:
-                            f.write(f"{u}\n")
-                    print(
-                        f"💾 [熔断-子集] 已保存 {len(final_children_urls)} 个发现的URL (下层) 到: {filename_child}")
-
-                # --- 任务B: 保存【本层未完成】的任务 (Siblings) ---
-                rem_height_siblings = self.args.height - depth
-                next_start_idx = batch_idx + batch_size
-                unprocessed_urls = urls_list[next_start_idx:]
-
-                if unprocessed_urls and rem_height_siblings >= 0:
-                    filename_sibling = f"{overflow_dir}/overflow_depth_{rem_height_siblings}_{file_id}_siblings.txt"
-                    with open(filename_sibling, "w", encoding="utf-8") as f:
-                        for u in unprocessed_urls:
-                            if ".js" in u:
-                                f.write(f"{u}\n")
-                    print(
-                        f"💾 [熔断-同层] 已保存 {len(unprocessed_urls)} 个未扫URL (本层) 到: {filename_sibling}")
-
-                # --- 紧急处理：释放内存并退出 ---
-                if (self.args.sensitiveInfo or self.args.sensitiveInfoQwen) and all_scan_info_list:
-                    try:
-                        self._extract_sensitive_info(all_scan_info_list)
-                    except:
-                        pass
-
-                        # 强制清理
-                del all_scan_info_list
-                del all_next_urls
-                del urls_list
-                import gc
-                gc.collect()
-
-                print(f"🛑 进程已终止递归，等待 Shell 脚本接力...")
-                return
-
-        # 循环正常结束
-        if self.args.sensitiveInfo or self.args.sensitiveInfoQwen:
-            print(f"🔍 开始敏感信息提取，总数据量: {len(all_scan_info_list)}")
+        if self.args.analyzeSensitiveInfoRex or self.args.analyzeSensitiveInfoAI:
+            print(f"🔍 正在提取敏感信息 (Regex/Qwen)...")
             self._extract_sensitive_info(all_scan_info_list)
 
         # 递归下一层
         if all_next_urls:
-            print(
-                f"➡️  深度 {depth} 完成，发现 {len(all_next_urls)} 个新URL，进入深度 {depth + 1}")
+            print(f"➡️  进入深度 {depth + 1}")
             self._scan_recursive(all_next_urls, depth + 1)
         else:
-            print(f"✅ 深度 {depth} 完成，未发现新URL")
+            print(f"✅ 深度 {depth} 完成")
+
 
     def _extract_sensitive_info(self, scan_info_list):
-        """提取敏感信息 (支持多引擎聚合)"""
+        """
+        提取敏感信息 (v2.0 重构版)
 
+        支持：
+        1. 正则匹配 (Rex)
+        2. AI 分析 + AST 上下文溯源 (新版本)
+        3. 自动存入 SQLite 数据库
+        """
         for scan_info in scan_info_list:
             url = scan_info["url"]
-            # 基础过滤：只扫 JS，或者是初始入口
+
+            # 只分析 JS 文件，且忽略无效页面
             if not (scan_info["is_valid"] == 1 or url in self.initial_urls):
                 continue
             if ".js" not in scan_info["url"]:
                 continue
 
-            # 使用集合去重，存储本文件的所有敏感信息
             combined_sensitive_info = set()
 
-            # 引擎 1: Qwen AI (深度语义分析)
-            if self.args.sensitiveInfoQwen:
+            # ========== AI 分析 (新版本) ==========
+            if self.args.analyzeSensitiveInfoAI and self.sensitive_scanner:
                 try:
-                    qwen_results = qwen_scan_js_code(scan_info["source_code"])
-                    if qwen_results:
-                        combined_sensitive_info.update(qwen_results)
-                except Exception as e:
-                    print(f"⚠️ Qwen AI 引擎出错: {e}")
+                    # 使用新扫描器，返回结构化数据
+                    ai_results = self.sensitive_scanner.scan(
+                        js_code=scan_info["source_code"],
+                        js_url=url
+                    )
 
-            # 引擎 2: 正则 (传统快速匹配)
-            if self.args.sensitiveInfo:
+                    if ai_results:
+                        # 提取敏感值用于 JSON 输出 (兼容旧格式)
+                        for item in ai_results:
+                            combined_sensitive_info.add(item.get("value", ""))
+
+                        # 打印高危发现
+                        high_risk = [r for r in ai_results if r.get("risk_level") == "High"]
+                        if high_risk:
+                            print(f"🔥 [High Risk] URL: {url}")
+                            for hr in high_risk[:5]:  # 最多显示 5 条
+                                value_preview = hr.get('value', '')[:50]
+                                print(f"   └─ {value_preview}...")
+                                print(f"      类型：{hr.get('secret_type', 'unknown')}")
+                                suggestion = hr.get('test_suggestion', '')[:50]
+                                print(f"      建议：{suggestion}...")
+
+                except Exception as e:
+                    print_exc()
+                    logger.error(f"❌ [AI Scan] 分析失败 {url}: {e}")
+                    print(f"❌ [AI Scan] 分析失败 {url}: {e}")
+
+            # ========== 正则分析 (保持不变) ==========
+            if self.args.analyzeSensitiveInfoRex:
                 try:
                     rex_results = find_all_info_by_rex(scan_info["source_code"])
                     if rex_results:
                         combined_sensitive_info.update(rex_results)
-                except Exception as e:
-                    print(f"⚠️ 正则引擎出错: {e}")
-
-            # 如果没有任何发现，跳过
-            if not combined_sensitive_info:
-                continue
-
-            # 转回列表以便序列化
-            final_results = list(combined_sensitive_info)
-
-            # 写入结果
-            write2json(
-                "Result/sensitiveInfo.json",
-                json.dumps(
-                    {"url": url, "sensitive_info": final_results},
-                    indent=4,
-                    ensure_ascii=False
-                )
-            )
-
-            print(
-                f"URL: {url}\n"
-                f"\t敏感信息: {final_results}"
-            )
+                except Exception:
+                    pass
 
 
 def send_feishu_notify(title, content=""):
-    """飞书推送"""
-    if not FEISHU_WEBHOOK or "你的正确飞书地址" in FEISHU_WEBHOOK:
-        print("⚠️ 未配置正确的飞书Webhook地址，跳过推送")
+    """发送飞书通知"""
+    if not FEISHU_WEBHOOK:
         return
     try:
-        send_data = {
-            "msg_type": "text",
-            "content": {
-                "text": f"{title}\n{content}"
-            }
-        }
-        headers = {"Content-Type": "application/json; charset=utf-8"}
-        res = requests.post(FEISHU_WEBHOOK, json=send_data, headers=headers, timeout=10)
-        res_json = res.json()
-        if res_json.get("StatusCode") == 0:
-            print("✅ 飞书消息推送成功 ✅")
-        else:
-            print(f"❌ 飞书推送失败: {res.text}")
-    except Exception as e:
-        print(f"⚠️ 飞书推送接口异常: {str(e)}")
+        requests.post(FEISHU_WEBHOOK,
+                      json={"msg_type": "text", "content": {"text": f"{title}\n{content}"}},
+                      timeout=10,
+                      proxies=proxies)
+    except:
+        pass
 
 
 if __name__ == '__main__':
@@ -312,34 +406,35 @@ if __name__ == '__main__':
     start_time = time.time()
     os.makedirs("Result", exist_ok=True)
 
-    target_url = args.url.strip() if args.url else "unknown_url"
+    target_url = args.url.strip() if args.url else "unknown"
     try:
-        url_domain = get_root_domain(target_url)
+        root_domain = get_root_domain(target_url)
     except:
-        url_domain = "unknown_domain"
+        root_domain = "unknown"
 
-    format_domain = url_domain.replace(".", "_").replace("/", "_").replace(":", "_")
-
+    safe_db_name = root_domain.replace(".", "_").replace("/", "_").replace(":", "_")
     time_str = time.strftime("%Y%m%d", time.localtime())
-    excel_filename = f"Result/Result_{format_domain}_{time_str}.xlsx"
+    db_filename = f"Result/Result_{safe_db_name}_{time_str}.db"
 
-    excel_handler = SafePathExcelGenerator(excel_filename)
-    scanner = Scanner(args)
+    print(f"📂 扫描结果将存入数据库：{db_filename}")
+
+    # 初始化数据库
+    db_handler = SQLiteStorage(db_filename)
+
+    # 初始化扫描器
+    scanner = Scanner(args, db_handler)
 
     try:
         scanner.run()
         run_time = round(time.time() - start_time, 2)
-
-        print(f"本轮进程耗时：{run_time}")
+        print(f"本次扫描耗时：{run_time}s")
 
     except Exception as e:
         run_time = round(time.time() - start_time, 2)
-        error_content = f"""
-            ❌ **程序运行出错！扫描任务终止**
-            ⚠️ 错误类型：{type(e).__name__}
-            ⚠️ 错误详情：{str(e)}
-            ⏱️ 运行耗时：{run_time} 秒
-            🕒 报错时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}
-            """
-        send_feishu_notify("【服务器-扫描任务❌崩溃报警】", error_content)
+        error_content = f"❌ 错误：{str(e)}\n⏱️ 耗时：{run_time}s"
+        send_feishu_notify("【扫描任务报警】", error_content)
+        print(error_content)
 
+    finally:
+        # 手动清理资源 (atexit 也会自动调用)
+        scanner._cleanup_resources()
