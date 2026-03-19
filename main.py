@@ -55,7 +55,7 @@ class Scanner:
         self.param_file = None
 
         self.ai_auditor = None
-        if self.args.automaticallyConstructPoc:
+        if self.args.autoConstructPoc:
             try:
                 self.ai_auditor = AISecurityAuditor()
                 print("[AI] AI 安全审计器初始化成功")
@@ -192,7 +192,7 @@ class Scanner:
                 apis_to_scan.append(api_path)
 
             # 4. 批量执行 AI 审计建议生成
-            if apis_to_scan and getattr(self.args, 'automaticallyConstructPoc', False):
+            if apis_to_scan and getattr(self.args, 'autoConstructPoc', False):
                 try:
                     # 调用重构后的顾问模式 scan_multiple_apis
                     batch_ai_advisories = self.ai_auditor.scan_multiple_apis(
@@ -275,7 +275,7 @@ class Scanner:
                 except Exception as e:
                     print(f"❌ [DB] 基础数据存储失败：{e}")
 
-            if self.args.automaticallyConstructPoc and self.ai_auditor:
+            if self.args.autoConstructPoc and self.ai_auditor:
                 print(f"🤖 [AI] 正在进行 API 逻辑审计...")
                 self._process_ai_batch(batch_all_next_paths_with_source, batch_scan_info_list)
 

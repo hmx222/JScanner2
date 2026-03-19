@@ -37,57 +37,25 @@ playwright install
 
 # 安装prettier（用于代码格式化）
 npm install prettier
-
-# 安装Ollama和AI模型（核心步骤）
-# 务必安装Ollama后执行：
-ollama pull qwen2.5-coder:14b
 ```
 
 ## 📋 使用指南
 
 ### 核心AI参数说明
-| 参数 | 全称                  | 说明                                                  |
-| ---- | --------------------- | ----------------------------------------------------- |
-| `-o` | `--ollama`            | 启用Ollama大模型分析JavaScript代码（核心功能）        |
-| `-q` | `--sensitiveInfoQwen` | 使用Qwen2.5模型专门抽取敏感信息（推荐与`-g`配合使用） |
-| `-g` | `--sensitiveInfo`     | 启用敏感信息扫描模式（基础模式，可单独使用）          |
+| 参数      | 全称                          | 说明            |
+|---------|-----------------------------|---------------|
+| `-asir` | `--analyzeSensitiveInfoRex` | 通过正则表达式识别敏感信息 |
+| `-acp`  | `--autoConstructPoc`        | 输出渗透测试建议      |
+| `-asia` | `--analyzeSensitiveInfoAI`  | 自动分析敏感信息          |
 
 ### 基础扫描参数
-| 参数 | 全称           | 说明                                                         |
-| ---- | -------------- | ------------------------------------------------------------ |
-| `-u` | `--url`        | 单个网站URL（需带http/https，例如：`https://example.com`）与`-b`参数必选其一 |
-| `-b` | `--batch`      | 批量扫描的URL文件绝对路径（文件内需每行一个URL）             |
-| `-H` | `--height`     | 扫描深度（默认值：2，AI分析时建议保持默认）                  |
-| `-t` | `--thread_num` | 并发线程数（默认值：10，AI分析时建议降低至5-8）              |
-| `-m` | `--time`       | 请求间隔时间（默认：0.1秒，避免触发风控）                    |
-
-### 智能去重参数（配合AI使用）
-| 参数 | 全称                      | 说明                           |
-| ---- | ------------------------- | ------------------------------ |
-| `-d` | `--de_duplication_title`  | 标题去重（提升AI分析效率）     |
-| `-s` | `--de_duplication_hash`   | DOM SimHash去重（推荐阈值0.8） |
-| `-l` | `--de_duplication_length` | 内容长度去重（减少重复分析）   |
-
-### 最佳实践命令
-
-```bash
-# 【推荐】标准AI敏感信息扫描（平衡速度与精度）
-python main.py -u "https://target.com" -H 4 -l -q -o
-
-# 【批量扫描】多URL AI分析（生产环境推荐）
-python main.py -b targets.txt -H 4 -l -q -o
-
-```
-
-## 🤖 AI模型性能与配置
-
-### 模型性能对比
-| 模型配置                     | 准确率 | 速度(页/分钟) | 显存占用 | 适用场景                |
-| ---------------------------- | ------ | ------------- | -------- | ----------------------- |
-| Qwen2.5-7B Q4_K_M (默认推荐) | 96.2%  | 15-20         | 4GB      | **推荐** 平衡性能与精度 |
-| Qwen2.5-7B 原始版            | 98.1%  | 8-12          | 14GB     | 高精度需求，服务器环境  |
-| Qwen2.5-3B Q4                | 92.5%  | 25-30         | 2GB      | 低配设备，速度优先      |
-| 无AI模式                     | 73.8%  | 40-50         | -        | 快速初步扫描            |
+| 参数 | 全称           | 功能                                                         |
+| :--- | :------------- | :----------------------------------------------------------- |
+| `-u` | `--url`        | 输入带有http/https的单个网站URL（如：https://example.com），参数会自动去除首尾空格及末尾的回车符（`\r`），参数类型为字符串 |
+| `-H` | `--height`     | 扫描深度（默认值：2），参数类型为整数                        |
+| `-t` | `--thread_num` | 并发线程数（默认值：10），参数类型为整数                     |
+| `-p` | `--proxy`      | 代理服务器（格式要求：http://127.0.0.1:12335 或 socks5://[127.0.0.1:1080](127.0.0.1:1080)），参数类型为字符串 |
+| `-v` | `--visible`    | 显示浏览器窗口（默认：无头模式，不显示窗口），为布尔型开关参数（只需添加该参数即启用，无需赋值） |
 
 ## ⚠️ 免责声明
 
@@ -100,20 +68,12 @@ python main.py -b targets.txt -H 4 -l -q -o
 - 不将分析结果用于非法用途
 
 ## 🤝 致谢与参考
-
-- **AI模型**：[Qwen](https://github.com/QwenLM) - 阿里巴巴通义千问
 - **基础框架**：[Playwright](https://playwright.dev) - 浏览器自动化
 - **代码分析**：[LinkFinder](https://github.com/GerbenJavado/LinkFinder)
-- **自然语言处理**：[NLTK](https://www.nltk.org) 
-- **规则库**：[findsomething](https://github.com/momosecurity/FindSomething)
-- **腾讯云Cloud Studio**：[Cloud Studio](https://ide.cloud.tencent.com/)
+- **自然语言处理**：[NLTK](https://www.nltk.org)
 
 ## 📧 问题反馈
 
 使用过程中遇到任何问题，欢迎提交issue：
 https://github.com/hmx222/JScanner2/issues
 
----
-
-**JScanner2** - 让AI成为您的安全研究员，智能识别每一个潜在风险。  
-**下一代安全工具，不止于扫描，更在于理解。**

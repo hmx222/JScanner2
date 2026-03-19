@@ -35,8 +35,7 @@ def parse_args():
     # 扫描配置参数
     parser.add_argument('-H', '--height', type=int, default=2, help="扫描深度（默认：2）")
     parser.add_argument('-t', '--thread_num', type=int, default=10, help="并发线程数（默认：10）")
-    parser.add_argument('-m', '--multiple', action='store_true', default=False,
-                        help="是否支持批量处理多个URL（默认：False）")
+
     # 网络与浏览器参数
     parser.add_argument('-p', '--proxy', type=str,
                         help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
@@ -46,7 +45,7 @@ def parse_args():
 
     parser.add_argument('-asir','--analyzeSensitiveInfoRex', default=False, action='store_true',help="是否利用正则表达式收集JS敏感信息")
 
-    parser.add_argument('-acp', '--automaticallyConstructPoc', action='store_true', default=False,
+    parser.add_argument('-acp', '--autoConstructPoc', action='store_true', default=False,
                         help="是否自动构造poc")
 
     parser.add_argument('-asia','--analyzeSensitiveInfoAI', action='store_true', default=False, help="是否使用AI模型分析敏感信息")
