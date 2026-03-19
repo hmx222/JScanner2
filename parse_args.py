@@ -31,8 +31,7 @@ def parse_args():
 
     # 核心目标参数（必选其一）
     parser.add_argument('-u', '--url', type=lambda x: x.strip().rstrip('\r'),
-                        help="输入带有http/https的单个网站URL（如：https://example.com）")    # parser.add_argument('-b', '--batch', type=str, help="批量扫描的URL文件绝对路径（每行一个URL）")
-
+                        help="输入带有http/https的单个网站URL（如：https://example.com）")
     # 扫描配置参数
     parser.add_argument('-H', '--height', type=int, default=2, help="扫描深度（默认：2）")
     parser.add_argument('-t', '--thread_num', type=int, default=10, help="并发线程数（默认：10）")
@@ -40,21 +39,16 @@ def parse_args():
     # 网络与浏览器参数
     parser.add_argument('-p', '--proxy', type=str,
                         help="代理服务器（格式：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080）")
+
     parser.add_argument('-v', '--visible', action='store_true', default=False,
                         help="显示浏览器窗口（默认：无头模式，不显示窗口）")
 
-    parser.add_argument('-c', '--headers', type=str, default=None,
-                        help='user_agent已经随机，请求头字符串，格式如：\'cookie\':\'session=123\';\'Referer\':\'https://example.com\'')
+    parser.add_argument('-asir','--analyzeSensitiveInfoRex', default=False, action='store_true',help="是否利用正则表达式收集JS敏感信息")
 
-    parser.add_argument('-x','--x1',action='store_true',default=False,help="是否进行综合去重")
+    parser.add_argument('-acp', '--autoConstructPoc', action='store_true', default=False,
+                        help="是否自动构造poc")
 
-    parser.add_argument('-m','--time',type=float,default=0.1,help="请求间隔时间")
-
-    parser.add_argument('-g','--sensitiveInfo', default=False, action='store_true',help="是否对收集JS敏感信息")
-
-    parser.add_argument('-o','--ollama', action='store_true', default=False, help="是否使用qwen2.5模型辅助分析JavaScript代码")
-
-    parser.add_argument('-q','--sensitiveInfoQwen', action='store_true', default=False, help="是否使用qwen2.5模型抽取敏感信息")
+    parser.add_argument('-asia','--analyzeSensitiveInfoAI', action='store_true', default=False, help="是否使用AI模型分析敏感信息")
 
     args = parser.parse_args()
 

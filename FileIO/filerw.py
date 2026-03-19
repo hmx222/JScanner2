@@ -5,6 +5,7 @@ import re
 import threading
 
 import chardet
+from json_repair import json_repair
 
 
 def read(file_path):
@@ -63,7 +64,7 @@ def write2json(file_path, json_str):
     _ensure_writer_started(file_path)
 
     try:
-        obj = json.loads(json_str)
+        obj = json_repair.loads(json_str)
     except Exception:
         return
 

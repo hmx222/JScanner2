@@ -1,141 +1,75 @@
-
-# JScanner2
+# JScanner2 - Large Model-Based JavaScript Sensitive Information Intelligent Recognition Tool
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
-**JScanner2** is a JavaScript sensitive information mining tool designed exclusively for **large-scale asset mapping**.
+## 🛠️ Installation Guide
 
----
+### Environment Requirements
 
-## 🚀 Core Features
+- Python 3.9+
 
-- **🛡️ Memory Meltdown Protection**
+### Quick Installation
 
-- **🧠 Dual-Mode AI Engine**
-
-- **💾 Persistent Deduplication**
-
-- **🔍 Intelligent Data Cleansing**
-
----
-
-## 🛠️ Quick Start
-
-### 1. Installation
-
-```Bash
-
+```bash
+# Clone the repository
 git clone https://github.com/hmx222/JScanner2.git
 cd JScanner2
 
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Install Playwright browsers
+# Install Playwright dependencies
 playwright install-deps
 playwright install
 
-# (Optional) Pull local AI model - Required only for local mode
-ollama pull qwen2.5-coder:14b
+# Install prettier (for code formatting)
+npm install prettier
 ```
 
-### 2. Configuration (`config/config.py`)
+## 📋 User Guide
 
-All runtime parameters are managed in `config/config.py`, and the program automatically determines the running mode based on the configuration:
+### Core AI Parameter Description
 
-#### 🤖 AI Model Configuration (Choose One)
+|Parameter|Full Name|Description|
+|---|---|---|
+|-asir|--analyzeSensitiveInfoRex|Identify sensitive information through regular expressions|
+|-acp|--autoConstructPoc|Output penetration testing recommendations|
+|-asia|--analyzeSensitiveInfoAI|Automatically analyze sensitive information|
+### Basic Scanning Parameters
 
-- **Mode A: Alibaba Cloud DashScope/Other Platforms (Recommended, Fast & High Precision)**
-
-    - Fill in your `DASHSCOPE_API_KEY` in `config.py`.
-
-    - The program will automatically detect the key and prioritize the cloud model (`qwen2.5-coder-14b-instruct`).
-
-```Python
-
-DASHSCOPE_API_KEY = "sk-xxxxxxxxxxxxxxxx" 
-```
-
-- **Mode B: Local Ollama (High Privacy, VRAM Required)**
-
-    - Keep `DASHSCOPE_API_KEY` as an empty string `""`.
-
-    - The program will automatically fall back to the local Ollama service.
-
-    - Adjust `OLLAMA_MAX_GPU_MEMORY` according to your graphics card (default: "4GB").
-
-#### 📨 Notification Configuration
-
-- **Lark Notification**:
-
-    - Configure `FEISHU_WEBHOOK`, and the tool will send notifications when **errors occur** or **all tasks are completed**.
-
-```Python
-
-FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/..."
-```
-
-### 3. Run (Recommended for Production)
-
-**Do not run ** **`python main.py`** ** directly**. Use our encapsulated Shell script to activate the automatic meltdown and task relay features:
-
-```Bash
-
-# Method 1: Pipe input (Recommended)
-echo urls.txt | ./run_scan.sh
-
-# Method 2: File parameter
-./run_scan.sh urls.txt
-```
-
-**Tip**: The program automatically monitors memory, processes overflow tasks, and merges the final Excel results without manual intervention.
-
-### 4. Reset Tasks
-
-If you need to scan a new batch of targets, **be sure to** execute the cleanup script to reset the deduplication records; otherwise, new tasks will be marked as "scanned" and skipped:
-
-```Bash
-
-./clean_scan.sh
-```
-
----
-
-## 📂 Result Output
-
-Result files are automatically archived by **date** in the `Result/` directory:
-
-- **Excel Report**: `Result/Result_Domain_2023xxxx.xlsx` (Contains all discovered URLs and hierarchical relationships, supports breakpoint resumption)
-
-- **Sensitive Information**: `Result/sensitiveInfo.json` (Keys/Tokens/Secrets identified by AI auditing)
-
-- **Runtime Logs**: `Log_Data/scan_run_log.log`
-
----
-
-## ⚙️ Core Parameters (For Debugging)
-
-If you need to debug the core script manually (without meltdown protection):
-
-```Bash
-
-python3 main.py -u https://example.com [options]
-```
-
-- `-o` / `--ollama`: Enable AI code auditing
-
-- `-q`: Use Qwen model to extract sensitive information
-
-- `-x`: Enable intelligent deduplication (Enabled by default)
-
-- `-H 5`: Crawling depth (Default: 5)
-
-- `-t 10`: Number of threads (Default: 10)
-
----
-
+|Parameter|Full Name|Function|
+|---|---|---|
+|-u|--url|Enter a single website URL with http/https (e.g., https://example.com). The parameter will automatically remove leading/trailing spaces and trailing carriage returns (\r), and the parameter type is string.|
+|-H|--height|Scanning depth (default value: 2), parameter type is integer.|
+|-t|--thread_num|Number of concurrent threads (default value: 10), parameter type is integer.|
+|-p|--proxy|Proxy server (format requirement: http://127.0.0.1:12335 or socks5://[127.0.0.1:1080](127.0.0.1:1080)), parameter type is string.|
+|-v|--visible|Show browser window (default: headless mode, no window displayed). It is a boolean switch parameter (just add the parameter to enable it, no need to assign a value).|
 ## ⚠️ Disclaimer
 
-This tool is for **security research and authorized testing only**. Unauthorized penetration testing or illegal attacks are strictly prohibited. Users shall bear all legal consequences arising from the use of this tool.
+**Important**: This tool is only for legally authorized security assessments; unauthorized scanning is prohibited. Users shall bear legal responsibility for their own actions, and the developer shall not bear any joint liability.
+
+Before using this tool, please ensure that:
+
+- You have obtained explicit written authorization for the target website
+
+- You comply with relevant laws, regulations and website terms of service
+
+- It is only used for security research and vulnerability repair purposes
+
+- The analysis results are not used for illegal purposes
+
+## 🤝 Acknowledgements and References
+
+- **Basic Framework**: [Playwright](https://playwright.dev) - Browser Automation
+
+- **Code Analysis**: [LinkFinder](https://github.com/GerbenJavado/LinkFinder)
+
+- **Natural Language Processing**: [NLTK](https://www.nltk.org)
+
+## 📧 Feedback
+
+If you encounter any problems during use, please feel free to submit an issue:
+
+https://github.com/hmx222/JScanner2/issues

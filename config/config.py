@@ -1,58 +1,60 @@
 import logging
 
-# OLLAMA GPU内存限制，根据本地显卡内存调整
-OLLAMA_MAX_GPU_MEMORY = "4GB"
-
-# 日志级别设置，ERROR表示只显示错误信息，可改为INFO、DEBUG等
+# ==============================================================================
+# 1. 全局基础设置
+# ==============================================================================
+# 日志级别 (ERROR, INFO, DEBUG)
 LANGCHAIN_LOG_LEVEL = logging.ERROR
 HTTPX_LOG_LEVEL = logging.ERROR
 
-DASHSCOPE_API_KEY = ""  # 你的阿里云密钥 sk-xxx
+# 飞书 Webhook 通知地址
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/92159458-e2b8-4722-bb21-35680bee53d8"
 
-FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/"
+# ==============================================================================
+# 2. 扫描任务相关限制
+# ==============================================================================
+MAX_CANDIDATE_ALL_SIZE = 2000  # 最大候选集大小
+MAX_ORIGINAL_ALL_SIZE = 1000   # 最大原始集大小
+CODE_SLICE_LINES = 30          # 代码切片行数（每次喂给AI的行数）
 
-DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
-BAILIAN_MODEL_NAME = "qwen2.5-coder-14b-instruct"  # 阿里代码模型最优选择
-
-MAX_CANDIDATE_ALL_SIZE = 2000
-
-MAX_ORIGINAL_ALL_SIZE = 1000
-# 调用的OLLAMA模型名称，需确保本地已下载该模型
-MODEL_NAME = "qwen2.5-coder:14b"
-# 模型生成参数：温度值（0-1，越低输出越稳定）
-MODEL_TEMPERATURE = 0.8  # 保持不变，确保稳定性
-# top_k
+# ==============================================================================
+# 3. LLM 生成参数 (默认值)
+#    注意：具体模型的参数(Temperature/Tokens等)优先读取 AIConfig.py 中的配置，
+#    这里的参数仅作为代码中未指定时的最后兜底参考。
+# ==============================================================================
+MODEL_TEMPERATURE = 0.8
+MODEL_MAX_TOKENS = 8192
 MODEL_TOP_K = 50
-# top_p
 MODEL_TOP_P = 0.9
-# repeat_penalty
 MODEL_REPEAT_PENALTY = 1.2
-# repeat_last_n
 MODEL_REPEAT_LAST_N = 40
 
-# 模型生成参数：最大令牌数（控制输出长度）
-MODEL_MAX_TOKENS = 900
+# 本地 Ollama 显存限制
+OLLAMA_MAX_GPU_MEMORY = "4GB"
 
-# 代码切片行数（每次向模型输入的代码行数）
-CODE_SLICE_LINES = 30
+# AI 生成时的停止词列表
+STOP_WORDS_FOR_MODEL = ["*", "`", "，", "。", " ", "你提", "这段", "片段"]
+
+# ==============================================================================
+# 4. 循环生成保护机制 (Loop Protection)
+#    防止 LLM 进入复读机模式
+# ==============================================================================
 
 # L1: 词级检测参数
-LOOP_PROTECTION_TOKEN_WINDOW = 30  # 检测重复的token窗口大小
-LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4  # 允许相同token序列重复的最大次数
+LOOP_PROTECTION_TOKEN_WINDOW = 30       # 检测重复token的窗口大小
+LOOP_PROTECTION_MAX_TOKEN_REPEAT = 4    # 允许相同token序列重复的最大次数
 
 # L2: 句级检测参数
-LOOP_PROTECTION_SENTENCE_WINDOW = 5  # 保存的历史句子数量
-LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.70  # 语义相似度阈值
-LOOP_PROTECTION_CHECK_INTERVAL = 50  # 每生成N个token检查一次
+LOOP_PROTECTION_SENTENCE_WINDOW = 5     # 保存的历史句子数量
+LOOP_PROTECTION_SIMILARITY_THRESHOLD = 0.70 # 语义相似度阈值
+LOOP_PROTECTION_CHECK_INTERVAL = 50     # 每生成N个token检查一次
 
 # L3: 上下文分析参数
-LOOP_PROTECTION_TOPIC_STABILITY = 4  # 相同主题持续超过此数量触发
+LOOP_PROTECTION_TOPIC_STABILITY = 4     # 相同主题持续超过此数量触发保护
 
-# 恢复策略权重
+# 恢复策略权重 (当检测到循环时，如何调整参数以恢复)
 LOOP_PROTECTION_RECOVERY_STRATEGY = {
-    "increase_temperature": 0.4,  # 增加温度策略权重
-    "inject_diversity": 0.3,  # 注入多样性提示权重
-    "hard_terminate": 0.1  # 硬终止权重
+    "increase_temperature": 0.4,  # 增加温度 (使其更发散)
+    "inject_diversity": 0.3,      # 注入多样性提示
+    "hard_terminate": 0.1         # 强制停止
 }
-STOP_WORDS_FOR_MODEL = ["*","`","，","。"," ","你提","这段","片段"]
