@@ -99,7 +99,18 @@ class DuplicateChecker:
         if self.visited_urls.contains(url):
             return False
 
-        return True
+        url_lower = url.lower().split('?')[0]  # 忽略查询参数
+        allowed_extensions = ['.js', '.html', '.htm']
+        
+        # 检查是否有允许的扩展名，或者没有扩展名
+        has_allowed_ext = any(url_lower.endswith(ext) for ext in allowed_extensions)
+        no_ext = '.' not in url_lower.split('/')[-1]  # 文件名部分不含点
+        
+        if has_allowed_ext or no_ext:
+            return True
+
+        # 其他情况（如 .css, .png 等）不扫描
+        return False
 
     def mark_url_visited(self, url: str):
         """标记URL为已访问"""

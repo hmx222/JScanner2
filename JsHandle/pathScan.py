@@ -87,6 +87,9 @@ def data_clean(base_url: str, dirty_data) -> list:
         if main_url in SKIP_CONTENT_TYPES:
             continue
 
+        if len(main_url) <= 5:
+             continue
+
         if not main_url:
             continue
 

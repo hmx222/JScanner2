@@ -1,5 +1,7 @@
 import logging
 import re
+import time
+from traceback import print_exc
 from typing import Any, Dict, Optional, List
 
 import json_repair
@@ -16,68 +18,60 @@ logger = logging.getLogger(__name__)
 
 
 class AISecurityAuditor:
-    """
-    AI 安全审计顾问 (v5.0 逐级独立全量会诊版)：
-    - L1: 提取过滤
-    - L2 (_analyze_multiple_api_values): 独立会诊每个 API 的全量代码，识别参数组合，生成【战略方向】。
-    - L3 (analyze): 接收 L2 方向，基于 HackTricks 方法论，针对单 API 输出深度【渗透测试作战指南】。
-    """
+    # 代码最大长度阈值
+    CODE_MAX_LENGTH = 12000
 
     # =========================================================================
-    # Level 2: 独立战略预判与方向指导 Prompt (针对单一 API)
+    # Level 2: 参数名提取 (输出 param_keys)
     # =========================================================================
-    _SYSTEM_PROMPT_JUDGE = """角色：顶级 SRC 漏洞挖掘专家与架构师。
-任务：审查单一【API 路径】与它的【全量 JS 源码切片】，进行高价值漏洞预判，并为下级执行者提供精确的战略指导。
+    _SYSTEM_PROMPT_JUDGE = """角色：SRC 漏洞挖掘架构师。
+任务：从 JS 代码中提取 HTTP 请求参数名（key）。
 
-【核心准则 - 必须严格遵守】
-1. 真实参数提取：仔细阅读代码，提取真实的传参。如果代码中确实没有参数，请如实记录（空列表），切勿凭空捏造参数去硬猜。
-2. 拒绝无脑测试与低危漏洞：
-   - 绝对禁止建议 SQL 注入测试（默认后端使用强类型 ORM）。
-   - 绝对禁止建议无脑的泛型 XSS 测试（除非你在 JS 中明确看到了直接将参数写入 DOM 的危险汇聚点，如 innerHTML/v-html）。
-   - 忽略所有低危漏洞（如 CORS、版本泄露、无敏感信息的路径）。
-3. 聚焦中高危与组合逻辑：重点寻找 业务状态机绕过、参数组合逻辑缺陷（如参数A配合参数B绕过验证）、支付精度溢出、SSRF。
-4. 无参数场景：如果未发现参数，重点思考 HTTP Method 替换、未授权访问探测、或 Header 伪造。
+【参数名提取规则】
+1. 从 params/data/body/query 对象中提取 key
+2. 只提取有语义的参数名（orderId, userId, action, sign 等）
+3. 忽略单字母变量（e, t, n, r, o, a 等无意义变量）
+4. 不确定时宁可少提，不要多提
+5. 禁止捏造代码中没有的参数
 
-【输出格式要求】
-必须返回单一的纯 JSON 对象，严禁 Markdown 标记。JSON 结构：
+【输出格式】
+纯 JSON 对象，结构：
 {
-  "api": "string",
-  "has_value": boolean,              // 仅存在中高危逻辑或风险时给 true，低危垃圾接口给 false
-  "params_found": ["param1", "param2"], // 如果未发现参数，请给出 []，且strategic_directions必须直接输出空列表！
-  "strategic_directions": [
-    // 给下级渗透专家的战略指导。必须具备深度和针对性，例如：
-    // "该接口未发现参数，建议专注于未授权访问与 HTTP Method 替换测试。"
-    // "参数 uid 与 target_id 存在明显的组合越权可能，请重点挖掘 BOLA 漏洞，拒绝单一参数独立测试。"
-    // "未发现 DOM 渲染汇聚点，完全忽略 XSS，聚焦 amount 字段的负数与精度边界击穿。"
-  ]
+  "has_value": 1,
+  "param_keys": ["orderId", "amount", "sign"]
 }
+
+说明：
+- has_value: 1=有参数，0=无参数
+- param_keys: 参数名列表，无参数时输出空数组 []
 """
 
     # =========================================================================
-    # Level 3: 深度渗透测试指南 Prompt (HackTricks Methodology)
+    # Level 3: 参数值补充 + 请求构建
     # =========================================================================
-    _SYSTEM_PROMPT_ADVISORY = """角色：资深 SRC 漏洞挖掘实战专家。
-任务：基于上级的【战略指导】和【JS 全量源码证据】，参考 HackTricks 渗透方法论，编写极其专业的【深度渗透测试指南】。
+    _SYSTEM_PROMPT_ADVISORY = """角色：资深 SRC 漏洞挖掘专家。
+任务：基于 JS 代码和 Level 2 提供的参数名线索，提取完整请求信息。
 
-【极度严苛的专业性要求】
-1. 深度思考，拒绝模板化：绝不要对每个参数输出千篇一律的测试建议。必须根据参数在代码中的具体作用（语义）给出特定的攻击手法。
-2. 参数关联与组合利用：如果存在多个参数，深度分析它们之间的依赖关系。思考如何通过组合变异（如保留业务参数、删除校验参数，或类型混淆）来打穿逻辑。
-3. 无参数接口处理：如果上级指出无参数，指南应聚焦：目录遍历探测、绕过认证的直连访问、或强行注入预期外的特定 Header 引发错误。
-4. 严格禁区：
-   - 绝对禁止提及 SQL 注入。
-   - 除非战略指导明确提示存在前端 DOM 汇聚点，否则禁止提及任何 XSS。
+【参数提取规则】
+1. Level 2 检测到的参数名仅供参考，以代码实际内容为准
+2. 优先从代码中提取参数真实值
+3. 无真实值时基于上下文推测测试值（id=1, page=1, action=admin 等）
+4. 忽略单字母变量（e, t, n 等）
+5. 可以结合上下文推断参数名（变量追踪、函数调用链）
 
-【输出格式要求】
-必须返回纯 JSON 对象，严禁 Markdown 标记。JSON 结构：
+【Path 处理】
+- 结合上下文对传入的 path 可以尝试完整性拼接，若未发现则直接输出
+
+【Method 处理】
+- 从代码中提取（GET/POST/PUT/DELETE 等）
+- 无法提取时输出空字符串 ""
+
+【输出格式】
+纯 JSON 对象，结构：
 {
-  "vuln_focus": "一句话精准总结该接口的中高危测试焦点",
-  "method":"从JS代码提取的请求方式，没有则输出空",
-  "params":"从JS提取的可能的请求参数与值, 如果未发现值，则直接保留参数即可（例如：id=1,isadmin=true,secret）",
-  "expert_advice": [
-    {
-      "actionable_test": "详细的具体操作建议 (300字以上，例如: '针对 amount，尝试传入极大浮点数 0.000000001；同时删除 sign 签名参数观察放行情况')"
-    }
-  ]
+  "path": "api path",
+  "method": "GET/POST/PUT/DELETE 或空",
+  "params": "key1=value1,key2=value2"
 }
 """
 
@@ -85,138 +79,237 @@ class AISecurityAuditor:
         pass
 
     def _clean_json_response(self, content: str) -> str:
-        """强壮的 JSON 剥壳器"""
-        if not content: return ""
+        """强壮的 JSON 剥壳器（用于 Level 2 和 Level 3）"""
+        if not content:
+            return ""
         content = content.strip()
         if content.startswith('{') or content.startswith('['):
-            if content.endswith('```'): content = content[:-3].strip()
+            if content.endswith('```'):
+                content = content[:-3].strip()
             return content
         match = re.search(r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.IGNORECASE)
-        if match: return match.group(1).strip()
+        if match:
+            return match.group(1).strip()
         start_idx = content.find('{')
         end_idx = content.rfind('}')
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
             return content[start_idx: end_idx + 1].strip()
-        return content
+        return ""
 
-    def _aggressive_minify(self, code: str, max_chars: int) -> str:
-        """轻量级去噪，保留核心业务逻辑，大幅放宽截断限制以提供全量代码"""
-        if not code: return ""
-        # 仅暴力剔除必定无用的巨大 Base64 和混淆大数组
-        code = re.sub(r'["\']data:image/[a-zA-Z]*;base64,[^"\']*["\']', '"[IMG_REMOVED]"', code)
-        code = re.sub(r'\[(\s*["\'][a-zA-Z0-9+/-]{50,}["\']\s*,?)+\]', '"[ARRAY_REMOVED]"', code)
+    def _parse_level2_result(self, content: str) -> Dict[str, Any]:
+        """
+        解析 Level 2 的 JSON 输出
 
-        # 截断限制放宽，保障全量逻辑可见
-        if len(code) > max_chars:
-            half = max(int(max_chars / 2) - 100, 100)
-            return code[:half] + f"\n\n/*...[极长逻辑安全截断]...*/\n\n" + code[-half:]
+        解析策略：
+        - 解析 JSON 获取 has_value 和 param_keys
+        - 解析失败时默认 has_value=1, param_keys=[]（宁可多测，不可漏测）
+        """
+        if not content:
+            return {"has_value": 1, "param_keys": []}
+
+        content = content.strip()
+
+        try:
+            parsed = json_repair.loads(content)
+            has_value = parsed.get("has_value", 1)
+            param_keys = parsed.get("param_keys", [])
+
+            # 过滤单字母参数名
+            param_keys = [k for k in param_keys if len(k) > 1 or k.lower() in ['id', 'ip', 'os']]
+
+            return {
+                "has_value": has_value,
+                "param_keys": param_keys
+            }
+
+        except Exception as e:
+            print_exc()
+            time.sleep(100)
+            logger.warning(f"⚠️ Level 2 JSON 解析失败：{e}，默认 has_value=1")
+            return {"has_value": 1, "param_keys": []}
+
+    def _aggressive_minify(self, code: str, max_chars: int = None) -> str:
+        """纯代码级压缩（删除对安全分析无用的代码）"""
+        if not code:
+            return ""
+
+        if max_chars is None:
+            max_chars = self.CODE_MAX_LENGTH
+
+        original_length = len(code)
+
+        # ========== 删除低价值代码 ==========
+        code = re.sub(r'["\']image/[a-zA-Z]*;base64,[^"\']*["\']', '"[IMG]"', code)
+        code = re.sub(r'["\'][^"\']*[\.#][a-zA-Z0-9_-]+\s*\{[^}]*:[^}]*\}[^"\']*["\']', '"[CSS]"', code)
+        code = re.sub(r'["\'][^"\']*<[a-z][^>]*>[^"\']*["\']', '"[HTML]"', code)
+        code = re.sub(r'\[(\s*["\'][a-zA-Z0-9]{2,}["\']\s*,?){50,}\]', '"[ARRAY]"', code)
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+        code = re.sub(r'//.*?$', '', code, flags=re.MULTILINE)
+        code = re.sub(r'\s+', ' ', code)
+        code = re.sub(r'console\.[a-zA-Z]+\([^)]*\)', '', code)
+        code = re.sub(r'logger\.[a-zA-Z]+\([^)]*\)', '', code)
+
+        # ========== 统计 ==========
+        compressed_length = len(code)
+        total_saved = original_length - compressed_length
+        compression_rate = (total_saved / original_length) * 100 if original_length > 0 else 0
+
+        logger.info(
+            f"[Minify] 压缩：{original_length} → {compressed_length} 字符 (节省：{total_saved} 字符，{compression_rate:.1f}%)")
+
         return code
+
+    def _compress_code_loop(self, code: str, max_chars: int) -> str:
+        """代码压缩（仅规则压缩 + 结构截断）"""
+        original_length = len(code)
+        current_code = self._aggressive_minify(code, max_chars)
+
+        if len(current_code) <= max_chars:
+            logger.info(f"[Compress] Rule-based sufficient: {original_length} → {len(current_code)}")
+            return current_code
+
+        logger.warning(
+            f"[Compress] Rule-based not enough ({len(current_code)} > {max_chars}), using structural truncate")
+        current_code = self._structural_truncate(current_code, max_chars)
+        logger.info(f"[Compress] Final: {original_length} → {len(current_code)}")
+        return current_code
+
+    def _structural_truncate(self, code: str, max_chars: int) -> str:
+        """结构截断：在 function 边界处截断"""
+        if len(code) <= max_chars:
+            return code
+
+        function_pattern = r'(?:function\s+\w+|\w+\s*=\s*(?:async\s+)?function|\w+\s*:\s*(?:async\s+)?function)'
+        function_matches = list(re.finditer(function_pattern, code))
+
+        if not function_matches:
+            return code[:max_chars] + "\n\n/*...[代码截断]...*/\n\n"
+
+        protected_keywords = [
+            'params', 'data', 'body', 'payload', 'query',
+            'fetch', 'axios', 'request', 'http', 'post', 'get',
+            'token', 'sign', 'auth', 'permission', 'key', 'secret'
+        ]
+
+        protected_functions = []
+        for i, match in enumerate(function_matches):
+            start = match.start()
+            end = function_matches[i + 1].start() if i + 1 < len(function_matches) else len(code)
+            function_code = code[start:end]
+
+            if any(kw in function_code for kw in protected_keywords):
+                protected_functions.append((start, end))
+
+        result_parts = []
+        current_pos = 0
+        total_length = 0
+
+        for start, end in protected_functions:
+            if total_length + (end - start) > max_chars * 0.8:
+                break
+            result_parts.append(code[current_pos:start])
+            result_parts.append(code[start:end])
+            total_length += (end - current_pos)
+            current_pos = end
+
+        if total_length < max_chars and current_pos < len(code):
+            remaining = max_chars - total_length
+            result_parts.append(code[current_pos:current_pos + remaining])
+            total_length += remaining
+
+        result = ''.join(result_parts)
+
+        if len(result) < len(code):
+            result += "\n\n/*...[代码截断 - 保留关键函数]...*/\n\n"
+
+        return result[:max_chars + 100]
 
     def _analyze_multiple_api_values(self, api_candidates: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """
-        Level 2: AI 独立判决与战略方向生成 (重构为逐个 API 提供全量代码会诊)
+        Level 2: 参数名提取 (输出 param_keys)
         """
         strategy_results = {}
         if not api_candidates:
             return strategy_results
 
-        logger.info(f"🤖 [Level 2] 启动一对一专家会诊，共 {len(api_candidates)} 个 API...")
-
         for index, info in enumerate(api_candidates):
             api_path = info['api_path']
             context_data = info['context_data']
 
-            logger.info(f"   -> 会诊进度: [{index + 1}/{len(api_candidates)}] 正在审计: {api_path}")
+            logger.info(f" 正在审计：{api_path}")
 
-            # 提取充沛的全量代码供 L2 分析 (3000字符底层 + 每个调用1000字符)
             raw_wrapper = context_data.get('wrapper_code', '')
             caller_codes = context_data.get('caller_codes', [])
-            wrapper_code = self._aggressive_minify(raw_wrapper, 3000)
-            processed_callers = [self._aggressive_minify(c, 1000) for c in caller_codes[:3]]
+
+            wrapper_code = self._compress_code_loop(raw_wrapper, self.CODE_MAX_LENGTH // 2)
+            processed_callers = [self._compress_code_loop(c, self.CODE_MAX_LENGTH // 6) for c in caller_codes[:3]]
             callers_str = "\n\n".join([f"--- 业务调用点 {i + 1} ---\n{c}" for i, c in enumerate(processed_callers)])
 
+            full_code = f"{wrapper_code}\n\n{callers_str}"
             full_desc = f"目标 API: {api_path}\n\n[JS 底层发包函数]:\n{wrapper_code}\n\n[JS 业务调用点]:\n{callers_str}"
 
             messages = [
                 {"role": "system", "content": self._SYSTEM_PROMPT_JUDGE},
-                {"role": "user", "content": f"请对该单一 API 的全量源码进行深度审查并提供战略指导：\n\n{full_desc}"}
+                {"role": "user", "content": f"请对该单一 API 的全量源码进行审查，提取 HTTP 参数名：\n\n{full_desc}"}
             ]
 
-            # 针对单个 API 请求 AI
-            result = client.chat(messages=messages, max_tokens=4096, temperature=0.1)
-            content = self._clean_json_response(result)
+            result = client.chat(messages=messages, max_tokens=500, temperature=0.1)
 
             try:
-                parsed = json_repair.loads(content)
-                params = parsed.get("params_found", [])
-
-                # 如果源码中没发现参数，直接设定 has_value 为 False，终止后续 L3 流程
-                if not params:
-                    has_value = False
-                    directions = []
-                else:
-                    # 只有有参数时，才保留 AI 返回的判决和方向
-                    has_value = parsed.get("has_value", True)
-                    directions = parsed.get("strategic_directions", [])
+                # 解析 Level 2 JSON 输出
+                level2_result = self._parse_level2_result(result)
 
                 strategy_results[api_path] = {
-                    "decision": has_value,
-                    "directions": directions
+                    "decision": level2_result["has_value"],
+                    "param_keys": level2_result["param_keys"]
                 }
 
+                logger.debug(f"[{api_path}] Has value: {level2_result['has_value']}, Keys: {level2_result['param_keys']}")
+
             except Exception as e:
-                logger.error(f"[-] Level 2 单点 ({api_path}) 战略解析异常: {e}")
-                strategy_results[api_path] = {"decision": True, "directions": []}
+                logger.error(f"[-] Level 2 单点 ({api_path}) 解析异常：{e}，默认 has_value=1")
+                strategy_results[api_path] = {
+                    "decision": 1,
+                    "param_keys": []
+                }
 
         return strategy_results
 
-    def analyze(self, context_data: Dict[str, Any], strategic_directions: List[str] = None) -> Optional[Dict[str, Any]]:
+    def analyze(self, context_data: Dict[str, Any], param_keys: List[str] = None) -> Optional[Dict[str, Any]]:
         """
-        Level 3: 核心分析函数 -> 接收战略指令，输出 HackTricks 级渗透作战指南
+        Level 3: 参数值补充 + 请求构建
         """
         if not context_data or not context_data.get("found"):
             return None
 
         try:
-            # 再次提取充沛的全量代码，与 L2 看到的内容保持一致
             raw_wrapper = context_data.get('wrapper_code', '')
             caller_codes = context_data.get('caller_codes', [])
 
-            wrapper_code = self._aggressive_minify(raw_wrapper, 3000)
-            processed_callers = [self._aggressive_minify(c, 1000) for c in caller_codes[:3]]
+            wrapper_code = self._compress_code_loop(raw_wrapper, self.CODE_MAX_LENGTH // 2)
+            processed_callers = [self._compress_code_loop(c, self.CODE_MAX_LENGTH // 6) for c in caller_codes[:3]]
             callers_str = "\n\n".join([f"--- 业务调用点 {i + 1} ---\n{c}" for i, c in enumerate(processed_callers)])
+
+            full_code = f"[底层发包函数 (Wrapper)]\n{wrapper_code}\n\n[高层业务调用点 (Callers)]\n{callers_str}"
 
         except Exception as e:
             logger.error(f"[-] 构建上下文数据失败：{e}")
             return None
 
+        api_url = context_data.get('api_url', '')
 
-        # =================================================================
-        #  Level 2
-        # =================================================================
-        dynamic_directions_block = ""
-        if strategic_directions and len(strategic_directions) > 0:
-            directions_text = "\n".join([f"- {d}" for d in strategic_directions])
-            dynamic_directions_block = f"""
-=== 【Level 2 架构师战略指导】(绝对最高优先级) ===
-{directions_text}
-⚠️ 强制服从指令：你编写的指南必须严格围绕上述方向展开。如果上级告诉你没有参数或没有 DOM 汇聚点，你绝对不能自行捏造参数或建议无脑盲测！请进行深度的组合关联分析！
-===================================================
-"""
+        # 构建 Level 2 参数名线索提示
+        param_keys_hint = ""
+        if param_keys and len(param_keys) > 0:
+            param_keys_hint = f"Level 2 检测到的参数名线索：{param_keys}\n（仅供参考，以代码实际内容为准）\n\n"
 
         user_prompt = f"""
-=== 【前端 JS 全量代码切片证据】 ===
-[底层发包函数 (Wrapper)]
-{wrapper_code if wrapper_code else "无"}
+{param_keys_hint}=== 【前端 JS 代码证据】 ===
+{full_code}
 
-[高层业务调用点 (Callers)]
-{callers_str if callers_str else "无"}
+目标 API: {api_url}
 
-{dynamic_directions_block}
-
-Task:
-作为资深 SRC 渗透专家，请基于真实的 JS 逻辑和上级绝对战略指导，为该接口制定一份极具深度的【人工渗透作战指南】。
-拒绝单参数傻瓜式遍历，必须具备业务逻辑组合视角的思考！
+请严格按照 Prompt 要求提取请求信息。
 """
 
         messages = [
@@ -224,83 +317,103 @@ Task:
             {"role": "user", "content": user_prompt}
         ]
 
-        result = client.chat(messages=messages, max_tokens=4096, temperature=0.2)
+        result = client.chat(messages=messages, max_tokens=2000, temperature=0.2)
 
         cleaned_content = self._clean_json_response(result)
-        if not cleaned_content: return None
+        if not cleaned_content:
+            return None
 
         try:
-            return json_repair.loads(cleaned_content)
+            parsed = json_repair.loads(cleaned_content)
+
+            # 只补充 path，其他保持 AI 输出原样
+            if not parsed.get('path') and api_url:
+                parsed['path'] = api_url
+
+            return parsed
+
         except Exception as e:
-            logger.error(f"[-] AI 深度指南 JSON 解析失败：{e}")
+            logger.error(f"[-] AI JSON 解析失败：{e}")
             return None
 
     def scan_multiple_apis(self, js_code: str, api_paths: list, target_url: str) -> Dict[str, Optional[Dict[str, Any]]]:
         """
-        主流程漏斗 (保持原有流转架构，但在 L2 传入完整的 context_data 用于独立评估)
+        主流程漏斗：API 提取 → Level 2 过滤 → Level 3 分析
         """
         results = {}
 
+        # ========== Step 1: 提取 API 上下文 ==========
         try:
             all_contexts = extract_multiple_apis_from_raw_code(js_code, api_paths)
         except Exception as e:
             logger.error(f"[-] 批量提取上下文数据失败：{e}")
             return {api: None for api in api_paths}
 
-        # ==============================================================
-        # 第一阶段：Level 1 提取代码上下文
-        # ==============================================================
+        # ========== Step 2: 初步筛选候选 API ==========
         level_2_candidates = []
 
         for api_path, context_data in all_contexts.items():
             if not context_data or not context_data.get("found"):
-                results[api_path] = None
                 continue
 
             has_wrapper = bool(context_data.get('wrapper_code'))
             has_callers = bool(context_data.get('caller_codes'))
 
-            if not ((has_wrapper or has_callers) or '?' in api_path):
+            if (has_wrapper or has_callers) or '?' in api_path:
+                level_2_candidates.append({
+                    "api_path": api_path,
+                    "context_data": context_data
+                })
+            else:
                 results[api_path] = None
-                continue
 
-            # 将原始的 context_data 完整传给 L2 供其进行独立全量分析
-            level_2_candidates.append({
-                "api_path": api_path,
-                "context_data": context_data
-            })
+        logger.info(f"📋 候选 API: {len(level_2_candidates)} / {len(all_contexts)}")
 
-        # ==============================================================
-        # 第二阶段：Level 2 AI 独立判决与战略下发
-        # ==============================================================
+        # ========== Step 3: Level 2 参数名提取 ==========
         if level_2_candidates:
             ai_judgements = self._analyze_multiple_api_values(level_2_candidates)
         else:
             ai_judgements = {}
+            logger.info("⚠️ 无候选 API，跳过 Level 2")
 
-        # ==============================================================
-        # 第三阶段：Level 3 接收指导，生成具体作战计划
-        # ==============================================================
+        # ========== Step 4: 过滤 + Level 3 分析 ==========
         for candidate in level_2_candidates:
             api_path = candidate['api_path']
             context_data = candidate['context_data']
 
-            judgement = ai_judgements.get(api_path, {"decision": True, "directions": []})
+            # 获取 Level 2 结果
+            judgement = ai_judgements.get(api_path)
 
-            if not judgement.get("decision", True):
+            # 如果 Level 2 没返回结果，说明出错了
+            if not judgement:
+                logger.warning(f"⚠️ [{api_path}] Level 2 无结果，跳过")
                 results[api_path] = None
                 continue
 
-            # 获取 L2 给出的战略建议
-            strategic_directions = judgement.get("directions", [])
+            # 单一过滤条件：AI 信号
+            if judgement.get("decision", 1) == 0:
+                logger.debug(f"[{api_path}] Skipped (has_value=0)")
+                results[api_path] = None
+                continue
+
+            # ✅ 通过过滤，进入 Level 3
+            logger.info(f"✅ [{api_path}] 进入 Level 3")
+
             context_data['target_host'] = target_url
             context_data['api_url'] = api_path
 
-            # 将 strategic_directions 传入 analyze 方法
+            # 传递 Level 2 的 param_keys 给 Level 3
+            param_keys = judgement.get("param_keys", [])
+
             analysis_result = self.analyze(
                 context_data=context_data,
-                strategic_directions=strategic_directions
+                param_keys=param_keys
             )
             results[api_path] = analysis_result
+
+        # ========== Step 5: 统计输出 ==========
+        total = len(results)
+        success = sum(1 for r in results.values() if r is not None)
+        logger.info(f"📈 扫描完成：{success} / {total} API 有数据")
 
         return results

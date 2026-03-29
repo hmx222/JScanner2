@@ -695,7 +695,7 @@ class SensitiveInfoScanner:
 
 def remove_html_tags(html_text: str) -> str:
     """移除 HTML 标签"""
-    soup = BeautifulSoup(html_text, "lxml")
+    soup = BeautifulSoup(html_text, "html.parser")
     return soup.get_text(strip=False)
 
 

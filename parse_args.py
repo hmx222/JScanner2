@@ -48,6 +48,8 @@ def parse_args():
     parser.add_argument('-acp', '--autoConstructPoc', action='store_true', default=False,
                         help="是否自动构造poc")
 
+    parser.add_argument('-fs','--fastscan', action='store_true', default=False, help="是否使用快速扫描模式")
+
     parser.add_argument('-asia','--analyzeSensitiveInfoAI', action='store_true', default=False, help="是否使用AI模型分析敏感信息")
 
     args = parser.parse_args()
