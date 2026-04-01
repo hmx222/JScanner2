@@ -22,9 +22,6 @@ def _node_text_equals(node: Node, source_bytes: bytes, target_bytes: bytes) -> b
     return source_bytes[node.start_byte:node.end_byte] == target_bytes
 
 
-# =====================================================================
-# 核心切片引擎：南大软件分析精髓 (轻量级数据流追溯)
-# =====================================================================
 def _find_identifiers_in_node(node: Node, code_bytes: bytes) -> Set[str]:
     """提取一个节点内使用的所有标识符 (变量名)"""
     idents = set()
@@ -58,9 +55,7 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
 
     dependencies = []
 
-    # =========================================================================
-    # 🚨 新增：同宗家族内部挖掘 (专治逗号分隔的连体变量声明)
-    # =========================================================================
+
     if stmt_node.type == 'variable_declarator':
         parent_decl = stmt_node.parent
         if parent_decl and parent_decl.type == 'variable_declaration':
@@ -83,9 +78,7 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
                             'utf-8')  # 提取 var/let/const
                         dependencies.append(f"{decl_kind} {sibling_code};")
 
-    # =========================================================================
-    # 保持原有的：同级作用域向上溯源 (找前几行的独立语句)
-    # =========================================================================
+
     parent_scope = stmt_node.parent
     # 如果上面进了同宗家族逻辑，作用域还要再往上跳一层
     if stmt_node.type == 'variable_declarator' and parent_scope:
@@ -112,9 +105,6 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
     return final_slice
 
 
-# ==========================================
-# AST 辅助工具函数 (用于跨函数追踪 Call Graph)
-# ==========================================
 def _find_enclosing_function(node: Node) -> Optional[Node]:
     """获取函数节点，用于获取函数名"""
     current = node
@@ -168,9 +158,6 @@ def _find_callers_of_function(root_node: Node, func_name: str, code_bytes: bytes
     return list(set(callers_code))
 
 
-# ==========================================
-# 核心业务逻辑：一次解析，批量提取多个 API
-# ==========================================
 def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> Dict[str, Dict[str, Any]]:
     results = {
         api: {
@@ -193,14 +180,8 @@ def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> D
 
     hit_nodes = []
 
-    # =========================================================================
-    # ⚡️ 提速核心 1: 预先把要找的 API 和要对比的变量转成 bytes，消除高频 decode
-    # =========================================================================
     target_apis_bytes = [api.encode('utf-8') for api in target_apis]
 
-    # ⚡️ 提速核心 2: 建立全局函数调用倒排索引 (Inverted Index)
-    # 结构: { b"fn": [call_node_1, call_node_2] }
-    # 这样我们在找谁调用了 `fn` 时，就是 O(1) 的字典查找，再也不用全树遍历了！
     call_index = {}
 
     def _single_pass_traverse(node: Node):
@@ -232,9 +213,7 @@ def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> D
     # 🚀 启动全树的唯一一次遍历！
     _single_pass_traverse(tree.root_node)
 
-    # =========================================================================
-    # ⚡️ 提速核心 3: 利用内存索引快速组装切片
-    # =========================================================================
+
     for target_api, api_node in hit_nodes:
         result_data = results[target_api]
         result_data["found"] = True
@@ -279,9 +258,6 @@ def extract_multiple_apis_from_raw_code(js_code: str, target_apis: list) -> Dict
     return _extract_multiple_apis_from_bytes(js_code.encode('utf-8', errors='replace'), target_apis)
 
 
-# =====================================================================
-# 【新增】敏感信息上下文提取器 (复用现有切片逻辑)
-# =====================================================================
 class SenInfoContextExtractor:
     """
     敏感字符串上下文溯源提取器
@@ -369,7 +345,4 @@ class SenInfoContextExtractor:
         return result
 
     def _find_callers(self, func_name: str) -> List[str]:
-        """找函数调用者 (可复用 _find_callers_of_function 或新增)"""
-        # 这里可以复用现有的 _find_callers_of_function
-        # 或者新增一个更高效的版本
         return _find_callers_of_function(self.tree.root_node, func_name, self.code_bytes)

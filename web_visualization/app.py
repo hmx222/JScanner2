@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 
 # 请将此处替换为你的实际 SQLite 数据库文件名
-DATABASE = 'C:\\Users\\Cheng\\Desktop\\JScanner2\\Result\\Result_xfyun_cn_20260319.db'
+DATABASE = 'C:\\Users\\Cheng\\Desktop\\JScanner2\\Result\\Result_tcl_com_20260321.db'
 
 
 def get_db_connection():

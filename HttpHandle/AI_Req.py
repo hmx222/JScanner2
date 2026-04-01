@@ -3,10 +3,10 @@ import json
 import time
 import logging
 import threading
+import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
-
-from json_repair import repair_json
+import json_repair
 
 # 配置日志
 logging.basicConfig(
@@ -17,17 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 # ==================== 自定义异常 ====================
-
 class EmptyContentError(Exception):
-    """
-    模型返回空内容异常。
-    用于触发故障转移重试。
-    """
+    """模型返回空内容异常，用于触发故障转移重试"""
+    pass
+
+
+class ModelListUpdateError(Exception):
+    """模型列表更新失败异常"""
     pass
 
 
 # ==================== 数据类 ====================
-
 @dataclass
 class ModelStatus:
     """模型状态数据类"""
@@ -51,18 +51,14 @@ class ModelStatus:
         self.cooldown_until = time.time() + cooldown_seconds
         self.is_available = False
         logger.warning(
-            f"模型 [{self.model_name}] 发生错误，进入冷却状态 | "
-            f"错误次数：{self.error_count} | 冷却时间：{cooldown_seconds}秒 | "
-            f"恢复时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.cooldown_until))}"
+            f"模型 [{self.model_name}] 进入冷却 | 错误次数：{self.error_count} | "
+            f"冷却时间：{cooldown_seconds}秒"
         )
 
     def mark_success(self):
         """标记成功，重置错误计数"""
         if self.error_count > 0:
-            logger.info(
-                f"模型 [{self.model_name}] 请求成功，重置错误计数 | "
-                f"原错误次数：{self.error_count}"
-            )
+            logger.info(f"模型 [{self.model_name}] 重置错误计数")
         self.error_count = 0
         self.is_available = True
         self.cooldown_until = 0.0
@@ -72,27 +68,95 @@ class ModelStatus:
         if not self.is_available and time.time() >= self.cooldown_until:
             self.is_available = True
             self.cooldown_until = 0.0
-            logger.info(
-                f"模型 [{self.model_name}] 冷却到期，恢复可用状态 | "
-                f"保留错误计数：{self.error_count}"
-            )
+            logger.info(f"模型 [{self.model_name}] 冷却到期恢复")
             return True
         return False
 
 
-# ==================== 主客户端类 ====================
+# ==================== 配置文件监控线程 ====================
+class ConfigWatcher(threading.Thread):
+    """配置文件监控线程，实现模型列表热加载"""
 
+    def __init__(self, file_path: str, client_ref: 'AIHubClient', interval: int = 30):
+        super().__init__(daemon=True)
+        self.file_path = file_path
+        self.client_ref = client_ref
+        self.interval = interval
+        self.running = True
+
+        try:
+            self.last_modified = os.path.getmtime(file_path)
+            logger.info(f"ConfigWatcher 启动 | {file_path}")
+        except FileNotFoundError:
+            logger.warning(f"配置文件不存在：{file_path}")
+            self.last_modified = 0
+
+    def run(self):
+        while self.running:
+            try:
+                time.sleep(self.interval)
+                if os.path.exists(self.file_path):
+                    current_mtime = os.path.getmtime(self.file_path)
+                    if current_mtime != self.last_modified:
+                        self.last_modified = current_mtime
+                        self._reload_models()
+            except Exception as e:
+                logger.error(f"ConfigWatcher 监控异常：{e}")
+
+    def _reload_models(self):
+        try:
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            new_models = config.get('models', [])
+            if len(new_models) == 0:
+                logger.warning("配置文件 models 为空")
+                return
+            with self.client_ref._lock:
+                old_list = [m.model_name for m in self.client_ref._model_statuses]
+                self.client_ref._models = new_models
+                self.client_ref._model_statuses = [
+                    ModelStatus(model_name=m) for m in new_models
+                ]
+            logger.info(f"模型配置更新：{old_list} → {new_models}")
+        except Exception as e:
+            logger.error(f"配置加载失败：{e}")
+
+    def stop(self):
+        self.running = False
+        logger.info("ConfigWatcher 已停止")
+
+
+# ==================== AIHubClient 主类 ====================
 class AIHubClient:
-    def __init__(self, api_key: str, base_url: str, models: List[str]):
+    def __init__(self, api_key: str, base_url: str, models: List[str],
+                 config_file: str = None, timeout: int = 180):
         """
-        初始化客户端（支持多模型故障转移）
+        初始化客户端（支持多模型故障转移 + 配置热加载）
 
-        :param api_key: API 密钥
-        :param base_url: 服务地址 (如 http://127.0.0.1:8000/v1)
-        :param models: 模型名称列表（按优先级排序，第一个优先级最高）
+        Args:
+            api_key: API 密钥
+            base_url: 服务地址
+            models: 模型名称列表（优先级排序，为空时从配置文件读取）
+            config_file: 配置文件路径（启用热加载则传路径）
+            timeout: 请求超时时间（秒）
         """
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
+        self.timeout = timeout
+        self._config_file = config_file
+
+        # ✅ 关键修复：如果 models 为空，尝试从配置文件读取初始模型
+        if not models and config_file and os.path.exists(config_file):
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                models = config.get('models', [])
+                if models:
+                    logger.info(f"从配置文件加载初始模型：{models}")
+                else:
+                    logger.warning("配置文件中 models 为空，使用空模型列表")
+            except Exception as e:
+                logger.warning(f"配置文件读取失败：{e}，使用空模型列表")
 
         # 初始化模型状态列表（保持优先级顺序）
         self._models = models
@@ -103,26 +167,27 @@ class AIHubClient:
         # 线程锁，保护模型状态
         self._lock = threading.Lock()
 
-        # 默认请求超时时间
-        self._timeout = 180
+        # 配置监控器
+        self._config_watcher: Optional[ConfigWatcher] = None
 
-        logger.info(f"AIHubClient 初始化完成 | 模型列表：{models} | 数量：{len(models)}")
+        if config_file:
+            self._start_config_watcher(interval=30)
+
+        logger.info(f"AIHubClient 初始化完成 | 模型数：{len(models)} | 热加载：{'是' if config_file else '否'}")
+
+    def _start_config_watcher(self, interval: int = 30):
+        if not self._config_file:
+            return
+        self._config_watcher = ConfigWatcher(self._config_file, self, interval=interval)
+        self._config_watcher.start()
 
     def _check_all_models_restore(self):
-        """检查所有模型是否有冷却到期的，恢复可用状态"""
         with self._lock:
             for status in self._model_statuses:
                 status.check_and_restore()
 
     def _get_available_model(self) -> Optional[ModelStatus]:
-        """
-        获取当前可用的最高优先级模型
-
-        :return: 可用的模型状态，如果无可用模型则返回 None
-        """
-        # 先检查并恢复冷却到期的模型
         self._check_all_models_restore()
-
         with self._lock:
             for status in self._model_statuses:
                 if status.is_available:
@@ -130,139 +195,61 @@ class AIHubClient:
             return None
 
     def _get_all_unavailable_info(self) -> str:
-        """获取所有不可用模型的信息（用于最终错误提示）"""
         info = []
         with self._lock:
             for status in self._model_statuses:
                 if not status.is_available:
-                    remaining = status.cooldown_until - time.time()
-                    info.append(
-                        f"{status.model_name}(错误{status.error_count}次，"
-                        f"剩余{max(0, int(remaining))}秒)"
-                    )
+                    remaining = max(0, status.cooldown_until - time.time())
+                    info.append(f"{status.model_name}(错误{status.error_count}次，剩余{int(remaining)}秒)")
         return ", ".join(info) if info else "无"
 
     def _make_request(self, model_name: str, payload: dict) -> requests.Response:
-        """
-        发起实际的 HTTP 请求
-
-        :param model_name: 模型名称
-        :param payload: 请求体
-        :return: requests Response 对象
-        """
         url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=self._timeout,
-            stream=payload.get("stream", False)
-        )
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        response = requests.post(url, headers=headers, json=payload, timeout=self.timeout, stream=payload.get("stream", False))
         return response
 
     def _is_retryable_error(self, status_code: int, exception: Exception = None) -> bool:
-        """
-        判断错误是否可重试
-
-        :param status_code: HTTP 状态码（None 表示网络异常）
-        :param exception: 异常对象
-        :return: True 表示可重试，False 表示不可重试
-        """
-        # 网络异常（超时、连接错误等）- 可重试
         if status_code is None:
             return True
-
-        # 5xx 服务端错误 - 可重试
         if 500 <= status_code < 600:
             return True
-
-        # 4xx 客户端错误 - 不可重试
         if 400 <= status_code < 500:
             return False
-
-        # 其他状态码 - 可重试
         return True
 
-    def chat(self,
-             messages: List[Dict[str, str]],
-             model: Optional[str] = None,
-             max_tokens: int = 1024,
-             temperature: float = 0.7,
-             top_p: float = 1.0,
-             stream: bool = False,
-             stop: Optional[List[str]] = None,
-             **extra_kwargs):
-        """
-        对话函数（支持多模型故障转移 + 冷却重试）
-
-        :param messages: 消息列表
-        :param model: 指定模型（可选，不指定则自动选择）
-        :param max_tokens: 最大生成 token 数
-        :param temperature: 温度值
-        :param top_p: 核采样参数
-        :param stream: 是否流式响应
-        :param stop: 停止词列表
-        :param extra_kwargs: 其他扩展参数
-        :return: AI 返回的文本内容 (非流式) 或 生成器 (流式)
-        """
-        # 构建基础 payload
+    def chat(self, messages: List[Dict[str, str]], model: Optional[str] = None,
+             max_tokens: int = 1024, temperature: float = 0.7, top_p: float = 1.0,
+             stream: bool = False, stop: Optional[List[str]] = None, **extra_kwargs):
         payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-            "stream": stream
+            "model": model, "messages": messages, "max_tokens": max_tokens,
+            "temperature": temperature, "top_p": top_p, "stream": stream,"enable_thinking": False,
         }
-
         if stop:
             payload["stop"] = stop
         if extra_kwargs:
             payload.update(extra_kwargs)
 
-        # 记录重试历史
         retry_history = []
         max_retries = len(self._model_statuses)
 
         for attempt in range(max_retries):
-            # 获取可用模型
             available_model = self._get_available_model()
-
             if available_model is None:
                 unavailable_info = self._get_all_unavailable_info()
-                error_msg = (
-                    f"所有模型都不可用 | 重试次数：{attempt} | "
-                    f"不可用模型：{unavailable_info}"
-                )
-                logger.error(error_msg)
-                return f"Error: {error_msg}"
+                logger.error(f"所有模型不可用：{unavailable_info}")
+                return f"Error: 所有模型都不可用"
 
-            # 如果指定了模型，且该模型可用，则使用指定模型
             if model and model != available_model.model_name:
                 with self._lock:
-                    specified_model_status = next(
-                        (s for s in self._model_statuses if s.model_name == model),
-                        None
-                    )
-                if specified_model_status and specified_model_status.is_available:
-                    available_model = specified_model_status
-                elif specified_model_status and not specified_model_status.is_available:
-                    logger.warning(
-                        f"指定模型 [{model}] 当前不可用，使用备用模型 [{available_model.model_name}]"
-                    )
+                    specified_status = next((s for s in self._model_statuses if s.model_name == model), None)
+                if specified_status and specified_status.is_available:
+                    available_model = specified_status
+                elif specified_status and not specified_status.is_available:
+                    logger.warning(f"指定模型不可用，切换至备用：{available_model.model_name}")
 
             current_model = available_model.model_name
             payload["model"] = current_model
-
-            logger.info(
-                f"发起请求 (尝试 {attempt + 1}/{max_retries}) | "
-                f"使用模型：{current_model}"
-            )
 
             try:
                 response = self._make_request(current_model, payload)
@@ -270,134 +257,66 @@ class AIHubClient:
                 if response.status_code != 200:
                     if self._is_retryable_error(response.status_code):
                         with self._lock:
-                            current_status = next(
-                                s for s in self._model_statuses
-                                if s.model_name == current_model
-                            )
+                            current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                             current_status.mark_error()
-
-                        retry_history.append(
-                            f"{current_model}(HTTP {response.status_code})"
-                        )
-                        logger.warning(
-                            f"请求失败，准备切换模型 | "
-                            f"状态码：{response.status_code}"
-                        )
+                        retry_history.append(f"{current_model}(HTTP {response.status_code})")
                         continue
                     else:
-                        error_msg = (
-                            f"不可重试的错误 | 模型：{current_model} | "
-                            f"状态码：{response.status_code} | 响应：{response.text}"
-                        )
-                        logger.error(error_msg)
-                        return f"Error: {error_msg}"
+                        logger.error(f"不可重试错误：{response.status_code}")
+                        return f"Error: 不可重试错误"
 
-                # 请求成功
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_success()
 
-                # 处理流式响应
                 if stream:
-                    if retry_history:
-                        logger.info(
-                            f"流式请求成功 | 模型：{current_model} | "
-                            f"之前失败过：{' → '.join(retry_history)}"
-                        )
                     return self._stream_handler(response)
 
-                # 处理非流式响应
                 result = response.json()
                 content = result['choices'][0]['message']['content']
-
-                # 【关键修改】检查空内容（None 或 空字符串）
                 if content is None or (isinstance(content, str) and content.strip() == ""):
-                    raise EmptyContentError(f"模型返回空内容 | 模型：{current_model}")
-
-                if retry_history:
-                    logger.info(
-                        f"请求成功 | 模型：{current_model} | "
-                        f"之前失败过：{' → '.join(retry_history)}"
-                    )
-                else:
-                    logger.debug(f"请求成功 | 模型：{current_model}")
+                    raise EmptyContentError("模型返回空内容")
 
                 return content
 
             except EmptyContentError as e:
-                # 【新增】空内容错误 - 可重试
-                logger.warning(f"空内容错误 | 模型：{current_model} | 错误：{str(e)}")
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_error()
-
                 retry_history.append(f"{current_model}(EmptyContent)")
                 continue
 
             except requests.exceptions.Timeout as e:
-                logger.warning(f"请求超时 | 模型：{current_model} | 错误：{str(e)}")
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_error()
-
                 retry_history.append(f"{current_model}(Timeout)")
                 continue
 
             except requests.exceptions.ConnectionError as e:
-                logger.warning(f"连接错误 | 模型：{current_model} | 错误：{str(e)}")
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_error()
-
                 retry_history.append(f"{current_model}(ConnectionError)")
                 continue
 
             except requests.exceptions.RequestException as e:
-                logger.warning(f"网络异常 | 模型：{current_model} | 错误：{str(e)}")
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_error()
-
                 retry_history.append(f"{current_model}(RequestException)")
                 continue
 
             except Exception as e:
-                logger.error(f"未知异常 | 模型：{current_model} | 错误：{str(e)}")
                 with self._lock:
-                    current_status = next(
-                        s for s in self._model_statuses
-                        if s.model_name == current_model
-                    )
+                    current_status = next(s for s in self._model_statuses if s.model_name == current_model)
                     current_status.mark_error()
-
-                retry_history.append(f"{current_model}(Exception)")
+                retry_history.append(f"{current_model}(Exception: {str(e)})")
                 continue
 
-        # 所有重试都失败
-        final_error = (
-            f"所有模型重试失败 | 失败历史：{' → '.join(retry_history)} | "
-            f"当前不可用模型：{self._get_all_unavailable_info()}"
-        )
-        logger.error(final_error)
-        return f"Error: {final_error}"
+        return f"Error: 所有模型重试失败，历史：{' → '.join(retry_history)}"
 
     def _stream_handler(self, response):
-        """处理流式响应"""
         for line in response.iter_lines():
             if line:
                 line = line.decode('utf-8')
@@ -406,48 +325,27 @@ class AIHubClient:
                     if data.strip() == '[DONE]':
                         break
                     try:
-                        chunk = repair_json(data, return_objects=True)
+                        chunk = json_repair.repair_json(data, return_objects=True)
                         if isinstance(chunk, dict):
-                            content = chunk['choices'][0]['delta'].get('content', '')
+                            content = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
                             if content:
                                 yield content
                     except:
                         continue
 
     def simple_chat(self, message: str, **kwargs):
-        """
-        简化版对话 (兼容旧代码调用方式)
-        :param message: 用户输入的问题
-        :param kwargs: 其他参数透传给 chat 方法
-        :return: AI 返回的文本内容
-        """
-        messages = [
-            {"role": "user", "content": message}
-        ]
-        return self.chat(messages=messages, **kwargs)
+        return self.chat(messages=[{"role": "user", "content": message}], **kwargs)
 
     def get_model_status(self) -> List[Dict]:
-        """
-        获取所有模型的当前状态（用于监控/调试）
-
-        :return: 模型状态列表
-        """
-        self._check_all_models_restore()
         with self._lock:
             return [
-                {
-                    "model": s.model_name,
-                    "available": s.is_available,
-                    "error_count": s.error_count,
-                    "cooldown_remaining": max(0, s.cooldown_until - time.time()) if s.cooldown_until > 0 else 0
-                }
+                {"model": s.model_name, "available": s.is_available,
+                 "error_count": s.error_count,
+                 "cooldown_remaining": max(0, s.cooldown_until - time.time()) if s.cooldown_until > 0 else 0}
                 for s in self._model_statuses
             ]
 
     def reset_all_models(self):
-        """
-        重置所有模型状态（手动恢复，用于调试或紧急情况）
-        """
         with self._lock:
             for status in self._model_statuses:
                 status.is_available = True
@@ -455,15 +353,61 @@ class AIHubClient:
                 status.error_count = 0
         logger.info("所有模型状态已重置")
 
-client = AIHubClient(
-        api_key="sk-ERsIPn2b4NxXRii100dwPIAFKmWBAM6MAHEccpeUwfCzbMAV",
-        base_url="http://127.0.0.1:3000/v1/",
-        models=[
-            "xopqwen35397b",  # 优先级 1（最高）
-            "doubao-seed-code-preview-251028",  # 优先级 2
-            "z-ai/glm4.7",  # 优先级 3
-        ]
-    )
+    def shutdown(self):
+        if self._config_watcher:
+            self._config_watcher.stop()
+        logger.info("AIHubClient 已关闭")
 
-    # 手动重置模型状态
-    # client.reset_all_models()
+
+# ==================== 配置模板和路径 ====================
+CONFIG_TEMPLATE = """{
+  "models": [
+    "MiniMax-M2.5",
+    "hunyuan-2.0-instruct-20251111",
+    "z-ai/glm4.7"
+  ],
+  "enabled": true
+}"""
+
+DEFAULT_CONFIG_PATH = "config/models_config.json"
+
+def init_config_file(config_path: str = DEFAULT_CONFIG_PATH):
+    """初始化配置文件（仅当文件不存在时创建）"""
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    if not os.path.exists(config_path):
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(CONFIG_TEMPLATE)
+        logger.info(f"配置文件已创建：{config_path}")
+    else:
+        logger.info(f"配置文件已存在：{config_path}")
+
+
+# ==================== 模块级 client 实例 ====================
+# 确保配置文件存在
+init_config_file(DEFAULT_CONFIG_PATH)
+
+# 创建客户端（models 参数现在会自动从配置文件读取）
+client = AIHubClient(
+    api_key="sk-ERsIPn2b4NxXRii100dwPIAFKmWBAM6MAHEccpeUwfCzbMAV",
+    base_url="http://127.0.0.1:3000/v1/",
+    models=[],  # 可以留空，会自动从配置文件读取
+    config_file=DEFAULT_CONFIG_PATH,
+    timeout=180
+)
+
+logger.info("AI Hub Client 全局实例已创建")
+
+
+# ==================== 测试入口（仅直接运行时执行）====================
+if __name__ == '__main__':
+    try:
+        # 查看模型状态
+        print("\n当前模型状态：")
+        for status in client.get_model_status():
+            print(f"  {status['model']}: {'可用' if status['available'] else '冷却中'} ({status['error_count']}次错误)")
+
+        # 测试调用
+        result = client.simple_chat("你好")
+        print(f"\nAI 回复：{result}")
+    finally:
+        client.shutdown()

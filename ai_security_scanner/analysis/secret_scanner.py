@@ -190,6 +190,23 @@ class CodeLineFilter:
         content_len = len(content)
         if content_len > self.max_string_length:
             return False
+
+        if re.search(r'(_cannot_have_|_that_is_|_called_with_|_\d{4}$)', content, re.IGNORECASE):
+            return False
+
+        non_ascii_ratio = sum(1 for c in content if ord(c) > 127) / content_len if content_len > 0 else 0
+        if non_ascii_ratio > 0.15:  # 0.3 → 0.15
+            return False
+
+        if re.search(r'[\u4e00-\u9fff]{2,}', content):
+            return False
+
+        if content.startswith('#') and '-' in content:
+            return False
+
+        if content.upper() in ['0123456789ABCDEF', 'FEDCBA9876543210', '0000000000000000']:
+            return False
+
         min_len = self.min_sensitive_length if has_sensitive_keyword else self.min_string_length
         if content_len < min_len:
             return False
@@ -246,7 +263,7 @@ class AdvancedSecretFilter:
             return 1.0, []
         self.bloom_filter.add(text)
 
-        clean_text = re.sub(r'[^a-zA-Z0-9-]', ' ', text)
+        clean_text = re.sub(r'[^a-zA-Z0-9_-]', ' ', text)
         if not clean_text:
             return 0.0, []
 
@@ -254,18 +271,29 @@ class AdvancedSecretFilter:
         weighted_score = 0.0
         valid_words = []
         for word in raw_words:
+
+            word = word.strip()
+            if not word:
+                continue
+
             word_lower = word.lower()
             word_len = len(word)
+
             if word_len >= 3 and wordnet.synsets(word_lower):
                 valid_words.append(word)
                 weighted_score += word_len * (2.0 if word_len >= 5 else 1.5)
 
-        ratio = weighted_score / len(clean_text) if clean_text else 0
+        alpha_len = sum(1 for c in text if c.isalpha())
+        ratio = weighted_score / alpha_len if alpha_len > 0 else 0
         return min(ratio, 1.0), valid_words
 
     def is_secret(self, text: str) -> bool:
         if not text or len(text) < 4:
             return False
+
+        if text.upper() in ['0123456789ABCDEF', 'FEDCBA9876543210', '0000000000000000']:
+            return False
+
         if any(ind in text for ind in self.code_syntax_indicators):
             return False
 
@@ -667,7 +695,7 @@ class SensitiveInfoScanner:
 
 def remove_html_tags(html_text: str) -> str:
     """移除 HTML 标签"""
-    soup = BeautifulSoup(html_text, "lxml")
+    soup = BeautifulSoup(html_text, "html.parser")
     return soup.get_text(strip=False)
 
 
