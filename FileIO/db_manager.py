@@ -11,14 +11,14 @@ logger = logging.getLogger(__name__)
 
 class SQLiteStorage:
     """
-    高性能 SQLite 存储管理器 (v6.3 - 适配 Level 2/3 极简结构)
+    高性能 SQLite 存储管理器 (v6.4 - 支持重启续扫)
     支持：
     1. 基础爬虫数据存储 (scan_results)
-    2. AI 渗透建议存储 (ai_vulns) - path/method/params 结构
+    2. AI 渗透建议存储 (ai_vulns)
     3. 敏感信息硬编码存储 (sensitive_info)
+    4. 已访问 URL 记录 (visited_urls) - 支持重启续扫
     """
 
-    # 风险等级关键词映射（基于 path 和 params 内容）
     HIGH_RISK_KEYWORDS = [
         "admin", "user", "update", "delete", "remove", "create",
         "password", "email", "role", "permission", "auth", "token",
@@ -67,8 +67,7 @@ class SQLiteStorage:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_domain ON scan_results(domain);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_depth ON scan_results(scan_depth);")
 
-            # 2. AI 渗透建议表 (v6.3 - 极简结构)
-            # 只保留 path/method/params，移除 vuln_focus/expert_advice
+            # 2. AI 渗透建议表
             create_ai_table_sql = """
             CREATE TABLE IF NOT EXISTS ai_vulns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +106,16 @@ class SQLiteStorage:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensitive_risk ON sensitive_info(risk_level);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensitive_js ON sensitive_info(js_url);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensitive_type ON sensitive_info(secret_type);")
+
+            # ✅ 4. 已访问 URL 记录表（支持重启续扫）
+            create_visited_table_sql = """
+            CREATE TABLE IF NOT EXISTS visited_urls (
+                url TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+            cursor.execute(create_visited_table_sql)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_visited_url ON visited_urls(url);")
 
             self.conn.commit()
             logger.info(f"✅ [DB] 数据库初始化成功：{self.db_path}")
@@ -151,14 +160,6 @@ class SQLiteStorage:
         return "UNKNOWN"
 
     def _parse_params(self, params_str: str) -> Dict[str, str]:
-        """
-        解析 params 字符串（支持 key=value / key / =value 三种格式）
-        
-        输入示例：
-        - "id=1,email=test@example.com" → {"id":"1","email":"test@example.com"}
-        - "userid,token" → {"userid":"","token":""}  # 只有 key
-        - "=admin,role=user" → {"":"admin","role":"user"}  # 混合情况
-        """
         if not params_str:
             return {}
 
@@ -172,46 +173,149 @@ class SQLiteStorage:
             params = {}
             for item in params_str.split(","):
                 item = item.strip()
-                if not item:  # 跳过空项
+                if not item:
                     continue
-                    
+
                 if "=" in item:
                     key, value = item.split("=", 1)
                     key = key.strip()
                     value = value.strip()
-                    # 允许空 key 或空 value（保留原始信息）
                     params[key] = value
                 else:
-                    # 只有 key，没有 value（说明参数存在但值未知）
                     params[item] = ""
-                    
+
             return params
         except Exception as e:
             logger.warning(f"⚠️ [DB] params 解析失败：{e}")
             return {}
 
     def _calculate_risk_level(self, path: str, params: Dict[str, str], method: str) -> str:
-        """
-        根据 path、params 和 method 动态计算风险等级
-        """
         all_text = f"{path} {method} "
         for k, v in params.items():
-            # 即使 value 为空，key 本身也可能包含敏感信息（如 admin_token）
             all_text += f"{k}={v} "
 
         all_text_lower = all_text.lower()
 
-        # 高危关键词：管理操作、敏感数据
         for keyword in self.HIGH_RISK_KEYWORDS:
             if keyword.lower() in all_text_lower:
                 return "High"
 
-        # 中危关键词：查询、信息获取
         for keyword in self.MED_RISK_KEYWORDS:
             if keyword.lower() in all_text_lower:
                 return "Med"
 
         return "Low"
+
+    # ==================== 已访问 URL 管理（重启续扫核心）====================
+
+    def get_all_visited_urls(self) -> List[str]:
+        """
+        获取所有已访问的 URL（用于重启后续扫）
+
+        Returns:
+            已访问 URL 列表
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT url FROM visited_urls")
+            urls = [row[0] for row in cursor.fetchall()]
+            logger.info(f"📚 [DB] 从数据库加载 {len(urls)} 个历史 URL")
+            return urls
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 获取已访问 URL 失败：{e}")
+            return []
+
+    def mark_url_visited(self, url: str) -> bool:
+        """
+        标记 URL 为已访问（同步写入数据库）
+
+        Args:
+            url: 目标 URL
+
+        Returns:
+            是否成功标记
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO visited_urls (url) VALUES (?)",
+                (url,)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 标记 URL 失败：{e}")
+            return False
+
+    def mark_urls_visited_batch(self, urls: List[str]) -> int:
+        """
+        批量标记 URL 为已访问
+
+        Args:
+            urls: URL 列表
+
+        Returns:
+            成功标记的数量
+        """
+        if not urls:
+            return 0
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION;")
+
+            data = [(url,) for url in urls if url and isinstance(url, str)]
+            cursor.executemany(
+                "INSERT OR IGNORE INTO visited_urls (url) VALUES (?)",
+                data
+            )
+
+            self.conn.commit()
+            logger.debug(f"📝 [DB] 批量标记 {len(data)} 个 URL 为已访问")
+            return len(data)
+        except Exception as e:
+            self.conn.rollback()
+            logger.warning(f"⚠️ [DB] 批量标记 URL 失败：{e}")
+            return 0
+
+    def is_url_visited(self, url: str) -> bool:
+        """
+        检查 URL 是否已访问
+
+        Args:
+            url: 目标 URL
+
+        Returns:
+            是否已访问
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1 FROM visited_urls WHERE url = ? LIMIT 1", (url,))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 检查 URL 状态失败：{e}")
+            return False
+
+    def clear_visited_urls(self) -> int:
+        """
+        清空已访问 URL 记录（用于重新开始扫描）
+
+        Returns:
+            清空的记录数
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM visited_urls")
+            count = cursor.rowcount
+            self.conn.commit()
+            logger.info(f"🗑️ [DB] 已清空 {count} 条已访问 URL 记录")
+            return count
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 清空已访问 URL 失败：{e}")
+            return 0
+
+    # ==================== 基础数据写入方法 ====================
 
     def append_data_batch(self, input_data: list, depth: int = 0, show_progress: bool = False) -> None:
         if not input_data:
@@ -248,6 +352,14 @@ class SQLiteStorage:
                 VALUES (?, ?, ?, ?, ?)
             """
             cursor.executemany(sql, rows_to_insert)
+
+            # ✅ 同步写入 visited_urls 表
+            visited_urls = [(row[0],) for row in rows_to_insert]
+            cursor.executemany(
+                "INSERT OR IGNORE INTO visited_urls (url) VALUES (?)",
+                visited_urls
+            )
+
             self.conn.commit()
             if show_progress:
                 print(f"💾 [DB] 基础数据写入：{len(rows_to_insert)} 条")
@@ -270,19 +382,9 @@ class SQLiteStorage:
                 return True
         return False
 
-    # ==================== AI 漏洞建议写入方法 (v6.3 更新) ====================
+    # ==================== AI 漏洞建议写入方法 ====================
 
     def save_ai_result(self, js_url: str, api_endpoint: str, advisory_report: Dict[str, Any]):
-        """
-        保存 AI 的渗透测试建议（v6.3 极简结构）
-
-        advisory_report 结构：
-        {
-            "path": "/admin/user/update",
-            "method": "PUT",
-            "params": "id=1,email=test@example.com,role"
-        }
-        """
         if not advisory_report or not isinstance(advisory_report, dict):
             logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
             return
@@ -294,22 +396,14 @@ class SQLiteStorage:
         try:
             cursor = self.conn.cursor()
 
-            # 1. 提取 method
             raw_method = advisory_report.get("method", "")
             http_method = self._normalize_method(raw_method)
-
-            # 2. 提取 path
             path = advisory_report.get("path", "")
-
-            # 3. 提取并解析 params
             params_raw = advisory_report.get("params", "")
             params_parsed = self._parse_params(params_raw)
             params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
-
-            # 4. 计算风险等级
             risk_level = self._calculate_risk_level(path, params_parsed, http_method)
 
-            # 5. 执行写入（极简结构）
             sql = """
                 INSERT OR REPLACE INTO ai_vulns
                 (js_url, api_endpoint, http_method, risk_level, path, params)
@@ -327,7 +421,6 @@ class SQLiteStorage:
 
             self.conn.commit()
 
-            # 6. 记录日志
             if risk_level == "High":
                 logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {api_endpoint}")
                 if params_parsed:
@@ -538,7 +631,6 @@ class SQLiteStorage:
 
             for row in cursor.fetchall():
                 record = dict(zip(columns, row))
-                # 只解析 params 字段
                 if record.get("params"):
                     try:
                         record["params"] = json.loads(record["params"])
@@ -613,6 +705,9 @@ class SQLiteStorage:
             cursor.execute("SELECT COUNT(*) FROM scan_results")
             total_urls = cursor.fetchone()[0]
 
+            cursor.execute("SELECT COUNT(*) FROM visited_urls")
+            total_visited = cursor.fetchone()[0]
+
             return {
                 "ai_vulns": {
                     "total": total_vulns,
@@ -625,6 +720,9 @@ class SQLiteStorage:
                 },
                 "scan_results": {
                     "total_urls": total_urls
+                },
+                "visited_urls": {
+                    "total": total_visited
                 }
             }
         except Exception as e:
@@ -638,7 +736,7 @@ class SQLiteStorage:
         return self.get_sensitive_by_risk("High")
 
     def export_for_burp(self, output_path: str) -> bool:
-        """导出高危漏洞为 Burp Suite 可导入的 CSV 格式（v6.3 极简结构）"""
+        """导出高危漏洞为 Burp Suite 可导入的 CSV 格式"""
         try:
             high_risks = self.export_high_risk()
             if not high_risks:
@@ -653,11 +751,9 @@ class SQLiteStorage:
                     method = vuln.get("http_method", "UNKNOWN")
                     risk = vuln.get("risk_level", "Low")
 
-                    # path
                     path = vuln.get("path", "")
                     path = path.replace(",", ";").replace("\n", " ") if path else ""
 
-                    # params
                     params = vuln.get("params", {})
                     if isinstance(params, dict):
                         params_str = ",".join(f"{k}={v}" for k, v in params.items())

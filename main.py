@@ -1,4 +1,6 @@
+import asyncio
 import atexit
+import hashlib
 import logging
 import os
 import time
@@ -12,10 +14,10 @@ import requests
 from user_agent import generate_user_agent
 
 from FileIO.db_manager import SQLiteStorage
-from FileIO.filerw import read
+from FileIO.filerw import clear_or_create_file, read
 from HttpHandle.AI_Req import client
 from HttpHandle.DuplicateChecker import DuplicateChecker
-from HttpHandle.httpSend import fetch_urls_with_dedup
+from HttpHandle.httpSend import fetch_urls_with_dedup, get_source_async, fetch_urls_async, process_scan_result
 from JsHandle.pathScan import get_root_domain
 from JsHandle.sensitiveInfoScan import find_all_info_by_rex
 from ai_security_scanner.analysis import AISecurityAuditor
@@ -38,61 +40,37 @@ proxies = {
 
 
 def classify_url(url, is_seed=False):
-    """
-    URL 分类（极简版）
-
-    Args:
-        url: 目标 URL
-        is_seed: 是否为初始种子 URL
-
-    Returns:
-        'static' / 'dynamic' / 'api'
-    """
-    # 初始种子 URL 全部用 Playwright 请求
+    """URL 分类（极简版）"""
     if is_seed:
         return 'dynamic'
 
-    # 路径解析
-    from urllib.parse import urlparse
     parsed = urlparse(url)
     path = parsed.path
     url_lower = url.lower()
-
-    # 判断路径中是否包含 "."
     has_dot = "." in path
 
     if has_dot:
-        # ========== 包含 "." ==========
         static_extensions = ['.js', '.json', '.css', '.xml', '.txt', '.map', '.xlsx', '.xls', '.csv']
         html_extensions = ['.html', '.htm', '.xhtml']
 
         if any(url_lower.endswith(ext) for ext in static_extensions):
-            return 'static'  # httpx
+            return 'static'
         elif any(url_lower.endswith(ext) for ext in html_extensions):
-            return 'dynamic'  # Playwright
+            return 'dynamic'
         else:
-            return 'dynamic'  # 未知扩展名，安全兜底
+            return 'dynamic'
     else:
-        # ========== 不包含 "." ==========
-        # 全部视为 API 路径，不请求
         return 'api'
 
-class Scanner:
-    """
-    主扫描器类
-    """
 
+class Scanner:
     def __init__(self, args, db_handler):
-        """
-        初始化扫描器
-        """
         self.args = args
         self.db_handler = db_handler
 
         self.initial_urls = []
         self.checker = None
         self.whiteList = read("./config/whiteList")
-        self.param_file = None
 
         self.ai_auditor = None
         if self.args.autoConstructPoc:
@@ -119,42 +97,30 @@ class Scanner:
         atexit.register(self._cleanup_resources)
 
     def _cleanup_resources(self):
-        """
-        清理资源 (程序退出时自动调用)
-        """
         try:
             try:
                 cleanup_bloom_filters()
             except Exception:
                 pass
-
             if self.db_handler:
                 self.db_handler.close()
-
         except Exception as e:
             print(f"[Cleanup] 清理失败：{e}")
 
     async def _quick_scan_filter(self, url, status_code, snippet):
-        """
-        快速扫描过滤器
-        0=跳过（401 未授权 / 200 但响应包含未登录关键词）
-        1=保留（其他所有情况，宽松策略）
-        """
+        """快速扫描过滤器"""
         url_lower = url.lower()
         snippet_lower = snippet.lower() if snippet else ""
 
-        # 401 未授权
         if status_code == 401:
             return "0"
 
-        # 纯静态资源
         static_extensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf',
                              '.eot', '.mp3', '.wav', '.mp4']
         if any(url_lower.endswith(ext) for ext in static_extensions):
             return "0"
 
-        # 200 但响应包含未登录关键词
-        if status_code in [200, 201, 301, 302, 404, 502]:
+        if (200 <= status_code <= 300) or (500 <= status_code < 600):
             unauth_keywords = [
                 '未登录', '请先登录', '登录过期', '会话过期', '未授权', '身份验证失败',
                 '请登录', '重新登录', '登录失效', '会话已过期', '认证失败',
@@ -166,26 +132,26 @@ class Scanner:
             if any(kw in snippet_lower for kw in unauth_keywords):
                 return "0"
 
+            if "<!doctype" in snippet_lower or "<body" in snippet_lower:
+                return "0"
+
         return "1"
 
-    def run(self):
+    async def run(self):
         """主运行逻辑"""
         os.makedirs("Result", exist_ok=True)
 
         self.initial_urls = self._load_initial_urls()
-        self.checker = DuplicateChecker(initial_root_domain=self.initial_urls)
+
+        # ✅ 关键：DuplicateChecker 从 DB 加载历史 URL
+        self.checker = DuplicateChecker(
+            db_handler=self.db_handler,
+            initial_root_domain=self.initial_urls
+        )
         self.args.initial_urls = self.initial_urls
 
         raw_seed_urls = self.load_url()
         scan_seed_urls = []
-
-        target_url_for_name = self.args.url.strip() if self.args.url else "batch_task"
-        try:
-            domain_part = get_root_domain(target_url_for_name).replace(".", "_")
-        except:
-            domain_part = "unknown"
-        time_part = time.strftime("%Y%m%d", time.localtime())
-        self.param_file = f"Result/params_{domain_part}_{time_part}.txt"
 
         for url in raw_seed_urls:
             url = url.strip()
@@ -202,7 +168,7 @@ class Scanner:
             return
 
         start_time = time.time()
-        self._scan_recursive(scan_seed_urls, 0, is_seed=True)
+        await self._scan_recursive(scan_seed_urls, 0, is_seed=True)
         print(f"🏁 任务结束 | 总耗时：{time.time() - start_time:.2f}秒")
 
     def load_url(self):
@@ -222,9 +188,6 @@ class Scanner:
         return list(set(filter(None, white_list_domains)))
 
     async def _process_ai_batch(self, batch_all_next_paths_with_source, batch_scan_info_list, batch_next_urls):
-        """
-        批量处理 AI 审计任务
-        """
         if not self.ai_auditor:
             return
 
@@ -246,7 +209,6 @@ class Scanner:
                 urls_to_scan.append(url)
 
             if urls_to_scan:
-                # 调用封装的去重函数
                 unique_results, dup_count, stats = await fetch_urls_with_dedup(
                     urls=urls_to_scan,
                     thread_num=50,
@@ -371,7 +333,48 @@ class Scanner:
         if processed_count > 0:
             print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
 
-    def _scan_recursive(self, urls, depth, is_seed=False):
+    async def parallel_fetch(self, batch_dynamic, batch_static):
+        """异步并行请求：静态 + 动态"""
+        tasks = []
+        task_order = []
+
+        if batch_dynamic:
+            dynamic_task = get_source_async(
+                urls=batch_dynamic,
+                thread_num=self.args.thread_num,
+                args=self.args,
+                checker=self.checker
+            )
+            tasks.append(dynamic_task)
+            task_order.append('dynamic')
+
+        if batch_static:
+            static_task = fetch_urls_async(
+                urls=batch_static,
+                thread_num=min(self.args.thread_num, 50),
+                headers={"User-Agent": generate_user_agent()},
+                timeout=10
+            )
+            tasks.append(static_task)
+            task_order.append('static')
+
+        if not tasks:
+            return ([], [], set(), []), []
+
+        results = await asyncio.gather(*tasks)
+
+        dynamic_result = ([], [], set(), [])
+        static_result = []
+
+        for i, task_type in enumerate(task_order):
+            if task_type == 'dynamic':
+                dynamic_result = results[i]
+            elif task_type == 'static':
+                static_result = results[i]
+
+        return dynamic_result, static_result
+
+    async def _scan_recursive(self, urls, depth, is_seed=False):
         """递归扫描主流程"""
         if depth > self.args.height:
             return
@@ -394,7 +397,6 @@ class Scanner:
 
         print(f"🔍 深度 {depth} 扫描开始 | URL 数：{len(urls_list)}")
 
-        # ========== URL 三分类 ==========
         static_urls = []
         dynamic_urls = []
         api_urls = []
@@ -421,14 +423,12 @@ class Scanner:
         all_scan_info_list = []
         all_next_urls = set()
 
-        # ========== 批次处理 ==========
         for batch_idx in range(0, len(urls_list), batch_size):
             batch_urls = urls_list[batch_idx:batch_idx + batch_size]
             current_batch = batch_idx // batch_size + 1
 
             print(f"\n[D{depth}] 批次 {current_batch}/{total_batches} (Size: {len(batch_urls)})")
 
-            # 分离当前批次的静态和动态 URL
             batch_dynamic = []
             batch_static = []
             for url in batch_urls:
@@ -437,47 +437,17 @@ class Scanner:
                     batch_static.append(url)
                 elif url_type == 'dynamic':
                     batch_dynamic.append(url)
-                # api 类型不加入请求队列
-
-            # 并行请求：静态 + 动态
-            import asyncio
-            from HttpHandle.httpSend import fetch_urls_async, get_source_async, process_scan_result
-
-            async def parallel_fetch():
-                dynamic_task = None
-                static_task = None
-
-                # 动态资源任务（Playwright）
-                if batch_dynamic:
-                    dynamic_task = get_source_async(
-                        urls=batch_dynamic,
-                        thread_num=self.args.thread_num,
-                        args=self.args,
-                        checker=self.checker
-                    )
-
-                # 静态资源任务（httpx）
-                if batch_static:
-                    static_task = fetch_urls_async(
-                        urls=batch_static,
-                        thread_num=min(self.args.thread_num, 50),
-                        headers={"User-Agent": generate_user_agent()},
-                        timeout=10
-                    )
-
-                # 等待两个任务完成
-                dynamic_result = await dynamic_task if dynamic_task else ([], [], set(), [])
-                static_result = await static_task if static_task else []
-
-                return dynamic_result, static_result
-
-            batch_all_next_urls_with_source = []
-            batch_scan_info_list = []
-            batch_next_urls = set()
-            batch_all_next_paths_with_source = []
 
             try:
-                dynamic_result, static_result = asyncio.run(parallel_fetch())
+                dynamic_result, static_result = await self.parallel_fetch(
+                    batch_dynamic=batch_dynamic,
+                    batch_static=batch_static
+                )
+
+                batch_all_next_urls_with_source = []
+                batch_scan_info_list = []
+                batch_next_urls = set()
+                batch_all_next_paths_with_source = []
 
                 if dynamic_result:
                     batch_all_next_urls_with_source, batch_scan_info_list, batch_next_urls, batch_all_next_paths_with_source = dynamic_result
@@ -502,14 +472,11 @@ class Scanner:
                             }
 
                             try:
-                                # 调用 process_scan_result 提取数据
-                                is_valid, next_urls, next_paths = asyncio.run(
-                                    process_scan_result(static_info, self.checker, self.args)
-                                )
+                                is_valid, next_urls, next_paths = await process_scan_result(static_info, self.checker,
+                                                                                            self.args)
 
                                 if is_valid:
                                     static_info["is_valid"] = 1
-
                                     batch_scan_info_list.append(static_info)
 
                                     if next_urls:
@@ -555,18 +522,21 @@ class Scanner:
 
             if self.args.autoConstructPoc and self.ai_auditor:
                 print(f"🤖 [AI] 正在进行 API 逻辑审计...")
-                asyncio.run(
-                    self._process_ai_batch(batch_all_next_paths_with_source, batch_scan_info_list, batch_next_urls))
+                await self._process_ai_batch(
+                    batch_all_next_paths_with_source,
+                    batch_scan_info_list,
+                    batch_next_urls
+                )
 
             all_scan_info_list.extend(batch_scan_info_list)
 
             if current_batch < total_batches:
-                time.sleep(0.2)
+                await asyncio.sleep(0.2)
 
             try:
                 mem = psutil.virtual_memory()
                 if mem.percent > 85.0:
-                    print(f"\n⚠️  内存告警：{mem.percent}% > 99% | 触发熔断保护.")
+                    print(f"\n⚠️  内存告警：{mem.percent}% > 85% | 触发熔断保护.")
 
                     overflow_dir = "Overflow_Queue"
                     os.makedirs(overflow_dir, exist_ok=True)
@@ -594,18 +564,15 @@ class Scanner:
 
         if self.args.analyzeSensitiveInfoRex or self.args.analyzeSensitiveInfoAI:
             print(f"🔍 正在提取敏感信息 (Regex/Qwen)...")
-            self._extract_sensitive_info(all_scan_info_list)
+            await self._extract_sensitive_info(all_scan_info_list)
 
         if all_next_urls:
             print(f"➡️  进入深度 {depth + 1}")
-            self._scan_recursive(all_next_urls, depth + 1, is_seed=False)
+            await self._scan_recursive(all_next_urls, depth + 1, is_seed=False)
         else:
             print(f"✅ 深度 {depth} 完成")
 
-    def _extract_sensitive_info(self, scan_info_list):
-        """
-        提取敏感信息 (v2.0 重构版)
-        """
+    async def _extract_sensitive_info(self, scan_info_list):
         for scan_info in scan_info_list:
             url = scan_info["url"]
 
@@ -652,7 +619,6 @@ class Scanner:
 
 
 def send_feishu_notify(title, content=""):
-    """发送飞书通知"""
     if not FEISHU_WEBHOOK:
         return
     try:
@@ -672,22 +638,18 @@ if __name__ == '__main__':
     os.makedirs("Result", exist_ok=True)
 
     target_url = args.url.strip() if args.url else "unknown"
-    try:
-        root_domain = get_root_domain(target_url)
-    except:
-        root_domain = "unknown"
 
-    safe_db_name = root_domain.replace(".", "_").replace("/", "_").replace(":", "_")
-    time_str = time.strftime("%Y%m%d", time.localtime())
-    db_filename = f"Result/Result_{safe_db_name}_{time_str}.db"
+    # ✅ 关键修改：固定数据库文件名
+    db_filename = "Result/JScanner_Result.db"
 
     print(f"📂 扫描结果将存入数据库：{db_filename}")
+    print(f"📌 支持重启续扫，历史 URL 会自动加载")
 
     db_handler = SQLiteStorage(db_filename)
     scanner = Scanner(args, db_handler)
 
     try:
-        scanner.run()
+        asyncio.run(scanner.run())
         run_time = round(time.time() - start_time, 2)
         print(f"本次扫描耗时：{run_time}s")
 
