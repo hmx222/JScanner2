@@ -1,6 +1,5 @@
 import asyncio
 import atexit
-import hashlib
 import logging
 import os
 import time
@@ -14,7 +13,7 @@ import requests
 from user_agent import generate_user_agent
 
 from FileIO.db_manager import SQLiteStorage
-from FileIO.filerw import clear_or_create_file, read
+from FileIO.filerw import read
 from HttpHandle.AI_Req import client
 from HttpHandle.DuplicateChecker import DuplicateChecker
 from HttpHandle.httpSend import fetch_urls_with_dedup, get_source_async, fetch_urls_async, process_scan_result
@@ -132,7 +131,7 @@ class Scanner:
             if any(kw in snippet_lower for kw in unauth_keywords):
                 return "0"
 
-            if "<!doctype" in snippet_lower or "<body" in snippet_lower:
+            if "<!doctype" in snippet_lower or "<html" in snippet_lower or "<head" in snippet_lower:
                 return "0"
 
         return "1"
@@ -143,7 +142,6 @@ class Scanner:
 
         self.initial_urls = self._load_initial_urls()
 
-        # ✅ 关键：DuplicateChecker 从 DB 加载历史 URL
         self.checker = DuplicateChecker(
             db_handler=self.db_handler,
             initial_root_domain=self.initial_urls
@@ -256,7 +254,7 @@ class Scanner:
                             should_test = await self._quick_scan_filter(
                                 url=full_url,
                                 status_code=scan_result["status_code"],
-                                snippet=scan_result["response_content"][:500]
+                                snippet=scan_result["response_content"][:600]
                             )
 
                             if should_test == "1":
@@ -298,8 +296,8 @@ class Scanner:
                 if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
                     continue
 
-                if qualified_api_paths:
-                    if api_path in qualified_api_paths:
+                if getattr(self.args, 'fastscan', False):
+                    if qualified_api_paths and api_path in qualified_api_paths:
                         apis_to_scan.append(api_path)
                 else:
                     apis_to_scan.append(api_path)
@@ -474,7 +472,6 @@ class Scanner:
                             try:
                                 is_valid, next_urls, next_paths = await process_scan_result(static_info, self.checker,
                                                                                             self.args)
-
                                 if is_valid:
                                     static_info["is_valid"] = 1
                                     batch_scan_info_list.append(static_info)
@@ -643,7 +640,6 @@ if __name__ == '__main__':
     db_filename = "Result/JScanner_Result.db"
 
     print(f"📂 扫描结果将存入数据库：{db_filename}")
-    print(f"📌 支持重启续扫，历史 URL 会自动加载")
 
     db_handler = SQLiteStorage(db_filename)
     scanner = Scanner(args, db_handler)
