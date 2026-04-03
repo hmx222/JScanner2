@@ -1,0 +1,9 @@
+{
+  "models": [
+    "xop3qwencodernext",
+    "MiniMax-M2.5",
+    "hunyuan-2.0-instruct-20251111",
+    "z-ai/glm4.7"
+  ],
+  "enabled": true
+}

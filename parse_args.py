@@ -45,8 +45,8 @@ def parse_args():
 
     parser.add_argument('-asir','--analyzeSensitiveInfoRex', default=False, action='store_true',help="是否利用正则表达式收集JS敏感信息")
 
-    parser.add_argument('-acp', '--autoConstructPoc', action='store_true', default=False,
-                        help="是否自动构造poc")
+    parser.add_argument('-fp', '--findparam', action='store_true', default=False,
+                        help="自动解析api参数")
 
     parser.add_argument('-fs','--fastscan', action='store_true', default=False, help="是否使用快速扫描模式")
 
