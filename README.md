@@ -48,8 +48,6 @@ vim config/config.py
 vim run_scan.sh
 # → Modify: FEISHU_WEBHOOK, SCAN_DEPTH
 
-# 3. (Optional) Prepare target list
-echo "https://target.com" > config/targets.txt
 ```
 
 > 💡 **Tip**: Sensitive configurations like `API_KEY` are recommended to be managed via environment variables or kept out of version control.
