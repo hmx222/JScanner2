@@ -1,132 +1,219 @@
-# JScanner2 - 大模型驱动的 JavaScript 敏感信息智能识别工具
+# JScanner2 - AI 驱动的 JavaScript 安全分析工具
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
+---
+
+## 🎬 效果演示
+
+![B0CIOkQJ_converted](https://github.com/user-attachments/assets/d9034311-8343-4c08-b298-6403b09b012f)
+
+* 输入：[https://example.com](https://example.com)
+* 输出：
+  * 敏感 API 自动检测
+  * 参数智能识别
+  * AI 风险分析（例如：硬编码 Token → 可利用）
+
+---
+
+## 🚀 为什么选择 JScanner2
+
+传统 JavaScript 安全扫描工具存在明显局限：
+
+* ❌ 仅提取 API 路径（无参数感知能力）
+* ❌ 需手动模糊测试才能发现漏洞
+* ❌ 无法理解业务逻辑
+* ❌ 硬编码敏感信息缺乏利用上下文
+
+### ✅ JScanner2 的解决方案
+
+JScanner2 融合 **AST 解析 + AI 语义分析**，实现真实场景下的漏洞挖掘：
+
+#### 1️⃣ 智能参数发现
+
+* 基于 AST 解析 JS 代码
+* 同时提取 API 端点 **与** 参数
+* AI 推理参数结构与业务含义
+
+👉 告别盲测，精准打击
+
+#### 2️⃣ AI 驱动的硬编码敏感信息分析
+
+* 检测 Token、密钥、凭证等硬编码内容
+* AI 自动分析 **如何利用这些敏感信息**
+
+👉 不仅是发现，更是利用指引
+
+#### 3️⃣ 贴合真实攻击场景
+
+在实际 SRC 测试中：
+
+* 单独看 API 可能看似安全
+* 但 **结合有效参数后** 可能形成高危漏洞
+
+👉 JScanner2 正是为弥合这一差距而生
+
+---
+
+# ⚡ 使用概览
+
+> 🎯 按需求选择三种使用层级：
+
+* **快速扫描** → 无需配置，快速出结果
+* **AI 扫描（推荐）** → 启用全部能力
+* **自动化模式** → 批量任务 + 通知
+
+---
+
+## ⚡ 快速开始（无需配置）
+
+无需任何配置，直接运行基础扫描：
+
+```bash
+python main.py -u https://example.com -H 6
+```
+
+### 功能特点：
+
+* ✅ 无需 API Key
+* ✅ 执行速度快
+
+> 💡 仅使用正则匹配检测（不调用 AI）
+
+---
+
+## 🚀 AI 智能扫描（推荐）
+
+启用完整功能进行深度分析：
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+playwright install
+playwright install-deps
+npm install prettier
+
+# 配置核心参数
+vim config/config.py
+# 设置：BASE_URL, API_KEY
+
+# 运行扫描（推荐）
+python main.py -u https://example.com -asia -fp -H 6
+```
+
+### 功能特点：
+
+* 智能参数识别与结构推断
+* AI 分析硬编码敏感信息
+* 自动生成漏洞利用建议
+
+> 🔥 推荐用于真实漏洞挖掘场景
+
+---
+
+## 🤖 自动化模式（批量扫描 + 通知）
+
+执行大规模扫描并接收结果通知：
+
+```bash
+# 配置脚本
+vim run_scan.sh
+# 设置 FEISHU_WEBHOOK
+
+# 执行批量任务
+echo urls.txt | ./run_scan.sh
+```
+
+### 功能特点：
+
+* 支持批量目标扫描
+* 后台运行（适合服务器部署）
+* 飞书机器人实时通知
+
+> 💡 适合 VPS 长期任务或自动化巡检
+
+---
+
 ## 🛠️ 安装指南
 
 ### 环境要求
 
-- Python 3.9+
+* Python 3.9+
 
-### 快速安装
+### 完整安装
 
 ```bash
-# 克隆仓库
-git clone https://github.com/hmx222/JScanner2.git
-cd JScanner2
-
-# 安装 Python 依赖
 pip install -r requirements.txt
-
-# 安装 Playwright 依赖
 playwright install-deps
 playwright install
-
-# 安装 prettier（用于代码格式化）
 npm install prettier
-```
-
-## ⚙️ 使用前配置检查
-
-> ⚠️ **重要**：在使用 JScanner2 之前，请务必完成以下配置步骤：
-
-| 步骤 | 文件/目录 | 配置目的 | 是否必需 |
-|------|----------|---------|----------|
-| 1️⃣ | `run_scan.sh` | 配置飞书 Webhook、扫描参数、目标列表（脚本模式专用） | ✅ 使用 `bash run_scan.sh` 时必需 |
-| 2️⃣ | `config/` 目录 | 配置大模型接口地址、API Key、代理等核心参数 | ✅ 始终必需 |
-
-### 快速配置指引
-
-```bash
-# 1. 编辑核心配置
-vim config/config.py
-# → 修改项：BASE_URL, API_KEY, proxies, FEISHU_WEBHOOK
-
-# 2. 编辑脚本配置（如使用脚本模式）
-vim run_scan.sh
-# → 修改项：FEISHU_WEBHOOK, SCAN_DEPTH, TARGET_LIST 等
-
 ```
 
 ---
 
-## 📋 使用指南
+## ⚙️ 配置说明
 
-### 两种运行模式
-
-JScanner2 支持两种运行方式，适配不同使用场景：
-
-| 模式 | 命令 | 适用场景 | 多目标支持 | 飞书通知 |
-|------|------|----------|-----------|----------|
-| 🔹 命令行模式 | `python main.py [参数]` | 调试 / 单目标快速测试 | ❌ | ❌ |
-| 🔹 脚本模式 | `bash run_scan.sh` | 批量扫描 / 自动化任务 | ✅ | ✅ |
-
-> 💡 **提示**：`run_scan.sh` 模式支持在脚本内部自定义扫描参数、深度及飞书机器人配置。
-
-### 核心 AI 参数说明
-
-| 参数 | 全称 | 功能说明 |
-|------|------|----------|
-| -asir | --analyzeSensitiveInfoRex | 通过正则表达式识别敏感信息 |
-| -asia | --analyzeSensitiveInfoAI | 使用 AI 自动分析敏感信息 |
-| -fp | --findparam | 自动解析 API 参数 |
-| -fs | --fastscan | 启用快速扫描模式 |
-
-### 基础扫描参数说明
-
-| 参数 | 全称 | 功能说明 |
-|------|------|----------|
-| -u | --url | 输入单个网站 URL，需包含 http/https（如 https://example.com）。参数会自动去除首尾空格及末尾回车符 (\r)，类型为 string。 |
-| -H | --height | 扫描深度（默认值：2），类型为 integer。 |
-| -t | --thread_num | 并发线程数（默认值：10），类型为 integer。 |
-| -p | --proxy | 代理服务器（格式要求：http://127.0.0.1:12335 或 socks5://127.0.0.1:1080），类型为 string。 |
-| -v | --visible | 显示浏览器窗口（默认：无头模式，不显示窗口）。布尔开关参数（添加即启用，无需赋值）。 |
-
-### 使用示例
+编辑配置文件：
 
 ```bash
-# 命令行模式：基础扫描
-python main.py -u https://example.com
-
-# 命令行模式：启用 AI 分析 + 深度扫描
-python main.py -u https://example.com -asia -fp -H 6 
-
-# 脚本模式：执行预设自动化任务(核心！！！！！！！！！！)
-echo urls.txt | ./run_scan.sh
+config/config.py
 ```
+
+修改以下关键项：
+
+* `BASE_URL`：大模型服务地址
+* `API_KEY`：API 认证密钥
+* `Proxy`：代理配置（可选）
+* `FEISHU_WEBHOOK`：飞书通知地址（可选）
+
+---
+
+## 🧠 核心参数速查
+
+| 参数 | 功能说明 |
+|------|----------|
+| -asia | 启用 AI 智能分析 |
+| -asir | 启用正则匹配检测 |
+| -fp | 自动解析 API 参数 |
+| -fs | 启用快速扫描模式 |
+| -H | 设置扫描深度 |
+
+---
+
+## 📊 输出结果
+
+* 提取的 API 端点列表
+* 自动推断的参数结构
+* 硬编码敏感信息发现
+* AI 生成的漏洞利用建议
+
+👉 所有结果自动入库，支持后续分析与复现
 
 ---
 
 ## ⚠️ 免责声明
 
-**重要**：本工具仅限合法授权的安全评估使用，禁止用于未授权扫描。用户需对自身行为承担法律责任，开发者不承担任何连带责任。
+本工具仅限授权的安全测试使用。
 
-使用本工具前，请确保：
-
-- 已获得目标网站的明确书面授权
-
-- 遵守相关法律法规及网站服务条款
-
-- 仅用于安全研究与漏洞修复目的
-
-- 不将分析结果用于非法用途
+* 使用前请获得明确书面授权
+* 遵守相关法律法规及目标网站服务条款
+* 禁止将分析结果用于非法用途
 
 ---
 
-## 🤝 致谢与参考
+## 🤝 致谢
 
-- **基础框架**：[Playwright](https://playwright.dev) - 浏览器自动化
-
-- **代码分析**：[LinkFinder](https://github.com/GerbenJavado/LinkFinder)
-
-- **自然语言处理**：[NLTK](https://www.nltk.org)
+* [Playwright](https://playwright.dev) - 浏览器自动化框架
+* [LinkFinder](https://github.com/GerbenJavado/LinkFinder) - JS 链路分析
+* [NLTK](https://www.nltk.org) - 自然语言处理
+* 讯飞星辰 - 大模型支持
 
 ---
 
 ## 📧 反馈与支持
 
-如在使用过程中遇到问题，欢迎提交 Issue：
+如遇问题或有任何建议，欢迎提交 Issue：
 
-https://github.com/hmx222/JScanner2/issues
+[https://github.com/hmx222/JScanner2/issues](https://github.com/hmx222/JScanner2/issues)
