@@ -5,7 +5,8 @@
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
 ## 🛠️ Installation Guide
-
+[中文](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
+[English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 ### Environment Requirements
 
 - Python 3.9+
@@ -93,7 +94,7 @@ python main.py -u https://example.com
 # CLI Mode: Enable AI analysis + deeper scan
 python main.py -u https://example.com -asia -fp -H 6 
 
-# Script Mode: Execute preset automation task
+# Script Mode: Execute preset automation task ！！！！！！！！！！！！！！！！！
 echo urls.txt | ./run_scan.sh
 ```
 
