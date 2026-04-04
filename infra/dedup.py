@@ -111,7 +111,7 @@ class DuplicateChecker:
                 count += 1
             logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 URL")
         except Exception as e:
-            logger.warning(f"⚠️ [Dedup] 加载历史 URL 失败：{e}")
+            logger.error(f"⚠️ [Dedup] 加载历史 URL 失败：{e}")
 
     def is_valid_url(self, url: str) -> bool:
         """
@@ -147,7 +147,6 @@ class DuplicateChecker:
 
         # 2. 检查是否已访问（先查内存布隆过滤器）
         if self.visited_urls.contains(url):
-            # ✅ 双重检查：布隆过滤器可能有误判，查数据库确认
             if self.db_handler and self.db_handler.is_url_visited(url):
                 return False
 
@@ -180,7 +179,7 @@ class DuplicateChecker:
             try:
                 self.db_handler.mark_url_visited(url)
             except Exception as e:
-                logger.warning(f"⚠️ [Dedup] 数据库写入失败：{e}")
+                logger.error(f"⚠️ [Dedup] 数据库写入失败：{e}")
 
     def mark_urls_visited_batch(self, urls: list):
         """
@@ -200,7 +199,7 @@ class DuplicateChecker:
             try:
                 self.db_handler.mark_urls_visited_batch(urls)
             except Exception as e:
-                logger.warning(f"⚠️ [Dedup] 批量数据库写入失败：{e}")
+                logger.error(f"⚠️ [Dedup] 批量数据库写入失败：{e}")
 
     def is_url_visited(self, url: str) -> bool:
         """

@@ -58,7 +58,7 @@ def _init_nltk_offline():
                 os.makedirs(NLTK_DIR, exist_ok=True)
                 nltk.download(package_name, download_dir=NLTK_DIR, quiet=True)
             except Exception as e:
-                logger.error(f"❌ NLTK 下载失败 {package_name}: {str(e)}")
+                logger.warning(f"❌ NLTK 下载失败 {package_name}: {str(e)}")
 
 
 _init_nltk_offline()
@@ -338,12 +338,11 @@ class LLMSecretVerifier:
                     logger.warning(f"⚠️ [LLM] 未找到有效 JSON (Attempt {attempt + 1})")
 
             except Exception as e:
-                print_exc()
                 logger.warning(f"⚠️ [LLM] 调用失败 (Attempt {attempt + 1}/{self.max_retries}): {e}")
                 if attempt < self.max_retries:
                     time.sleep(self.retry_delay * (attempt + 1))
 
-        logger.error("❌ [LLM] 所有重试失败，返回空结果")
+        logger.error("❌ [LLM] 所有重试失败，返回空结果，请及时配置config/models_config.json文件，或检查Token是否耗尽")
         return {}
 
     def _extract_json(self, content: str) -> Optional[str]:
@@ -475,7 +474,7 @@ class SensitiveInfoScanner:
         try:
             js_code = format_code(js_code, fallback_on_error=True)
         except Exception as e:
-            logger.warning(f"⚠️ 代码格式化失败：{e}")
+            logger.error(f"⚠️ 代码格式化失败：{e}")
 
         return js_code
 

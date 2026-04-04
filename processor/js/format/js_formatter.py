@@ -85,7 +85,7 @@ def _format_with_prettier(
     """使用 prettier 格式化代码 (优化文件写入编码)"""
     prettier_cmd = _find_prettier_path(prettier_path)
     if not prettier_cmd:
-        logger.warning("❌ prettier 不可用")
+        logger.error("❌ prettier 不可用")
         return None
 
     temp_file_path = None

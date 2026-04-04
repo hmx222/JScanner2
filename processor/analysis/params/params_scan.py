@@ -69,8 +69,6 @@ class AISecurityAuditor:
             }
 
         except Exception as e:
-            print_exc()
-            time.sleep(100)
             logger.warning(f"⚠️ Level 2 JSON 解析失败：{e}，默认 has_value=1")
             return {"has_value": 1, "param_keys": []}
 
@@ -82,7 +80,6 @@ class AISecurityAuditor:
 
         original_length = len(code)
 
-        # ========== 删除低价值代码 ==========
         code = re.sub(r'["\']image/[a-zA-Z]*;base64,[^"\']*["\']', '"[IMG]"', code)
         code = re.sub(r'["\'][^"\']*[\.#][a-zA-Z0-9_-]+\s*\{[^}]*:[^}]*\}[^"\']*["\']', '"[CSS]"', code)
         code = re.sub(r'["\'][^"\']*<[a-z][^>]*>[^"\']*["\']', '"[HTML]"', code)
@@ -93,7 +90,6 @@ class AISecurityAuditor:
         code = re.sub(r'console\.[a-zA-Z]+\([^)]*\)', '', code)
         code = re.sub(r'logger\.[a-zA-Z]+\([^)]*\)', '', code)
 
-        # ========== 统计 ==========
         compressed_length = len(code)
         total_saved = original_length - compressed_length
         compression_rate = (total_saved / original_length) * 100 if original_length > 0 else 0

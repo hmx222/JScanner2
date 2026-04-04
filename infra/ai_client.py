@@ -88,7 +88,7 @@ class ConfigWatcher(threading.Thread):
             self.last_modified = os.path.getmtime(file_path)
             logger.info(f"ConfigWatcher 启动 | {file_path}")
         except FileNotFoundError:
-            logger.warning(f"配置文件不存在：{file_path}")
+            logger.error(f"配置文件不存在：{file_path}")
             self.last_modified = 0
 
     def run(self):

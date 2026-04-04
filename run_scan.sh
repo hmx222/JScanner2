@@ -6,9 +6,7 @@
 
 # ===================== 配置区 =====================
 PYTHON_CMD="main.py"
-# 基础参数 (注意：-H 参数将由脚本动态覆盖)
-# ✅ 新增 -ps 开启参数扫描
-BASE_PYTHON_ARGS="-acr -asir -asia"
+BASE_PYTHON_ARGS="-asia -fp -fs"
 # 默认初始深度 (仅用于第一轮主任务)
 INITIAL_HEIGHT=5
 
@@ -189,7 +187,7 @@ echo -e "===== 扫描结束时间: $(date '+%Y-%m-%d %H:%M:%S') =====" >> "${LOG
 
 # ✅ [新增] Shell端发送最终飞书通知
 # 请替换下面的 YOUR_WEBHOOK_URL
-FEISHU_URL="https://open.feishu.cn/open-apis/bot/v2/hook/92159458-e2b8-4722-bb21-35680bee53d8"
+FEISHU_URL="https://open.feishu.cn/open-apis/bot/v2/hook/92159458-e2b8-4722-bb2123132132113213"
 TOTAL_SUCCESS=$(wc -l < "${DONE_URL_FILE}")
 END_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
