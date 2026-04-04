@@ -5,6 +5,8 @@
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
 ---
+[中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
+[English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
 ## 🎬 Demo
 
@@ -80,7 +82,6 @@ python main.py -u https://example.com -H 6
 ### Features:
 
 * ✅ No API key required
-* ✅ No Playwright required
 * ✅ Fast execution
 
 > 💡 Uses regex-based detection only (no AI)
