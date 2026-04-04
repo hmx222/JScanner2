@@ -48,11 +48,7 @@ vim config/config.py
 vim run_scan.sh
 # → 修改项：FEISHU_WEBHOOK, SCAN_DEPTH, TARGET_LIST 等
 
-# 3. （可选）准备目标列表
-echo "https://target.com" > config/targets.txt
 ```
-
-> 💡 **建议**：`API_KEY` 等敏感配置建议通过环境变量管理，或避免提交至版本仓库。
 
 ---
 
@@ -97,7 +93,7 @@ python main.py -u https://example.com
 # 命令行模式：启用 AI 分析 + 深度扫描
 python main.py -u https://example.com -asia -fp -H 6 
 
-# 脚本模式：执行预设自动化任务
+# 脚本模式：执行预设自动化任务(核心！！！！！！！！！！)
 echo urls.txt | ./run_scan.sh
 ```
 
