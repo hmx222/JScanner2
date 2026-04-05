@@ -6,62 +6,63 @@ import os
 import threading
 from urllib.parse import urlparse
 
+from infra.bloom import DiskBloomFilter
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class DiskBloomFilter:
-    """
-    磁盘布隆过滤器（用于内存缓存 + 快速去重）
-    注意：这是临时缓存，重启后会清空，持久化靠数据库
-    """
-
-    def __init__(self, filepath="Result/global_dedup.bloom", capacity=10_000_000, error_rate=0.001):
-        self.filepath = filepath
-        self.size = int(- (capacity * math.log(error_rate)) / (math.log(2) ** 2))
-        self.hash_count = int((self.size / capacity) * math.log(2))
-        self.byte_size = (self.size + 7) // 8
-
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-
-        if not os.path.exists(filepath):
-            with open(filepath, "wb") as f:
-                f.write(b'\x00' * self.byte_size)
-
-        self.file = open(filepath, "r+b")
-        self.mm = mmap.mmap(self.file.fileno(), 0)
-
-    def _get_hashes(self, item):
-        item_encoded = item.encode("utf8")
-        md5 = int(hashlib.md5(item_encoded).hexdigest(), 16)
-        sha1 = int(hashlib.sha1(item_encoded).hexdigest(), 16)
-        for i in range(self.hash_count):
-            yield (md5 + i * sha1) % self.size
-
-    def add(self, item):
-        if self.contains(item):
-            return False
-        for pos in self._get_hashes(item):
-            byte_index = pos // 8
-            bit_index = pos % 8
-            self.mm[byte_index] |= (1 << bit_index)
-        return True
-
-    def contains(self, item):
-        for pos in self._get_hashes(item):
-            byte_index = pos // 8
-            bit_index = pos % 8
-            if not (self.mm[byte_index] & (1 << bit_index)):
-                return False
-        return True
-
-    def close(self):
-        try:
-            self.mm.close()
-            self.file.close()
-        except:
-            pass
+# class DiskBloomFilter:
+#     """
+#     磁盘布隆过滤器（用于内存缓存 + 快速去重）
+#     注意：这是临时缓存，重启后会清空，持久化靠数据库
+#     """
+#
+#     def __init__(self, filepath="Result/global_dedup.bloom", capacity=10_000_000, error_rate=0.001):
+#         self.filepath = filepath
+#         self.size = int(- (capacity * math.log(error_rate)) / (math.log(2) ** 2))
+#         self.hash_count = int((self.size / capacity) * math.log(2))
+#         self.byte_size = (self.size + 7) // 8
+#
+#         os.makedirs(os.path.dirname(filepath), exist_ok=True)
+#
+#         if not os.path.exists(filepath):
+#             with open(filepath, "wb") as f:
+#                 f.write(b'\x00' * self.byte_size)
+#
+#         self.file = open(filepath, "r+b")
+#         self.mm = mmap.mmap(self.file.fileno(), 0)
+#
+#     def _get_hashes(self, item):
+#         item_encoded = item.encode("utf8")
+#         md5 = int(hashlib.md5(item_encoded).hexdigest(), 16)
+#         sha1 = int(hashlib.sha1(item_encoded).hexdigest(), 16)
+#         for i in range(self.hash_count):
+#             yield (md5 + i * sha1) % self.size
+#
+#     def add(self, item):
+#         if self.contains(item):
+#             return False
+#         for pos in self._get_hashes(item):
+#             byte_index = pos // 8
+#             bit_index = pos % 8
+#             self.mm[byte_index] |= (1 << bit_index)
+#         return True
+#
+#     def contains(self, item):
+#         for pos in self._get_hashes(item):
+#             byte_index = pos // 8
+#             bit_index = pos % 8
+#             if not (self.mm[byte_index] & (1 << bit_index)):
+#                 return False
+#         return True
+#
+#     def close(self):
+#         try:
+#             self.mm.close()
+#             self.file.close()
+#         except:
+#             pass
 
 
 class DuplicateChecker:
@@ -111,7 +112,7 @@ class DuplicateChecker:
                 count += 1
             logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 URL")
         except Exception as e:
-            logger.warning(f"⚠️ [Dedup] 加载历史 URL 失败：{e}")
+            logger.error(f"⚠️ [Dedup] 加载历史 URL 失败：{e}")
 
     def is_valid_url(self, url: str) -> bool:
         """
@@ -147,7 +148,6 @@ class DuplicateChecker:
 
         # 2. 检查是否已访问（先查内存布隆过滤器）
         if self.visited_urls.contains(url):
-            # ✅ 双重检查：布隆过滤器可能有误判，查数据库确认
             if self.db_handler and self.db_handler.is_url_visited(url):
                 return False
 
@@ -180,7 +180,7 @@ class DuplicateChecker:
             try:
                 self.db_handler.mark_url_visited(url)
             except Exception as e:
-                logger.warning(f"⚠️ [Dedup] 数据库写入失败：{e}")
+                logger.error(f"⚠️ [Dedup] 数据库写入失败：{e}")
 
     def mark_urls_visited_batch(self, urls: list):
         """
@@ -200,7 +200,7 @@ class DuplicateChecker:
             try:
                 self.db_handler.mark_urls_visited_batch(urls)
             except Exception as e:
-                logger.warning(f"⚠️ [Dedup] 批量数据库写入失败：{e}")
+                logger.error(f"⚠️ [Dedup] 批量数据库写入失败：{e}")
 
     def is_url_visited(self, url: str) -> bool:
         """
