@@ -1,75 +1,219 @@
-# JScanner2 - Large Model-Based JavaScript Sensitive Information Intelligent Recognition Tool
+# JScanner2 - AI-Powered JavaScript Security Analysis Tool
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
-## 🛠️ Installation Guide
+---
+[中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
+[English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
-### Environment Requirements
+## 🎬 Demo
 
-- Python 3.9+
+![B0CIOkQJ_converted](https://github.com/user-attachments/assets/d9034311-8343-4c08-b298-6403b09b012f)
 
-### Quick Installation
+
+* Input: [https://example.com](https://example.com)
+* Output:
+
+  * Sensitive API detected
+  * Parameters auto-identified
+  * AI risk analysis (e.g. HARD-CODED TOKEN → exploitable)
+
+---
+
+## 🚀 Why JScanner2
+
+Traditional JavaScript security scanning tools have clear limitations:
+
+* ❌ Only extract API paths (no parameter awareness)
+* ❌ Require manual fuzzing to find vulnerabilities
+* ❌ Cannot understand business logic
+* ❌ Hardcoded secrets lack exploit context
+
+### ✅ What JScanner2 Solves
+
+JScanner2 combines **AST parsing + AI analysis** to enable real-world vulnerability discovery:
+
+#### 1️⃣ Intelligent Parameter Discovery
+
+* Parse JS using AST
+* Extract API endpoints AND parameters
+* AI infers parameter structure and meaning
+
+👉 No more blind fuzzing
+
+#### 2️⃣ AI-Based Hardcoded Secret Analysis
+
+* Detect tokens, keys, credentials
+* AI explains **how to exploit them**
+
+👉 Not just detection, but exploitation guidance
+
+#### 3️⃣ Real Attack Scenarios
+
+In real-world SRC testing:
+
+* APIs alone may seem safe
+* BUT become vulnerable when combined with valid parameters
+
+👉 JScanner2 bridges this gap
+
+---
+
+# ⚡ Usage Overview
+
+> 🎯 Three usage levels depending on your needs:
+
+* **Quick Scan** → No config, fast results
+* **AI Scan (Recommended)** → Full capability
+* **Automation Mode** → Batch + notification
+
+---
+
+## ⚡ Quick Start (No Configuration)
+
+Run a basic scan without any configuration:
 
 ```bash
-# Clone the repository
-git clone https://github.com/hmx222/JScanner2.git
-cd JScanner2
+python main.py -u https://example.com -H 6
+```
 
-# Install Python dependencies
+### Features:
+
+* ✅ No API key required
+* ✅ Fast execution
+
+> 💡 Uses regex-based detection only (no AI)
+
+---
+
+## 🚀 AI-Powered Scan (Recommended)
+
+Enable full functionality:
+
+```bash
+# install dependencies
 pip install -r requirements.txt
+playwright install
+playwright install-deps
+npm install prettier
 
-# Install Playwright dependencies
+# configure
+vim config/config.py
+# set: BASE_URL, API_KEY
+
+# run(Recommended)
+python main.py -u https://example.com -asia -fp -H 6
+```
+
+### Features:
+
+* Intelligent parameter identification
+* AI-based sensitive info detection
+* Exploit suggestions
+
+> 🔥 Recommended for real vulnerability discovery
+
+---
+
+## 🤖 Automation Mode (Batch + Notification)
+
+Run large-scale scans with notification:
+
+```bash
+vim run_scan.sh
+# configure FEISHU_WEBHOOK
+
+echo urls.txt | ./run_scan.sh
+```
+
+### Features:
+
+* Batch scanning
+* Background execution (server)
+* Feishu notification
+
+> 💡 Ideal for VPS / long-running tasks
+
+---
+
+## 🛠️ Installation
+
+### Requirements
+
+* Python 3.9+
+
+### Full Installation
+
+```bash
+pip install -r requirements.txt
 playwright install-deps
 playwright install
-
-# Install prettier (for code formatting)
 npm install prettier
 ```
 
-## 📋 User Guide
+---
 
-### Core AI Parameter Description
+## ⚙️ Configuration
 
-|Parameter|Full Name|Description|
-|---|---|---|
-|-asir|--analyzeSensitiveInfoRex|Identify sensitive information through regular expressions|
-|-acp|--autoConstructPoc|Output penetration testing recommendations|
-|-asia|--analyzeSensitiveInfoAI|Automatically analyze sensitive information|
-### Basic Scanning Parameters
+Edit:
 
-|Parameter|Full Name|Function|
-|---|---|---|
-|-u|--url|Enter a single website URL with http/https (e.g., https://example.com). The parameter will automatically remove leading/trailing spaces and trailing carriage returns (\r), and the parameter type is string.|
-|-H|--height|Scanning depth (default value: 2), parameter type is integer.|
-|-t|--thread_num|Number of concurrent threads (default value: 10), parameter type is integer.|
-|-p|--proxy|Proxy server (format requirement: http://127.0.0.1:12335 or socks5://[127.0.0.1:1080](127.0.0.1:1080)), parameter type is string.|
-|-v|--visible|Show browser window (default: headless mode, no window displayed). It is a boolean switch parameter (just add the parameter to enable it, no need to assign a value).|
+```bash
+config/config.py
+```
+
+Modify:
+
+* BASE_URL
+* API_KEY
+* Proxy (optional)
+* FEISHU_WEBHOOK (optional)
+
+---
+
+## 🧠 Core Parameters
+
+| Parameter | Description           |
+| --------- | --------------------- |
+| -asia     | AI-based analysis     |
+| -asir     | Regex-based detection |
+| -fp       | Parameter discovery   |
+| -fs       | Fast scan             |
+| -H        | Scan depth            |
+
+---
+
+## 📊 Output
+
+* API endpoints
+* Parameters (auto-generated)
+* Sensitive data findings
+* Exploit suggestions (AI)
+
+👉 Results are stored for analysis
+
+---
+
 ## ⚠️ Disclaimer
 
-**Important**: This tool is only for legally authorized security assessments; unauthorized scanning is prohibited. Users shall bear legal responsibility for their own actions, and the developer shall not bear any joint liability.
+For authorized security testing only.
 
-Before using this tool, please ensure that:
+* Obtain permission
+* Follow laws
+* No illegal usage
 
-- You have obtained explicit written authorization for the target website
+---
 
-- You comply with relevant laws, regulations and website terms of service
+## 🤝 Acknowledgements
 
-- It is only used for security research and vulnerability repair purposes
+* Playwright
+* LinkFinder
+* NLTK
+* 讯飞星辰
 
-- The analysis results are not used for illegal purposes
-
-## 🤝 Acknowledgements and References
-
-- **Basic Framework**: [Playwright](https://playwright.dev) - Browser Automation
-
-- **Code Analysis**: [LinkFinder](https://github.com/GerbenJavado/LinkFinder)
-
-- **Natural Language Processing**: [NLTK](https://www.nltk.org)
+---
 
 ## 📧 Feedback
 
-If you encounter any problems during use, please feel free to submit an issue:
-
-https://github.com/hmx222/JScanner2/issues
+[https://github.com/hmx222/JScanner2/issues](https://github.com/hmx222/JScanner2/issues)
