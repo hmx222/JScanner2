@@ -1,25 +1,27 @@
-import hashlib
+import json
 import json
 import math
-import mmap
 import os
 import re
+import statistics
 import sys
 import time
+import zlib
 from collections import Counter
 from traceback import print_exc
-from typing import List, Dict, Generator, Tuple, Any, Optional
+from typing import List, Dict, Tuple, Any, Optional
 
 import json_repair
 
 from config.config import NLTK_DIR, EXCLUDE_CONTEXTS, SENSITIVE_KEYWORDS, QUOTE_PATTERN, UNICODE_PATTERN, \
     EXCLUDE_VALUES, IGNORE_PREFIX_PATTERN, SECRET_PROMPT
+from infra.bloom import DiskBloomFilter
+from infra.utils import remove_html_tags
 from logger import get_logger
 from processor.js.context.secret_extractor import SenInfoContextExtractor
 from storage.db import SQLiteStorage
 
 logger = get_logger(__name__)
-
 
 try:
     import wordninja
@@ -37,9 +39,6 @@ except ImportError as e:
 
 def _init_nltk_offline():
     """纯离线 NLTK 数据初始化"""
-
-    # local_nltk_dir = os.path.abspath('config/nltk_data')
-
     if NLTK_DIR not in nltk.data.path:
         nltk.data.path.insert(0, NLTK_DIR)
 
@@ -61,69 +60,60 @@ def _init_nltk_offline():
                 logger.warning(f"❌ NLTK 下载失败 {package_name}: {str(e)}")
 
 
-_init_nltk_offline()
-
-
-class SenInfoDiskBloomFilter:
-    """基于磁盘映射的持久化布隆过滤器"""
-
-    def __init__(self, filepath: str, capacity: int = 10_000_000, error_rate: float = 0.001):
-        self.filepath = filepath
-        self.size = int(- (capacity * math.log(error_rate)) / (math.log(2) ** 2))
-        self.hash_count = int((self.size / capacity) * math.log(2))
-        self.byte_size = (self.size + 7) // 8
-        self._ensure_file()
-        self.file = open(filepath, "r+b")
-        self.mm = mmap.mmap(self.file.fileno(), 0)
-
-    def _ensure_file(self):
-        os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
-        if not os.path.exists(self.filepath):
-            with open(self.filepath, "wb") as f:
-                f.write(b'\x00' * self.byte_size)
-
-    def _get_hashes(self, item: str) -> Generator[int, None, None]:
-        item_encoded = item.encode("utf8")
-        md5 = int(hashlib.md5(item_encoded).hexdigest(), 16)
-        sha1 = int(hashlib.sha1(item_encoded).hexdigest(), 16)
-        for i in range(self.hash_count):
-            yield (md5 + i * sha1) % self.size
-
-    def add(self, item: str) -> bool:
-        if self.contains(item):
-            return False
-        for pos in self._get_hashes(item):
-            byte_index = pos // 8
-            bit_index = pos % 8
-            self.mm[byte_index] |= (1 << bit_index)
-        return True
-
-    def contains(self, item: str) -> bool:
-        for pos in self._get_hashes(item):
-            byte_index = pos // 8
-            bit_index = pos % 8
-            if not (self.mm[byte_index] & (1 << bit_index)):
-                return False
-        return True
-
-    def close(self):
-        """关闭文件句柄 (新增)"""
-        try:
-            self.mm.close()
-            self.file.close()
-        except Exception:
-            pass
-
+# class SenInfoDiskBloomFilter:
+#     """基于磁盘映射的持久化布隆过滤器"""
+#
+#     def __init__(self, filepath: str, capacity: int = 10_000_000, error_rate: float = 0.001):
+#         self.filepath = filepath
+#         self.size = int(- (capacity * math.log(error_rate)) / (math.log(2) ** 2))
+#         self.hash_count = int((self.size / capacity) * math.log(2))
+#         self.byte_size = (self.size + 7) // 8
+#         self._ensure_file()
+#         self.file = open(filepath, "r+b")
+#         self.mm = mmap.mmap(self.file.fileno(), 0)
+#
+#     def _ensure_file(self):
+#         os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
+#         if not os.path.exists(self.filepath):
+#             with open(self.filepath, "wb") as f:
+#                 f.write(b'\x00' * self.byte_size)
+#
+#     def _get_hashes(self, item: str) -> Generator[int, None, None]:
+#         item_encoded = item.encode("utf8")
+#         md5 = int(hashlib.md5(item_encoded).hexdigest(), 16)
+#         sha1 = int(hashlib.sha1(item_encoded).hexdigest(), 16)
+#         for i in range(self.hash_count):
+#             yield (md5 + i * sha1) % self.size
+#
+#     def add(self, item: str) -> bool:
+#         if self.contains(item):
+#             return False
+#         for pos in self._get_hashes(item):
+#             byte_index = pos // 8
+#             bit_index = pos % 8
+#             self.mm[byte_index] |= (1 << bit_index)
+#         return True
+#
+#     def contains(self, item: str) -> bool:
+#         for pos in self._get_hashes(item):
+#             byte_index = pos // 8
+#             bit_index = pos % 8
+#             if not (self.mm[byte_index] & (1 << bit_index)):
+#                 return False
+#         return True
+#
+#     def close(self):
+#         """关闭文件句柄"""
+#         try:
+#             self.mm.close()
+#             self.file.close()
+#         except Exception:
+#             pass
+#
 
 # 全局去重器
-_AI_CANDIDATE_DEDUP = SenInfoDiskBloomFilter("Result/ai_candidates.bloom", capacity=5_000_000)
-_OUTPUT_LINE_DEDUP = SenInfoDiskBloomFilter("Result/output_lines.bloom", capacity=5_000_000)
-_WORD_ANALYSIS_DEDUP = SenInfoDiskBloomFilter("Result/word_analysis.bloom", capacity=10_000_000)
-
 
 class CodeLineFilter:
-
-
     def __init__(self, min_string_length=5, min_sensitive_length=5, max_string_length=1000):
         self.min_string_length = min_string_length
         self.min_sensitive_length = min_sensitive_length
@@ -162,7 +152,7 @@ class CodeLineFilter:
             return False
 
         non_ascii_ratio = sum(1 for c in content if ord(c) > 127) / content_len if content_len > 0 else 0
-        if non_ascii_ratio > 0.15:  # 0.3 → 0.15
+        if non_ascii_ratio > 0.15:
             return False
 
         if re.search(r'[\u4e00-\u9fff]{2,}', content):
@@ -201,89 +191,186 @@ class CodeLineFilter:
                 return False
         return True
 
+class SecretMathScorer:
+    """纯数学/统计学驱动的敏感信息评分器 (V4.3)"""
+    
+    _nltk_initialized = False
+
+    TECH_PATTERNS = {
+        'url': re.compile(r'https?://[^\s\'"]{4,}', re.I),
+        'path': re.compile(r'(?:^|/)[a-z0-9_\-./]{3,}\.(?:js|css|html|png|jpg|svg|json|map)', re.I),
+        'uuid': re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.I),
+        'regex': re.compile(r'^/[^/]+/[gimsuy]*$'),
+        'func': re.compile(r'^[a-zA-Z_$][\w$]*\s*\(')
+    }
+
+    COMMON_BIGRAMS = {
+        'th', 'he', 'in', 'er', 'an', 'on', 'en', 'at', 'es', 'ed', 'or', 'te', 'of', 'it', 'is', 'ti', 'le', 're',
+        'se', 'nt', 'al', 'ar', 'st', 'to', 'nd', 'ou', 've', 'co', 'me', 'de', 'hi', 'ri', 'ro', 'ic', 'ne', 'ea',
+        'ra', 'ce', 'li', 'ch', 'be', 'ma', 'ss', 'pe'
+    }
+    RARE_BIGRAMS = {'zx', 'qj', 'xk', 'vz', 'jq', 'kx', 'zq', 'xv', 'qz', 'jx', 'vk', 'zj'}
+
+    # JS/Web 技术词表 (弥补 NLTK 词典不足)
+    TECH_WORDS = {
+        'api', 'http', 'https', 'json', 'xml', 'css', 'html', 'div', 'span', 'click', 'data', 'id',
+        'token', 'user', 'admin', 'config', 'env', 'key', 'secret', 'function', 'var', 'let', 'const',
+        'return', 'true', 'false', 'null', 'undefined', 'window', 'document', 'console', 'log', 'error',
+        'warn', 'info', 'debug', 'test', 'mock', 'stub', 'fake', 'example', 'sample', 'demo', 'temp',
+        'tmp', 'cache', 'store', 'db', 'sql', 'mongo', 'redis', 'aws', 'azure', 'gcp', 'google',
+        'facebook', 'twitter', 'github', 'gitlab', 'bitbucket', 'npm', 'yarn', 'webpack', 'babel',
+        'react', 'vue', 'angular', 'node', 'express', 'django', 'flask', 'spring', 'rails', 'laravel',
+        'request', 'response', 'header', 'body', 'query', 'params', 'route', 'path', 'url', 'link',
+        'href', 'src', 'alt', 'title', 'class', 'style', 'script', 'meta', 'head', 'body'
+    }
+
+    def __init__(self, weights: Optional[Dict[str, float]] = None):
+        if not SecretMathScorer._nltk_initialized:
+            _init_nltk_offline()
+            SecretMathScorer._nltk_initialized = True
+            
+        self.weights = weights or {
+            'w_e': 0.8, 'w_c': 0.6, 'w_k': 0.7, 'w_f': 0.7,
+            'w_p': 1.0, 'w_m': 0.9, 'w_t': 1.2, 'w_v': 0.3, 'w_u': 0.5
+        }
+        self._cache = {}
+
+        try:
+            nltk_words = set(w.lower() for w in words.words())
+            self.valid_words_set = nltk_words.union(self.TECH_WORDS)
+        except:
+            self.valid_words_set = self.TECH_WORDS
+
+    def _log2(self, x):
+        return math.log2(x) if x > 0 else 0.0
+
+    def calc_E(self, s: str) -> float:
+        L = len(s)
+        if L == 0: return 0.0
+        cnt = Counter(s)
+        H = -sum((c / L) * self._log2(c / L) for c in cnt.values())
+        max_H = self._log2(min(L, len(cnt)))
+        return H / max_H if max_H > 0 else 0.0
+
+    def calc_C(self, s: str) -> float:
+        return sum([bool(re.search(p, s)) for p in [r'[a-z]', r'[A-Z]', r'[0-9]', r'[^a-zA-Z0-9\s]']]) / 4.0
+
+    def calc_P_V(self, s: str) -> Tuple[float, float]:
+        s_camel = re.sub(r'([A-Z])', r' \1', s)
+        alpha_parts = re.findall(r'[a-zA-Z]+', s_camel)
+
+        if not alpha_parts: return 0.0, 0.0
+
+        total_alpha_len = sum(len(p) for p in alpha_parts)
+        valid_len = 0
+        word_lengths = []
+
+        for part in alpha_parts:
+            part_lower = part.lower()
+            if len(part) > 2 and part_lower in self.valid_words_set:
+                valid_len += len(part)
+                word_lengths.append(len(part))
+
+        P = valid_len / total_alpha_len if total_alpha_len > 0 else 0.0
+        V = statistics.variance(word_lengths) if len(word_lengths) > 1 else 0.0
+        V = min(V / 15.0, 1.0)
+
+        return P, V
+
+    def calc_K(self, s: str) -> float:
+        L = len(s)
+        if L < 6: return 1.0
+        try:
+            ratio = len(zlib.compress(s.encode())) / L
+            if L < 15: return min(ratio, 0.8)  # 限制短串得分
+            return ratio
+        except:
+            return 0.5
+
+    def calc_M(self, s: str) -> float:
+        if len(s) < 2: return 0.0
+        bigrams = [s[i:i + 2].lower() for i in range(len(s) - 1)]
+        alpha = (sum(b in self.COMMON_BIGRAMS for b in bigrams) - 2 * sum(
+            b in self.RARE_BIGRAMS for b in bigrams)) / len(bigrams)
+        return 1.0 / (1.0 + math.exp(4.0 * (alpha + 0.2)))
+
+    def calc_U(self, s: str, w=8) -> float:
+        L = len(s)
+        if L < w: return 1.0
+        ents = []
+        for i in range(L - w + 1):
+            chunk = s[i:i + w]
+            cnt = Counter(chunk)
+            ents.append(-sum((c / w) * self._log2(c / w) for c in cnt.values()))
+        var = statistics.variance(ents) if len(ents) > 1 else 0.0
+        return max(0.0, 1.0 - var / 2.0)
+
+    def calc_F(self, s: str) -> float:
+        L = len(s)
+        if L == 0: return 0.0
+        hex_set = set('0123456789abcdefABCDEF')
+        b64_set = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+        return max(sum(c in hex_set for c in s) / L, sum(c in b64_set for c in s) / L)
+
+    def calc_T(self, s: str) -> float:
+        L = len(s)
+        if L == 0: return 0.0
+        matched = max((m.end() - m.start() for pat in self.TECH_PATTERNS.values() if (m := pat.search(s))), default=0)
+        return min(matched / L, 1.0)
+
+    def score(self, s: str) -> Dict[str, float]:
+        if s in self._cache: return self._cache[s]
+
+        E, C = self.calc_E(s), self.calc_C(s)
+        P, V = self.calc_P_V(s)
+        K, M = self.calc_K(s), self.calc_M(s)
+        U, F, T = self.calc_U(s), self.calc_F(s), self.calc_T(s)
+
+        w = self.weights
+        base = (w['w_e'] * E + w['w_c'] * C + w['w_k'] * K + w['w_f'] * F) - \
+               (w['w_p'] * P + w['w_m'] * M + w['w_t'] * T + w['w_v'] * V + w['w_u'] * (1 - U))
+
+        # Sigmoid 拉伸 (斜率 -3.5, 中心 0.85)
+        final = 1.0 / (1.0 + math.exp(-3.5 * (base - 0.85)))
+
+        res = {'score': final, 'E': E, 'C': C, 'P': P, 'V': V, 'K': K, 'M': M, 'U': U, 'F': F, 'T': T}
+        self._cache[s] = res
+        return res
 
 
 class AdvancedSecretFilter:
-    def __init__(self, entropy_threshold=3.5, coverage_threshold=0.65):
-        self.entropy_threshold = entropy_threshold
-        self.coverage_threshold = coverage_threshold
-        self.bloom_filter = _WORD_ANALYSIS_DEDUP
-        self.code_syntax_indicators = {'${', '||', '&&', '?', '+=', '-=', '===', '!==', '?.', '??'}
-        self.sensitive_keywords = {'secret', 'key', 'token', 'password', 'auth', 'cred', 'cert'}
+    def __init__(self, threshold: float = 0.90, weights: Optional[Dict[str, float]] = None):
+        self.threshold = threshold
+        self.scorer = SecretMathScorer(weights)
+        self.code_syntax_indicators = {'${', '||', '&&', '?', '+=', '-=', '===', '!==', '?.', '??', '=>'}
+        self.sensitive_keywords = SENSITIVE_KEYWORDS
 
-    def shannon_entropy(self, data: str) -> float:
-        if not data:
-            return 0
-        counter = Counter(data)
-        entropy = 0.0
-        total = len(data)
-        for count in counter.values():
-            p_x = count / total
-            if p_x > 0:
-                entropy += -p_x * math.log(p_x, 2)
-        return entropy
-
-    def calculate_word_coverage(self, text: str) -> Tuple[float, List[str]]:
-        if not text:
-            return 1.0, []
-        if self.bloom_filter.contains(text):
-            return 1.0, []
-        self.bloom_filter.add(text)
-
-        clean_text = re.sub(r'[^a-zA-Z0-9_-]', ' ', text)
-        if not clean_text:
-            return 0.0, []
-
-        raw_words = wordninja.split(clean_text)
-        weighted_score = 0.0
-        valid_words = []
-        for word in raw_words:
-
-            word = word.strip()
-            if not word:
-                continue
-
-            word_lower = word.lower()
-            word_len = len(word)
-
-            if word_len >= 3 and wordnet.synsets(word_lower):
-                valid_words.append(word)
-                weighted_score += word_len * (2.0 if word_len >= 5 else 1.5)
-
-        alpha_len = sum(1 for c in text if c.isalpha())
-        ratio = weighted_score / alpha_len if alpha_len > 0 else 0
-        return min(ratio, 1.0), valid_words
+    def shannon_entropy(self, data:str) -> float:
+        return self.scorer.calc_E(data) * math.log2(len(data)) if len(data) > 0 else 0.0
 
     def is_secret(self, text: str) -> bool:
-        if not text or len(text) < 4:
-            return False
+        if not text or len(text) < 4: return False
+        if any(ind in text for ind in self.code_syntax_indicators): return False
+        if text.upper() in ['0123456789ABCDEF', 'FEDCBA9876543210', '0000000000000000']: return False
 
-        if text.upper() in ['0123456789ABCDEF', 'FEDCBA9876543210', '0000000000000000']:
-            return False
+        res = self.scorer.score(text)
+        score = res['score']
 
-        if any(ind in text for ind in self.code_syntax_indicators):
-            return False
+        # 动态阈值策略
+        L = len(text)
+        thr = self.threshold * (0.9 if L < 16 else (1.1 if L > 100 else 1.0))
 
-        entropy = self.shannon_entropy(text)
-        digit_count = sum(c.isdigit() for c in text)
-        if (digit_count / len(text)) > 0.20:
-            if len(text) in (16, 32) and re.match(r'^[0-9a-fA-F]+$', text) and entropy > 2.0:
-                return True
+        # 关键词提权
+        if any(kw in text.lower() for kw in self.sensitive_keywords):
+            score = min(score * 1.2, 1.0)
 
-        if entropy < self.entropy_threshold:
-            return False
-        coverage, _ = self.calculate_word_coverage(text)
-        if coverage > self.coverage_threshold:
-            return False
+        return score >= thr
 
-        text_lower = text.lower()
-        if any(kw in text_lower for kw in self.sensitive_keywords) and coverage > 0.4:
-            return True
-        return False
+    def get_debug_info(self, text: str) -> Dict:
+        return self.scorer.score(text)
 
 
 class LLMSecretVerifier:
-
     def __init__(self, client, max_retries=2, retry_delay=1.0):
         self.client = client
         self.max_retries = max_retries
@@ -293,18 +380,13 @@ class LLMSecretVerifier:
         if not candidates:
             return []
 
-        # 准备输入数据
         input_data = self._prepare_input(candidates)
-        # 调用 LLM
         analysis_result = self._call_llm(input_data)
-        # 解析合并结果
         verified = self._parse_and_merge(candidates, analysis_result)
         return verified
 
     def _prepare_input(self, candidates: List[Dict[str, Any]]) -> str:
-        """准备 LLM 输入数据"""
         formatted = {}
-
         for cand in candidates:
             cand_id = str(cand.get("id", ""))
             formatted[cand_id] = {
@@ -312,11 +394,9 @@ class LLMSecretVerifier:
                 "context": cand.get("context", ""),
                 "callers": cand.get("callers", [])
             }
-
         return json.dumps(formatted, ensure_ascii=False, indent=2)
 
     def _call_llm(self, input_data: str) -> Dict[str, Any]:
-        """调用 LLM 进行分析"""
         messages = [
             {"role": "system", "content": SECRET_PROMPT},
             {"role": "user", "content": f"Analyze these hardcoded values:\n\n{input_data}"}
@@ -342,277 +422,155 @@ class LLMSecretVerifier:
                 if attempt < self.max_retries:
                     time.sleep(self.retry_delay * (attempt + 1))
 
-        logger.error("❌ [LLM] 所有重试失败，返回空结果，请及时配置config/models_config.json文件，或检查Token是否耗尽")
+        logger.error("❌ [LLM] 所有重试失败...")
         return {}
 
+
     def _extract_json(self, content: str) -> Optional[str]:
-        """从 LLM 响应中提取 JSON"""
-        # 尝试 1: 直接解析
         try:
             json_repair.loads(content)
             return content
         except json.JSONDecodeError:
             pass
-
-        # 尝试 2: 查找 ```json 代码块
         match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
-        if match:
-            return match.group(1)
-
-        # 尝试 3: 查找最外层花括号
+        if match: return match.group(1)
         match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match:
-            return match.group()
-
+        if match: return match.group()
         return None
 
-    def _parse_and_merge(self, candidates: List[Dict[str, Any]],
-                         analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """解析 LLM 结果并与原始候选合并"""
-        verified = []
 
+    def _parse_and_merge(self, candidates: List[Dict[str, Any]], analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        verified = []
         for cand in candidates:
             cand_id = str(cand.get("id", ""))
             ai_result = analysis_result.get(cand_id, {})
-
-            # 提取 AI 分析结果
             is_secret = ai_result.get("is_secret", 1)
-            secret_type = ai_result.get("secret_type", "unknown")
-            risk_level = ai_result.get("risk_level", "Low")
-            confidence = ai_result.get("confidence", 0.5)
-            test_suggestion = ai_result.get("test_suggestion", "")
-
-            # 构建完整结果
             result = {
                 **cand,
                 "is_secret": bool(is_secret) if isinstance(is_secret, int) else is_secret,
-                "secret_type": secret_type,
-                "risk_level": risk_level,
-                "confidence": float(confidence) if isinstance(confidence, (int, float)) else 0.5,
-                "test_suggestion": test_suggestion,
+                "secret_type": ai_result.get("secret_type", "unknown"),
+                "risk_level": ai_result.get("risk_level", "Low"),
+                "confidence": float(ai_result.get("confidence", 0.5)),
+                "test_suggestion": ai_result.get("test_suggestion", ""),
                 "ai_raw_analysis": ai_result
             }
-
-            # 只保留被 AI 标记为秘密的项
-            if result["is_secret"]:
-                verified.append(result)
-
+            if result["is_secret"]: verified.append(result)
         return verified
 
 
 class SensitiveInfoScanner:
-    """
-    敏感信息扫描器
-    """
+    """敏感信息扫描器 (V4.3 生产版)"""
 
-    def __init__(self, client, db: Optional[SQLiteStorage] = None,
-                 max_ast_analysis=50, max_llm=80):
-        """
-        Args:
-            client: AIHubClient 实例
-            db: SQLiteStorage 实例 (可选)
-            max_ast_analysis: 最大 AST 分析数量 (性能保护)
-            max_llm: 最大 LLM 验证数量
-        """
+    def __init__(self, client, db: Optional[SQLiteStorage] = None, max_ast_analysis=50, max_llm=80):
         self.client = client
         self.db = db
         self.max_ast_analysis = max_ast_analysis
         self.max_llm = max_llm
 
         self.line_filter = CodeLineFilter()
-        self.adv_filter = AdvancedSecretFilter()
+        # 使用 V4.3 数学过滤器，阈值设为 0.90 以平衡召回与 LLM 成本
+        self.adv_filter = AdvancedSecretFilter(threshold=0.90)
         self.llm_verifier = LLMSecretVerifier(client)
 
         self.ast_available = SenInfoContextExtractor is not None
 
     def scan(self, js_code: str, js_url: str = "") -> List[Dict[str, Any]]:
-        """
-        扫描敏感信息并返回结构化结果
-
-        Args:
-            js_code: JS 源代码
-            js_url: JS 文件 URL (用于存储关联)
-
-        Returns:
-            敏感信息列表，每项包含完整上下文和 AI 分析结果
-        """
-        if not js_code:
-            return []
-
-        # 1. 预处理
+        if not js_code: return []
         js_code = self._preprocess(js_code)
-
-        # 2. 候选提取
         candidates = self._extract_candidates(js_code)
+        if not candidates: return []
 
-        if not candidates:
-            return []
-
-        # 3. AST 上下文溯源 (如果可用)
-        if self.ast_available:
-            candidates = self._enrich_with_ast(candidates, js_code)
-
-        # 4. 限制 LLM 验证数量
-        if len(candidates) > self.max_llm:
-            candidates = self._priority_sort(candidates)[:self.max_llm]
-
-        # 5. LLM 验证
+        if self.ast_available: candidates = self._enrich_with_ast(candidates, js_code)
+        if len(candidates) > self.max_llm: candidates = self._priority_sort(candidates)[:self.max_llm]
         verified = self._verify_with_llm(candidates)
 
-        # 6. 存入数据库
         if self.db and js_url and verified is not None:
             self.db.save_sensitive_info(js_url, verified)
-
         return verified
 
     def _preprocess(self, js_code: str) -> str:
-        """预处理 JS 代码"""
-        # 移除 HTML 标签
         js_code = remove_html_tags(js_code)
-
-        # 格式化代码
         try:
             js_code = format_code(js_code, fallback_on_error=True)
         except Exception as e:
             logger.error(f"⚠️ 代码格式化失败：{e}")
-
         return js_code
 
     def _extract_candidates(self, js_code: str) -> List[Dict[str, Any]]:
-        """提取候选敏感信息"""
         raw_candidates = self.line_filter.extract_candidates(js_code)
         candidate_objects = []
-
         for i, (content, line) in enumerate(raw_candidates):
             if self.adv_filter.is_secret(content):
-                if _AI_CANDIDATE_DEDUP.contains(content):
-                    continue
+                if _AI_CANDIDATE_DEDUP.contains(content): continue
                 _AI_CANDIDATE_DEDUP.add(content)
-
-                candidate_objects.append({
-                    "id": i,
-                    "value": content,
-                    "original_line": line,
-                    "context": "",
-                    "callers": []
-                })
-
+                candidate_objects.append(
+                    {"id": i, "value": content, "original_line": line, "context": "", "callers": []})
         return candidate_objects
 
-    def _enrich_with_ast(self, candidates: List[Dict[str, Any]],
-                         js_code: str) -> List[Dict[str, Any]]:
-        """使用 AST  enrich 上下文信息"""
+    def _enrich_with_ast(self, candidates: List[Dict[str, Any]], js_code: str) -> List[Dict[str, Any]]:
         try:
             extractor = SenInfoContextExtractor(js_code)
-
-            # 限制 AST 分析数量 (性能保护)
-            if len(candidates) > self.max_ast_analysis:
-                candidates = self._priority_sort(candidates)[:self.max_ast_analysis]
-
+            if len(candidates) > self.max_ast_analysis: candidates = self._priority_sort(candidates)[
+                                                                     :self.max_ast_analysis]
             for cand in candidates:
                 context = extractor.get_full_context(cand["value"])
                 cand["context"] = context.get("declaration", "")
                 cand["callers"] = context.get("callers", [])
-
         except Exception as e:
             print_exc()
             logger.error(f"⚠️ AST 上下文提取失败：{e}")
-
         return candidates
 
     def _priority_sort(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """按优先级排序 (含关键词的优先)"""
-
         def priority_score(cand):
             value_lower = cand.get("value", "").lower()
             line_lower = cand.get("original_line", "").lower()
-
             score = 0
-            # 含敏感关键词优先
             for kw in SENSITIVE_KEYWORDS:
-                if kw in value_lower or kw in line_lower:
-                    score += 10
-            # 高熵值优先
+                if kw in value_lower or kw in line_lower: score += 10
             score += int(self.adv_filter.shannon_entropy(cand.get("value", "")) * 2)
             return score
 
         return sorted(candidates, key=priority_score, reverse=True)
 
     def _verify_with_llm(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """LLM 验证"""
-        if not candidates:
-            return []
-
+        if not candidates: return []
         logger.info(f"🚀 Sending {len(candidates)} candidates to LLM...")
-
         batch_size = 20
         all_verified = []
-
         for i in range(0, len(candidates), batch_size):
             batch = candidates[i:i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(candidates) + batch_size - 1) // batch_size
-
             logger.info(f"🧠 [LLM] 处理批次 {batch_num}/{total_batches} ({len(batch)} 项)")
-
             try:
                 verified_batch = self.llm_verifier.verify_with_context(batch)
-                if verified_batch is None:
-                    continue
+                if verified_batch is None: continue
                 all_verified.extend(verified_batch)
             except Exception as e:
                 logger.error(f"❌ [LLM] 批次 {batch_num} 处理失败：{e}")
-                # 失败时保留原始候选
                 for cand in batch:
-                    cand["is_secret"] = True
-                    cand["secret_type"] = "unknown"
-                    cand["risk_level"] = "Med"
-                    cand["confidence"] = 0.3
-                    cand["test_suggestion"] = "LLM 分析失败，建议人工审查"
-                    cand["ai_raw_analysis"] = {"error": str(e)}
+                    cand.update({"is_secret": True, "secret_type": "unknown", "risk_level": "Med", "confidence": 0.3,
+                                 "test_suggestion": "LLM 分析失败，建议人工审查", "ai_raw_analysis": {"error": str(e)}})
                     all_verified.append(cand)
 
-        # 输出去重
         final_results = []
         seen_lines = set()
         for res in all_verified:
             line = res.get("original_line", "")
             if line not in seen_lines:
-                if _OUTPUT_LINE_DEDUP.contains(line):
-                    continue
+                if _OUTPUT_LINE_DEDUP.contains(line): continue
                 _OUTPUT_LINE_DEDUP.add(line)
                 seen_lines.add(line)
                 final_results.append(res)
-
         return final_results
 
 
-def remove_html_tags(html_text: str) -> str:
-    if not html_text or not isinstance(html_text, str):
-        return ""
-
-    html_text_stripped = html_text.strip()
-
-    # 空内容直接返回
-    if len(html_text_stripped) == 0:
-        return ""
-
-    # 如果没有 HTML 标签，直接返回原文本（纯 JS/CSS 代码）
-    has_html_tags = html_text_stripped.startswith('<') and '>' in html_text_stripped[:500]
-
-    if not has_html_tags:
-        return html_text
-
-    pre_pattern = r'<pre[^>]*>(.*?)</pre>'
-    pre_matches = re.findall(pre_pattern, html_text, re.DOTALL | re.IGNORECASE)
-    if pre_matches:
-        # 合并所有 <pre> 标签内容
-        code_content = '\n'.join(pre_matches)
-        return code_content.strip()
-    return html_text
-
 def cleanup_bloom_filters():
-    """清理布隆过滤器资源 (程序退出时调用)"""
     _AI_CANDIDATE_DEDUP.close()
     _OUTPUT_LINE_DEDUP.close()
     _WORD_ANALYSIS_DEDUP.close()
+
+_AI_CANDIDATE_DEDUP = DiskBloomFilter("Result/ai_candidates.bloom", capacity=5_000_000)
+_OUTPUT_LINE_DEDUP = DiskBloomFilter("Result/output_lines.bloom", capacity=5_000_000)
+_WORD_ANALYSIS_DEDUP = DiskBloomFilter("Result/word_analysis.bloom", capacity=10_000_000)
