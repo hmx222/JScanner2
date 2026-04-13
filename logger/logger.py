@@ -13,7 +13,6 @@ from config.config import (
 )
 from infra.feishu import send_feishu_notify
 
-# ==================== 日志配置 ====================
 LOG_DIR = "logs"
 LOG_FILENAME = "scanner.log"
 LOG_ERROR_FILENAME = "scanner_error.log"
@@ -22,14 +21,13 @@ LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
 
-CONSOLE_LOG_LEVEL = logging.INFO  # 简化写法，更稳定
+CONSOLE_LOG_LEVEL = logging.INFO
 
-# ==================== 全局状态 ====================
+
 _initialized = False
 _feishu_sent_time: dict = {}
 _feishu_lock = threading.Lock()
 
-# ==================== 飞书告警处理 ====================
 def _should_send_feishu(content: str) -> bool:
     if not FEISHU_WEBHOOK:
         return False
@@ -69,7 +67,6 @@ def _send_feishu_alert(level: str, message: str, logger_name: str):
     thread = threading.Thread(target=send_async, daemon=True)
     thread.start()
 
-# ==================== 自定义 Handler ====================
 class FeishuAlertHandler(logging.Handler):
     def __init__(self, levels: list = None):
         super().__init__()
@@ -93,7 +90,6 @@ class FeishuAlertHandler(logging.Handler):
             logger_name=record.name
         )
 
-# ==================== 辅助函数 ====================
 def _ensure_log_dir():
     os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -117,7 +113,7 @@ def _create_file_handler(filename: str, level: int) -> logging.Handler:
     handler.setFormatter(formatter)
     return handler
 
-# ==================== 核心修复：全局一次性配置根日志器 ====================
+
 def _init_global_logging():
     """全局初始化一次，所有logger自动继承配置"""
     global _initialized
@@ -139,10 +135,10 @@ def _init_global_logging():
 
     _initialized = True
 
-# ==================== 核心函数 ====================
+
 def get_logger(name: str = "JScanner") -> logging.Logger:
     """获取logger，全局统一配置，任意名称都能打印"""
-    _init_global_logging()  # 自动初始化，保证配置生效
+    _init_global_logging()
     return logging.getLogger(name)
 
 def shutdown_logger():

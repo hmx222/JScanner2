@@ -145,7 +145,6 @@ class AIHubClient:
         self.timeout = timeout
         self._config_file = config_file
 
-        # ✅ 关键修复：如果 models 为空，尝试从配置文件读取初始模型
         if not models and config_file and os.path.exists(config_file):
             try:
                 with open(config_file, 'r', encoding='utf-8') as f:
@@ -371,11 +370,9 @@ def init_config_file(config_path: str = DEFAULT_CONFIG_PATH):
         logger.info(f"配置文件已存在：{config_path}")
 
 
-# ==================== 模块级 client 实例 ====================
-# 确保配置文件存在
+
 init_config_file(DEFAULT_CONFIG_PATH)
 
-# 创建客户端（models 参数现在会自动从配置文件读取）
 client = AIHubClient(
     api_key=API_KEY,
     base_url=BASE_URL,
