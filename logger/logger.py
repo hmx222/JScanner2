@@ -12,6 +12,7 @@ from config.config import (
     FEISHU_RATE_LIMIT_SECONDS
 )
 from infra.feishu import send_feishu_notify
+
 # ==================== 日志配置 ====================
 LOG_DIR = "logs"
 LOG_FILENAME = "scanner.log"
@@ -21,19 +22,15 @@ LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
 
-_console_level_str = "INFO"
-CONSOLE_LOG_LEVEL = getattr(logging, _console_level_str) if isinstance(_console_level_str, str) else _console_level_str
+CONSOLE_LOG_LEVEL = logging.INFO  # 简化写法，更稳定
 
 # ==================== 全局状态 ====================
 _initialized = False
-_feishu_sent_time: dict = {}  # {hash: timestamp}
+_feishu_sent_time: dict = {}
 _feishu_lock = threading.Lock()
 
-
 # ==================== 飞书告警处理 ====================
-
 def _should_send_feishu(content: str) -> bool:
-    """检查是否应该发送飞书告警（频率限制）"""
     if not FEISHU_WEBHOOK:
         return False
 
@@ -41,16 +38,12 @@ def _should_send_feishu(content: str) -> bool:
     current_time = time.time()
 
     with _feishu_lock:
-        # 检查频率限制
         if content_hash in _feishu_sent_time:
             last_sent = _feishu_sent_time[content_hash]
             if current_time - last_sent < FEISHU_RATE_LIMIT_SECONDS:
                 return False
 
-        # 记录发送时间
         _feishu_sent_time[content_hash] = current_time
-
-        # ✅ 清理过期记录（避免重新赋值，不需要 global）
         cutoff = current_time - 3600
         expired_keys = [k for k, v in _feishu_sent_time.items() if v <= cutoff]
         for key in expired_keys:
@@ -58,9 +51,7 @@ def _should_send_feishu(content: str) -> bool:
 
     return True
 
-
 def _send_feishu_alert(level: str, message: str, logger_name: str):
-    """发送飞书告警（异步）"""
     title = f"🚨【JScanner 告警】{level}"
     content = (
         f"• 级别：{level}\n"
@@ -78,12 +69,8 @@ def _send_feishu_alert(level: str, message: str, logger_name: str):
     thread = threading.Thread(target=send_async, daemon=True)
     thread.start()
 
-
 # ==================== 自定义 Handler ====================
-
 class FeishuAlertHandler(logging.Handler):
-    """拦截指定级别的日志并发送飞书告警"""
-
     def __init__(self, levels: list = None):
         super().__init__()
         level_names = levels or FEISHU_ALERT_LEVELS
@@ -106,12 +93,9 @@ class FeishuAlertHandler(logging.Handler):
             logger_name=record.name
         )
 
-
 # ==================== 辅助函数 ====================
-
 def _ensure_log_dir():
     os.makedirs(LOG_DIR, exist_ok=True)
-
 
 def _create_console_handler() -> logging.Handler:
     handler = logging.StreamHandler(sys.stdout)
@@ -119,7 +103,6 @@ def _create_console_handler() -> logging.Handler:
     formatter = logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT)
     handler.setFormatter(formatter)
     return handler
-
 
 def _create_file_handler(filename: str, level: int) -> logging.Handler:
     filepath = os.path.join(LOG_DIR, filename)
@@ -134,29 +117,33 @@ def _create_file_handler(filename: str, level: int) -> logging.Handler:
     handler.setFormatter(formatter)
     return handler
 
+# ==================== 核心修复：全局一次性配置根日志器 ====================
+def _init_global_logging():
+    """全局初始化一次，所有logger自动继承配置"""
+    global _initialized
+    if _initialized:
+        return
+    _ensure_log_dir()
 
-def _configure_logger(logger: logging.Logger):
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(_create_console_handler())
-    logger.addHandler(_create_file_handler(LOG_FILENAME, logging.DEBUG))
-    logger.addHandler(_create_file_handler(LOG_ERROR_FILENAME, logging.ERROR))
-    logger.addHandler(FeishuAlertHandler())
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
 
+    # 清空默认handler，避免重复打印
+    root_logger.handlers.clear()
+
+    # 添加所有handler
+    root_logger.addHandler(_create_console_handler())
+    root_logger.addHandler(_create_file_handler(LOG_FILENAME, logging.DEBUG))
+    root_logger.addHandler(_create_file_handler(LOG_ERROR_FILENAME, logging.ERROR))
+    root_logger.addHandler(FeishuAlertHandler())
+
+    _initialized = True
 
 # ==================== 核心函数 ====================
-
 def get_logger(name: str = "JScanner") -> logging.Logger:
-    """获取 logger 对象"""
-    global _initialized
-    logger = logging.getLogger(name)
-    if _initialized:
-        return logger
-    _ensure_log_dir()
-    _configure_logger(logger)
-    _initialized = True
-    return logger
-
+    """获取logger，全局统一配置，任意名称都能打印"""
+    _init_global_logging()  # 自动初始化，保证配置生效
+    return logging.getLogger(name)
 
 def shutdown_logger():
-    """关闭日志系统"""
     logging.shutdown()
