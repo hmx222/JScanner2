@@ -61,13 +61,13 @@ class CodeLineFilter:
         self.min_string_length = min_string_length
         self.min_sensitive_length = min_sensitive_length
         self.max_string_length = max_string_length
-        
-        # 🔥 黑名单：匹配到的字符串直接过滤掉
+
         self.DEFAULT_BLACKLIST = [
             "ABCDEFGHIJKLMNOP",
             "abcdefghijklmnop",
             "0123456789",
             "0000000000"
+            "&lt;"
         ]
         
         combined_blacklist = list(self.DEFAULT_BLACKLIST)
@@ -161,15 +161,8 @@ class SecretMathScorer:
 
     # JS/Web 技术词表（仅用于 P 特征计算）
     TECH_WORDS = {
-        'api', 'http', 'https', 'json', 'xml', 'css', 'html', 'div', 'span', 'click', 'data', 'id',
-        'token', 'user', 'admin', 'config', 'env', 'key', 'secret', 'function', 'var', 'let', 'const',
-        'return', 'true', 'false', 'null', 'undefined', 'window', 'document', 'console', 'log', 'error',
-        'warn', 'info', 'debug', 'test', 'mock', 'stub', 'fake', 'example', 'sample', 'demo', 'temp',
-        'tmp', 'cache', 'store', 'db', 'sql', 'mongo', 'redis', 'aws', 'azure', 'gcp', 'google',
-        'facebook', 'twitter', 'github', 'gitlab', 'bitbucket', 'npm', 'yarn', 'webpack', 'babel',
-        'react', 'vue', 'angular', 'node', 'express', 'django', 'flask', 'spring', 'rails', 'laravel',
-        'request', 'response', 'header', 'body', 'query', 'params', 'route', 'path', 'url', 'link',
-        'href', 'src', 'alt', 'title', 'class', 'style', 'script', 'meta', 'head', 'body'
+        'const', 'json', 'facebook', 'webpack', 'redis', 'params', 'bitbucket', 'django', 'admin', 'github', 'href',
+        'gitlab', 'config', 'laravel',"microsoft"
     }
 
     def __init__(self, weights: Optional[Dict[str, float]] = None):
@@ -177,7 +170,6 @@ class SecretMathScorer:
             _init_nltk_offline()
             SecretMathScorer._nltk_initialized = True
 
-        # 🔥 V6.0 极简权重：仅保留核心对抗特征
         self.weights = weights or {'w_e': 0.85, 'w_p': 1.2}
         self._cache = {}
         self._local_logger = get_logger("SecretMathScorer")
@@ -186,12 +178,12 @@ class SecretMathScorer:
             nltk_words = set(w.lower() for w in words.words())
             self.valid_words_set = nltk_words.union(self.TECH_WORDS)
         except:
+            logger.warning("NLTK words loading failed, using TECH_WORDS instead.")
             self.valid_words_set = self.TECH_WORDS
 
     def _log2(self, x):
         return math.log2(x) if x > 0 else 0.0
 
-    # 🔥 修改 1: 熵值引入长度置信衰减
     def calc_E(self, s: str) -> float:
         L = len(s)
         if L == 0: return 0.0
@@ -200,17 +192,14 @@ class SecretMathScorer:
         max_H = self._log2(min(L, len(cnt)))
         E_raw = H / max_H if max_H > 0 else 0.0
 
-        # 🔥 长度置信衰减：短串熵值自动压缩
         # Sigmoid 曲线：L=7 时系数≈0.4, L=12 时≈0.73, L=20 时≈0.95
         length_confidence = 1.0 / (1.0 + math.exp(-0.3 * (L - 12)))
         return E_raw * length_confidence
 
-    # 🔥 修改 2: 驼峰切分辅助函数
     def _camel_split(self, s: str) -> List[str]:
-        """驼峰切分: apiKey -> ['api', 'key']; Uint8Array -> ['uint', '8', 'array']"""
-        # 匹配: 大写字母开头 + 小写字母序列，或连续大写字母
+        """驼峰切分：基于原始字符串，保留大小写边界信号"""
         parts = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', s)
-        return [p.lower() for p in parts if p]
+        return [p for p in parts if p]  # 不转小写，后续统一处理
 
     def _wordninja_split(self, s: str) -> List[str]:
         """wordninja 分词，带异常处理"""
@@ -220,7 +209,6 @@ class SecretMathScorer:
         except:
             return []
 
-    # 🔥 修改 3: calc_P 融合双路分词
     def calc_P(self, s: str) -> float:
         alpha_only = re.sub(r'[^a-zA-Z]', '', s).lower()
         L_alpha = len(alpha_only)
@@ -235,7 +223,7 @@ class SecretMathScorer:
         # 融合：取并集，去重
         all_words = list(set(words_wn + words_camel))
 
-        # 过滤短词 + 词典匹配（严格遵循你的要求：>3 字符才计入）
+        # 过滤短词 + 词典匹配
         valid_words = [w for w in all_words if len(w) > 3]
         matched_len = sum(len(w) for w in valid_words if w in self.valid_words_set)
 
@@ -244,8 +232,8 @@ class SecretMathScorer:
     def score(self, s: str) -> Dict[str, float]:
         if s in self._cache: return self._cache[s]
 
-        E = self.calc_E(s)  # 🔥 已含长度衰减
-        P = self.calc_P(s)  # 🔥 已融合双路分词
+        E = self.calc_E(s)
+        P = self.calc_P(s)
         w = self.weights
 
         # 核心公式不变
@@ -254,7 +242,12 @@ class SecretMathScorer:
 
         res = {'score': final, 'E': E, 'P': P}
         self._cache[s] = res
-
+        s_display = s[:100] + ('...' if len(s) > 100 else '')
+        logger.info(f"\n[FEATURE] Scoring: '{s_display}'")
+        logger.info(f"  ├─ E(Entropy)        : {E:.4f} × {w['w_e']:.2f} = {w['w_e'] * E:+.4f} (长度+连续性衰减后)")
+        logger.info(f"  └─ P(Dictionary)     : {P:.4f} × {w['w_p']:.2f} = {-w['w_p'] * P:.4f} (neg)")
+        logger.info(f"  ├─ Base Score        : {base:+.4f}")
+        logger.info(f"  └─ Final Score       : {final:.4f} (threshold=0.90)")
         return res
 
 class AdvancedSecretFilter:
