@@ -1,7 +1,6 @@
 import re
-import time
-from traceback import print_exc
 from typing import Any, Dict, Optional, List
+
 import json_repair
 
 from infra.ai_client import client
@@ -192,8 +191,11 @@ class AISecurityAuditor:
                 {"role": "user", "content": f"请对该单一 API 的全量源码进行审查，提取 HTTP 参数名：\n\n{full_desc}"}
             ]
 
-            result = client.chat(messages=messages, max_tokens=500, temperature=0.1)
-
+            result = client.chat(
+                messages=messages,
+                max_tokens=1000,
+                require_json=True
+            )
             try:
                 # 解析 Level 2 JSON 输出
                 level2_result = self._parse_level2_result(result)
