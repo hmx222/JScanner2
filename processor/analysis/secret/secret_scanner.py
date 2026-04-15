@@ -242,12 +242,6 @@ class SecretMathScorer:
 
         res = {'score': final, 'E': E, 'P': P}
         self._cache[s] = res
-        s_display = s[:100] + ('...' if len(s) > 100 else '')
-        logger.info(f"\n[FEATURE] Scoring: '{s_display}'")
-        logger.info(f"  ├─ E(Entropy)        : {E:.4f} × {w['w_e']:.2f} = {w['w_e'] * E:+.4f} (长度+连续性衰减后)")
-        logger.info(f"  └─ P(Dictionary)     : {P:.4f} × {w['w_p']:.2f} = {-w['w_p'] * P:.4f} (neg)")
-        logger.info(f"  ├─ Base Score        : {base:+.4f}")
-        logger.info(f"  └─ Final Score       : {final:.4f} (threshold=0.90)")
         return res
 
 class AdvancedSecretFilter:
@@ -275,8 +269,6 @@ class AdvancedSecretFilter:
             score = min(score * 1.2, 1.0)
 
         result = score >= thr
-        text_display = text[:50] + ('...' if len(text) > 50 else '')
-        logger.info(f"[DECISION] '{text_display}' → score={score:.4f}, threshold={thr:.4f}, is_secret={result}")
         return result
 
     def get_debug_info(self, text: str) -> Dict:
@@ -369,10 +361,10 @@ class SensitiveInfoScanner:
 
     def scan(self, js_code: str, js_url: str = "") -> List[Dict[str, Any]]:
         if not js_code: return []
-        logger.info(f"[SCAN] Starting scan for {js_url or 'inline code'}")
+        # logger.info(f"[SCAN] Starting scan for {js_url or 'inline code'}")
         js_code = self._preprocess(js_code)
         candidates = self._extract_candidates(js_code)
-        logger.info(f"[SCAN] Extracted {len(candidates)} candidates after math filtering")
+        # logger.info(f"[SCAN] Extracted {len(candidates)} candidates after math filtering")
         if not candidates: return []
         if self.ast_available: candidates = self._enrich_with_ast(candidates, js_code)
         if len(candidates) > self.max_llm: candidates = self._priority_sort(candidates)[:self.max_llm]
