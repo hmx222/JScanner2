@@ -22,45 +22,6 @@
 
 ---
 
-## 🚀 Why JScanner2
-
-Traditional JavaScript security scanning tools have clear limitations:
-
-* ❌ Only extract API paths (no parameter awareness)
-* ❌ Require manual fuzzing to find vulnerabilities
-* ❌ Cannot understand business logic
-* ❌ Hardcoded secrets lack exploit context
-
-### ✅ What JScanner2 Solves
-
-JScanner2 combines **AST parsing + AI analysis** to enable real-world vulnerability discovery:
-
-#### 1️⃣ Intelligent Parameter Discovery
-
-* Parse JS using AST
-* Extract API endpoints AND parameters
-* AI infers parameter structure and meaning
-
-👉 No more blind fuzzing
-
-#### 2️⃣ AI-Based Hardcoded Secret Analysis
-
-* Detect tokens, keys, credentials
-* AI explains **how to exploit them**
-
-👉 Not just detection, but exploitation guidance
-
-#### 3️⃣ Real Attack Scenarios
-
-In real-world SRC testing:
-
-* APIs alone may seem safe
-* BUT become vulnerable when combined with valid parameters
-
-👉 JScanner2 bridges this gap
-
----
-
 # ⚡ Usage Overview
 
 > 🎯 Three usage levels depending on your needs:
@@ -210,8 +171,7 @@ For authorized security testing only.
 * Playwright
 * LinkFinder
 * NLTK
-* 讯飞星辰
-
+* 阿里云
 ---
 
 ## 📧 Feedback
