@@ -1,9 +1,11 @@
 {
   "models": [
-    "xop3qwencodernext",
+    "glm-4.7-flash",
     "MiniMax-M2.5",
     "hunyuan-2.0-instruct-20251111",
     "z-ai/glm4.7"
   ],
-  "enabled": true
+  "batch_api_models":[
+    "qwen3.5-flash"
+  ]
 }

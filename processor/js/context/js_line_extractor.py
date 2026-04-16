@@ -1,13 +1,15 @@
+import re
 from typing import List
 
-from config.config import VALID_SLASH_PATTERN, SPLIT_COMMENT_PATTERN, HTML_TAG_PATTERN, QUOTED_CONTENT_PATTERN, \
-    BLACK_LIST, REGEX_METACHARS
+from config.scanner_rules import STATIC_RESOURCE_EXTENSIONS
 
 
 def has_valid_slash(content: str) -> bool:
     """
     判断内容中是否存在至少一个 /，且其左侧或右侧紧邻数字/字母。
     """
+    VALID_SLASH_PATTERN = re.compile(r'[a-zA-Z0-9]/|/[a-zA-Z0-9]')
+
     if not isinstance(content, str):
         return False
     return bool(VALID_SLASH_PATTERN.search(content))
@@ -20,6 +22,13 @@ def extract_relevant_lines(input_str: str) -> str:
     :param input_str: 原始 JS 代码字符串
     :return: 提取后的相关行，用换行符连接
     """
+
+    HTML_TAG_PATTERN = re.compile(r'<\s*/?\s*[a-zA-Z][^>]*>')
+    REGEX_METACHARS = re.compile(r'[*+?^${}()|[\]\\]')
+    SPLIT_COMMENT_PATTERN = re.compile(r'(?<!:)//')  # 分割行内注释（排除协议头）
+    QUOTED_CONTENT_PATTERN = re.compile(r'["\'](.*?)["\']')
+
+
     if not isinstance(input_str, str) or not input_str:
         return ""
 
@@ -60,7 +69,7 @@ def extract_relevant_lines(input_str: str) -> str:
 
         is_line_valid = False
         for content in quoted_contents:
-            if any(content.lower().endswith(ext) for ext in BLACK_LIST):
+            if any(content.lower().endswith(ext) for ext in STATIC_RESOURCE_EXTENSIONS):
                 continue
 
             if REGEX_METACHARS.search(content):

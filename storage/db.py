@@ -4,23 +4,13 @@ import sqlite3
 from typing import Optional, List, Dict, Any
 from urllib.parse import urlparse
 
-from config.config import VALID_HTTP_METHODS, HIGH_RISK_KEYWORDS, MED_RISK_KEYWORDS
+from config.scanner_rules import VALID_HTTP_METHODS, HIGH_RISK_API_KEYWORDS, MEDIUM_RISK_API_KEYWORDS
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class SQLiteStorage:
-    """
-    高性能 SQLite 存储管理器 (v6.4 - 支持重启续扫)
-    支持：
-    1. 基础爬虫数据存储 (scan_results)
-    2. AI 渗透建议存储 (ai_vulns)
-    3. 敏感信息硬编码存储 (sensitive_info)
-    4. 已访问 URL 记录 (visited_urls) - 支持重启续扫
-    """
-
-
 
     def __init__(self, db_path: str):
         db_dir = os.path.dirname(os.path.abspath(db_path))
@@ -187,17 +177,15 @@ class SQLiteStorage:
 
         all_text_lower = all_text.lower()
 
-        for keyword in HIGH_RISK_KEYWORDS:
+        for keyword in HIGH_RISK_API_KEYWORDS:
             if keyword.lower() in all_text_lower:
                 return "High"
 
-        for keyword in MED_RISK_KEYWORDS:
+        for keyword in MEDIUM_RISK_API_KEYWORDS:
             if keyword.lower() in all_text_lower:
                 return "Med"
 
         return "Low"
-
-    # ==================== 已访问 URL 管理（重启续扫核心）====================
 
     def get_all_visited_urls(self) -> List[str]:
         """
@@ -344,7 +332,6 @@ class SQLiteStorage:
             """
             cursor.executemany(sql, rows_to_insert)
 
-            # ✅ 同步写入 visited_urls 表
             visited_urls = [(row[0],) for row in rows_to_insert]
             cursor.executemany(
                 "INSERT OR IGNORE INTO visited_urls (url) VALUES (?)",
@@ -372,8 +359,6 @@ class SQLiteStorage:
             if url_without_query.endswith(ext):
                 return True
         return False
-
-    # ==================== AI 漏洞建议写入方法 ====================
 
     def save_ai_result(self, js_url: str, api_endpoint: str, advisory_report: Dict[str, Any]):
         if not advisory_report or not isinstance(advisory_report, dict):
@@ -424,7 +409,6 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
             raise
 
-    # ==================== 敏感信息写入方法 ====================
 
     def save_sensitive_info(self, js_url: str, sensitive_items: List[Dict[str, Any]]):
         if not js_url:
@@ -485,7 +469,6 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] 敏感信息写入失败：{e}")
             raise
 
-    # ==================== 敏感信息读取方法 ====================
 
     def get_sensitive_by_js(self, js_url: str) -> List[Dict[str, Any]]:
         try:
@@ -575,7 +558,6 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] 读取所有敏感信息失败：{e}")
             return []
 
-    # ==================== 关联查询方法 ====================
 
     def get_linked_report(self, js_url: str) -> Dict[str, Any]:
         try:
@@ -605,7 +587,6 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] 获取关联报告失败：{e}")
             return {}
 
-    # ==================== 漏洞记录读取方法 ====================
 
     def get_all_vulns(self, risk_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         try:

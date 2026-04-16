@@ -7,7 +7,8 @@ from rich.markup import escape
 from tqdm.asyncio import tqdm_asyncio
 from user_agent import generate_user_agent
 
-from config.config import BLOCKED_RESOURCE_TYPES, GLOBAL_TIMEOUT, MAX_REDIRECT_COUNT
+from config.scanner_rules import PLAYWRIGHT_BLOCKED_RESOURCES
+from config.config import GLOBAL_TIMEOUT, MAX_REDIRECT_COUNT
 from infra.dedup import DuplicateChecker
 from crawler.httpx_crawler import fetch_urls_async
 from crawler.response_process import process_scan_result
@@ -47,7 +48,7 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio):
     try:
         # 路由拦截：过滤图片字体等无用资源
         await page.route("**/*", lambda route: route.abort()
-        if route.request.resource_type in BLOCKED_RESOURCE_TYPES
+        if route.request.resource_type in PLAYWRIGHT_BLOCKED_RESOURCES
         else route.continue_())
 
         # 监听请求：捕获动态加载的 JS 文件

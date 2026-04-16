@@ -2,8 +2,9 @@ import re
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from tldextract import tldextract
-from config.config import BLACK_LIST, WHITE_SCOPE_PATH
-from storage.filerw import read
+
+from config.scanner_rules import STATIC_RESOURCE_EXTENSIONS
+from config.config import  WHITE_SCOPE_PATH
 
 
 def analysis_by_rex(source) -> list:
@@ -153,7 +154,7 @@ def check_url(original_url, splicing_url):
     except:
         return False
 
-    if any(ext in urlparse2.path.lower() for ext in BLACK_LIST):
+    if any(ext in urlparse2.path.lower() for ext in STATIC_RESOURCE_EXTENSIONS):
         return False
 
     # 域名校验

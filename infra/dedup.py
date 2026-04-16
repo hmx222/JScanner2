@@ -1,7 +1,3 @@
-import hashlib
-import logging
-import math
-import mmap
 import os
 import threading
 from urllib.parse import urlparse
@@ -10,59 +6,6 @@ from infra.bloom import DiskBloomFilter
 from logger import get_logger
 
 logger = get_logger(__name__)
-
-
-# class DiskBloomFilter:
-#     """
-#     磁盘布隆过滤器（用于内存缓存 + 快速去重）
-#     注意：这是临时缓存，重启后会清空，持久化靠数据库
-#     """
-#
-#     def __init__(self, filepath="Result/global_dedup.bloom", capacity=10_000_000, error_rate=0.001):
-#         self.filepath = filepath
-#         self.size = int(- (capacity * math.log(error_rate)) / (math.log(2) ** 2))
-#         self.hash_count = int((self.size / capacity) * math.log(2))
-#         self.byte_size = (self.size + 7) // 8
-#
-#         os.makedirs(os.path.dirname(filepath), exist_ok=True)
-#
-#         if not os.path.exists(filepath):
-#             with open(filepath, "wb") as f:
-#                 f.write(b'\x00' * self.byte_size)
-#
-#         self.file = open(filepath, "r+b")
-#         self.mm = mmap.mmap(self.file.fileno(), 0)
-#
-#     def _get_hashes(self, item):
-#         item_encoded = item.encode("utf8")
-#         md5 = int(hashlib.md5(item_encoded).hexdigest(), 16)
-#         sha1 = int(hashlib.sha1(item_encoded).hexdigest(), 16)
-#         for i in range(self.hash_count):
-#             yield (md5 + i * sha1) % self.size
-#
-#     def add(self, item):
-#         if self.contains(item):
-#             return False
-#         for pos in self._get_hashes(item):
-#             byte_index = pos // 8
-#             bit_index = pos % 8
-#             self.mm[byte_index] |= (1 << bit_index)
-#         return True
-#
-#     def contains(self, item):
-#         for pos in self._get_hashes(item):
-#             byte_index = pos // 8
-#             bit_index = pos % 8
-#             if not (self.mm[byte_index] & (1 << bit_index)):
-#                 return False
-#         return True
-#
-#     def close(self):
-#         try:
-#             self.mm.close()
-#             self.file.close()
-#         except:
-#             pass
 
 
 class DuplicateChecker:
