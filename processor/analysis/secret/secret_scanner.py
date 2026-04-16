@@ -9,15 +9,18 @@ from typing import List, Dict, Tuple, Any, Optional
 
 import json_repair
 
-from config.config import NLTK_DIR, EXCLUDE_CONTEXTS, SENSITIVE_KEYWORDS, QUOTE_PATTERN, UNICODE_PATTERN, \
-    EXCLUDE_VALUES, IGNORE_PREFIX_PATTERN, SECRET_PROMPT, static_extensions, BLACK_LIST
+from config.scanner_rules import HTTPX_STATIC_EXTENSIONS, EXCLUDED_CONTEXT_PATTERNS, SENSITIVE_KEYWORD_SET, EXCLUDED_LITERAL_VALUES, \
+    SECRET_DETECTION_BLACKLIST, WEB_TECHNICAL_WORDS
+from config.config import NLTK_DIR, BATCH_REQ, MIN_BATCH_THRESHOLD, POLL_INTERVAL, MAX_WAIT_TIME
 from infra.bloom import DiskBloomFilter
 from infra.utils import remove_html_tags
 from logger import get_logger
+from processor.analysis.secret.prompt import SECRET_PROMPT
 from processor.js.context.secret_extractor import SenInfoContextExtractor
 from storage.db import SQLiteStorage
 
 logger = get_logger(__name__)
+
 
 try:
     import wordninja
@@ -62,13 +65,7 @@ class CodeLineFilter:
         self.min_sensitive_length = min_sensitive_length
         self.max_string_length = max_string_length
 
-        self.DEFAULT_BLACKLIST = [
-            "ABCDEFGHIJKLMNOP",
-            "abcdefghijklmnop",
-            "0123456789",
-            "0000000000"
-            "&lt;"
-        ]
+        self.DEFAULT_BLACKLIST = SECRET_DETECTION_BLACKLIST
         
         combined_blacklist = list(self.DEFAULT_BLACKLIST)
         if blacklist:
@@ -80,9 +77,10 @@ class CodeLineFilter:
             re.IGNORECASE
         ) if self.blacklist else None
 
-        self.static_resource_extensions = tuple(static_extensions)
+        self.static_resource_extensions = tuple(HTTPX_STATIC_EXTENSIONS)
 
     def extract_candidates(self, js_code: str) -> List[Tuple[str, str]]:
+        QUOTE_PATTERN = re.compile(r'(["\'])(.*?)\1')  # 提取引号内容
         if not js_code:
             return []
         string_candidates = set()
@@ -94,8 +92,8 @@ class CodeLineFilter:
                 continue
 
             line_lower = original_line.lower()
-            is_bad_context = any(ctx in line_lower for ctx in EXCLUDE_CONTEXTS)
-            has_sensitive_keyword = any(kw in line_lower for kw in SENSITIVE_KEYWORDS)
+            is_bad_context = any(ctx in line_lower for ctx in EXCLUDED_CONTEXT_PATTERNS)
+            has_sensitive_keyword = any(kw in line_lower for kw in SENSITIVE_KEYWORD_SET)
 
             if is_bad_context and not has_sensitive_keyword:
                 continue
@@ -107,6 +105,13 @@ class CodeLineFilter:
         return list(string_candidates)
 
     def _is_valid_content(self, content: str, original_line: str, has_sensitive_keyword: bool) -> bool:
+        IGNORE_PREFIX_PATTERN = re.compile(
+            r'^[\W_]*(chunk-|app-|vendors-|manifest-|data-v-|vue-|bg-|text-|border-|font-|col-|row-|flex-|grid-|btn-|icon-|fa-|el-|mat-)',
+            re.IGNORECASE
+        )
+        re.compile(r'(["\'])(.*?)\1')
+        UNICODE_PATTERN = re.compile(r'(\\)+u[0-9a-fA-F]{4}')  # 匹配Unicode转义
+
         content_len = len(content)
         if content_len > self.max_string_length:
             return False
@@ -143,7 +148,7 @@ class CodeLineFilter:
             return False
         if sum(1 for c in content if ord(c) > 127) > content_len * 0.3:
             return False
-        if content in EXCLUDE_VALUES:
+        if content in EXCLUDED_LITERAL_VALUES:
             return False
         if content.isdigit() and content_len < 8:
             return False
@@ -159,11 +164,6 @@ class SecretMathScorer:
 
     _nltk_initialized = False
 
-    # JS/Web 技术词表（仅用于 P 特征计算）
-    TECH_WORDS = {
-        'const', 'json', 'facebook', 'webpack', 'redis', 'params', 'bitbucket', 'django', 'admin', 'github', 'href',
-        'gitlab', 'config', 'laravel',"microsoft"
-    }
 
     def __init__(self, weights: Optional[Dict[str, float]] = None):
         if not SecretMathScorer._nltk_initialized:
@@ -176,10 +176,10 @@ class SecretMathScorer:
 
         try:
             nltk_words = set(w.lower() for w in words.words())
-            self.valid_words_set = nltk_words.union(self.TECH_WORDS)
+            self.valid_words_set = nltk_words.union(WEB_TECHNICAL_WORDS)
         except:
             logger.warning("NLTK words loading failed, using TECH_WORDS instead.")
-            self.valid_words_set = self.TECH_WORDS
+            self.valid_words_set = WEB_TECHNICAL_WORDS
 
     def _log2(self, x):
         return math.log2(x) if x > 0 else 0.0
@@ -249,7 +249,7 @@ class AdvancedSecretFilter:
         self.threshold = threshold
         self.scorer = SecretMathScorer(weights)
         self.code_syntax_indicators = {'${', '||', '&&', '?', '+=', '-=', '===', '!==', '?.', '??', '=>'}
-        self.sensitive_keywords = SENSITIVE_KEYWORDS
+        self.sensitive_keywords = SENSITIVE_KEYWORD_SET
         self._local_logger = get_logger("AdvancedSecretFilter")
 
     def shannon_entropy(self, data: str) -> float:
@@ -283,12 +283,27 @@ class LLMSecretVerifier:
         self._local_logger = get_logger("LLMSecretVerifier")
 
     def verify_with_context(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if not candidates: return []
-        input_data = self._prepare_input(candidates)
+        """使用 LLM 验证候选敏感信息（支持批量调用）"""
+        if not candidates:
+            return []
+        
+        use_batch_api = BATCH_REQ and len(candidates) >= MIN_BATCH_THRESHOLD
+        
+        if use_batch_api:
+            return self._verify_with_batch_api(candidates)
+        else:
+            return self._verify_with_single_api(candidates)
+    
+    def _verify_with_single_api(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """原有的单调用逻辑"""
+        input_data = self._format_candidates_for_single(candidates)
         analysis_result = self._call_llm(input_data)
+        if not analysis_result:
+            return []
         return self._parse_and_merge(candidates, analysis_result)
-
-    def _prepare_input(self, candidates: List[Dict[str, Any]]) -> str:
+    
+    def _format_candidates_for_single(self, candidates: List[Dict[str, Any]]) -> str:
+        """格式化多个候选对象用于单次调用"""
         formatted = {}
         for cand in candidates:
             cand_id = str(cand.get("id", ""))
@@ -298,6 +313,79 @@ class LLMSecretVerifier:
                 "callers": cand.get("callers", [])
             }
         return json.dumps(formatted, ensure_ascii=False, indent=2)
+    
+    def _verify_with_batch_api(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """使用批量 API 进行验证"""
+        logger.info(f"📦 使用批量 API 验证 {len(candidates)} 个候选 (BATCH_REQ={BATCH_REQ})")
+        
+        batch_messages = []
+        
+        for cand in candidates:
+            single_input = self._format_single_candidate(cand)
+            
+            messages = [
+                {"role": "system", "content": SECRET_PROMPT},
+                {"role": "user", "content": f"Analyze this hardcoded value:\n\n{single_input}"}
+            ]
+            
+            batch_messages.append({
+                "custom_id": str(cand.get("id", "")),
+                "messages": messages,
+                "params": {
+                    "max_tokens": 2048,
+                    "temperature": 0.1
+                }
+            })
+        
+        try:
+            results = self.client.chat_batch(
+                batch_messages=batch_messages,
+                require_json=True,
+                poll_interval=POLL_INTERVAL,
+                max_wait_time=MAX_WAIT_TIME
+            )
+            
+            verified = []
+            for cand, result in zip(candidates, results):
+                if result is None:
+                    logger.warning(f"⚠️ 候选 {cand.get('id')} 批量调用返回空")
+                    continue
+                
+                cand_id = str(cand.get("id", ""))
+                
+                if isinstance(result, dict):
+                    ai_result = result
+                else:
+                    json_str = self._extract_json(str(result))
+                    ai_result = json_repair.loads(json_str) if json_str else {}
+                
+                is_secret = ai_result.get("is_secret", 1)
+                verified_item = {
+                    **cand,
+                    "is_secret": bool(is_secret) if isinstance(is_secret, int) else is_secret,
+                    "secret_type": ai_result.get("secret_type", "unknown"),
+                    "risk_level": ai_result.get("risk_level", "Low"),
+                    "confidence": float(ai_result.get("confidence", 0.5)),
+                    "test_suggestion": ai_result.get("test_suggestion", ""),
+                    "ai_raw_analysis": ai_result
+                }
+                
+                if verified_item["is_secret"]:
+                    verified.append(verified_item)
+            
+            return verified
+            
+        except Exception as e:
+            logger.error(f"❌ 批量 API 调用失败，降级为单调用: {e}")
+            return self._verify_with_single_api(candidates)
+    
+    def _format_single_candidate(self, cand: Dict[str, Any]) -> str:
+        """格式化单个候选对象"""
+        return json.dumps({
+            "value": cand.get("value", ""),
+            "context": cand.get("context", ""),
+            "callers": cand.get("callers", [])
+        }, ensure_ascii=False, indent=2)
 
     def _call_llm(self, input_data: str) -> Dict[str, Any]:
         messages = [
@@ -346,7 +434,6 @@ class LLMSecretVerifier:
 
 
 class SensitiveInfoScanner:
-    """敏感信息扫描器 (V6.0 极简双特征版)"""
 
     def __init__(self, client, db: Optional[SQLiteStorage] = None, max_ast_analysis=50, max_llm=80):
         self.client = client
@@ -405,7 +492,7 @@ class SensitiveInfoScanner:
             value_lower = cand.get("value", "").lower()
             line_lower = cand.get("original_line", "").lower()
             score = 0
-            for kw in SENSITIVE_KEYWORDS:
+            for kw in SENSITIVE_KEYWORD_SET:
                 if kw in value_lower or kw in line_lower: score += 10
             score += int(self.adv_filter.shannon_entropy(cand.get("value", "")) * 2)
             return score

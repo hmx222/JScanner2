@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 import psutil
 from user_agent import generate_user_agent
 
-from config.config import WHITE_SCOPE_PATH, db_filename, BLACK_LIST, static_extensions, MEMORY_LIMIT, unauth_keywords, \
-    OVERFLOW_DIR
+from config.scanner_rules import HTTPX_STATIC_EXTENSIONS, UNAUTHORIZED_PAGE_KEYWORDS, STATIC_RESOURCE_EXTENSIONS
+from config.config import WHITE_SCOPE_PATH, db_filename, MEMORY_LIMIT, OVERFLOW_DIR
 from crawler.browser_crawler import get_source_async
 from crawler.httpx_crawler import fetch_urls_with_dedup, fetch_urls_async
 from crawler.response_process import process_scan_result
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 def _is_static_url(url: str) -> bool:
     """判断是否是静态资源"""
     url_lower = url.lower().split('?')[0]
-    return any(url_lower.endswith(ext) for ext in static_extensions)
+    return any(url_lower.endswith(ext) for ext in HTTPX_STATIC_EXTENSIONS)
 
 
 def _is_html_url(url: str) -> bool:
@@ -55,7 +55,7 @@ def _is_html_url(url: str) -> bool:
 def _is_skip_ext(url: str) -> bool:
     """判断是否是需要跳过的扩展名"""
     url_lower = url.lower().split('?')[0]
-    return any(url_lower.endswith(ext) for ext in BLACK_LIST)
+    return any(url_lower.endswith(ext) for ext in STATIC_RESOURCE_EXTENSIONS)
 
 
 def classify_url(url, is_seed=False):
@@ -130,7 +130,7 @@ class Scanner:
         if _is_skip_ext(url):
             return "0"
         if (200 <= status_code <= 300) or (500 <= status_code < 600):
-            if any(kw in snippet_lower for kw in unauth_keywords):
+            if any(kw in snippet_lower for kw in UNAUTHORIZED_PAGE_KEYWORDS):
                 return "0"
             if "<!doctype" in snippet_lower or "<html" in snippet_lower or "<head" in snippet_lower:
                 return "0"
