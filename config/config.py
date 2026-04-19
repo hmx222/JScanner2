@@ -17,25 +17,25 @@ API_KEY_BATCH = "sk-cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
 MIN_BATCH_THRESHOLD = 5
 
 # batch 单次推荐批量数（平衡效率与稳定性）
-RECOMMENDED_BATCH_SIZE = 100
+RECOMMENDED_BATCH_SIZE = 25
 
 # batch 单次最大批量数（保守设置，远低于阿里云 50,000 限制）
-MAX_BATCH_SIZE = 1000
+MAX_BATCH_SIZE = 50
 
 # batch 单文件最大大小限制（阿里云限制 500 MB，我们设置为 80% 即 400 MB）
-MAX_BATCH_FILE_SIZE_MB = 400
+MAX_BATCH_FILE_SIZE_MB = 300
 
 # batch 单个 JSON 对象最大大小（阿里云限制 6 MB，我们设置为 5 MB）
-MAX_SINGLE_REQUEST_SIZE_MB = 5
+MAX_SINGLE_REQUEST_SIZE_MB = 4
 
 # batch 文件大小估算安全系数（预留 20-30% 余量）
-BATCH_SIZE_SAFETY_FACTOR = 0.75
+BATCH_SIZE_SAFETY_FACTOR = 0.6
 
 # 轮询间隔（秒）
 POLL_INTERVAL = 40
 
 # 最大等待时间（秒）
-MAX_WAIT_TIME = 18000
+MAX_WAIT_TIME = 3600
 
 DEFAULT_CONFIG_PATH = "config/models_config.json"  # 模型配置文件路径
 

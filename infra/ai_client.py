@@ -376,8 +376,22 @@ class AIHubClient:
                 
             except Exception as e:
                 logger.error(f"❌ 批次 {current_batch_num} 处理失败: {e}")
-                all_results.extend([None] * len(batch))
-        
+                
+                if retry_failed:
+                    logger.warning(
+                        f"⚠️ 批次 {current_batch_num} 整体失败，降级为单调用重试 {len(batch)} 个任务..."
+                    )
+                    retry_results = self._fallback_to_single_calls(
+                        batch, model, require_json, max_tokens, temperature, **kwargs
+                    )
+                    all_results.extend(retry_results)
+                    logger.info(
+                        f"✅ 批次 {current_batch_num} 重试完成 | "
+                        f"成功: {sum(1 for r in retry_results if r is not None)}/{len(retry_results)}"
+                    )
+                else:
+                    all_results.extend([None] * len(batch))
+
         logger.info(f"✅ 批量调用完成 | 成功: {sum(1 for r in all_results if r is not None)}/{len(all_results)}")
         return all_results
     
@@ -434,12 +448,16 @@ class AIHubClient:
             messages = item.get("messages", [])
             params = item.get("params", {})
             
+            cleaned_params = {**params}
+            cleaned_params.pop('max_tokens', None)
+            cleaned_params.pop('temperature', None)
+            
             request_body = {
-                "model": "placeholder",  # 占位符，实际大小差异不大
+                "model": "placeholder",
                 "messages": messages,
                 "max_tokens": params.get("max_tokens", 2048),
                 "temperature": params.get("temperature", 0.1),
-                **params
+                **cleaned_params
             }
             
             jsonl_line = {
@@ -449,11 +467,9 @@ class AIHubClient:
                 "body": request_body
             }
             
-            # 计算 JSON 字符串的 UTF-8 编码字节数
             json_str = json.dumps(jsonl_line, ensure_ascii=False)
-            total_bytes += len(json_str.encode('utf-8')) + 1  # +1 为换行符
+            total_bytes += len(json_str.encode('utf-8')) + 1
         
-        # 转换为 MB
         total_mb = total_bytes / (1024 * 1024)
         return total_mb
     
@@ -523,13 +539,16 @@ class AIHubClient:
                 messages = item.get("messages", [])
                 params = item.get("params", {})
                 
+                merged_params = {**params, **kwargs}
+                merged_params.pop('max_tokens', None)
+                merged_params.pop('temperature', None)
+                
                 response = self._client.chat.completions.create(
                     model=selected_model,
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    **params,
-                    **kwargs
+                    **merged_params
                 )
                 
                 raw_text = response.choices[0].message.content
@@ -561,12 +580,16 @@ class AIHubClient:
             messages = item.get("messages", [])
             params = item.get("params", {})
             
+            cleaned_params = {**params}
+            cleaned_params.pop('max_tokens', None)
+            cleaned_params.pop('temperature', None)
+            
             request_body = {
                 "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                **params
+                **cleaned_params
             }
             
             if require_json:
@@ -613,7 +636,7 @@ class AIHubClient:
                     os.unlink(temp_file)
                 except:
                     pass
-    
+
     def _upload_batch_file(self, file_path: str) -> Optional[str]:
         """上传 JSONL 文件到 DashScope"""
         try:
