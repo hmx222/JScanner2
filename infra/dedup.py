@@ -27,6 +27,9 @@ class DuplicateChecker:
         # Layer 1: 内存布隆过滤器（临时缓存）
         self.visited_urls = DiskBloomFilter("Result/global_dedup.bloom", capacity=10000000)
 
+        # ✅ API Path 去重布隆过滤器
+        self.visited_api_paths = DiskBloomFilter("Result/api_path_dedup.bloom", capacity=1000000)
+
         # Layer 2: 数据库持久化（重启续扫核心）
         self.db_handler = db_handler
 
@@ -40,6 +43,7 @@ class DuplicateChecker:
         # ✅ 从数据库加载历史已访问 URL
         if db_handler:
             self._load_visited_urls_from_db()
+            self._load_processed_api_paths_from_db()
 
         logger.info(f"✅ [Dedup] 去重管理器初始化完成 | 目标域名：{len(self.target_root)} 个")
 
@@ -56,6 +60,20 @@ class DuplicateChecker:
             logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 URL")
         except Exception as e:
             logger.error(f"⚠️ [Dedup] 加载历史 URL 失败：{e}")
+
+    def _load_processed_api_paths_from_db(self):
+        """
+        从数据库加载历史已处理 API paths（重启续扫核心）
+        """
+        try:
+            historical_paths = self.db_handler.get_all_processed_api_paths()
+            count = 0
+            for path in historical_paths:
+                self.visited_api_paths.add(path)
+                count += 1
+            logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 API path")
+        except Exception as e:
+            logger.error(f"⚠️ [Dedup] 加载历史 API path 失败：{e}")
 
     def is_valid_url(self, url: str) -> bool:
         """
@@ -261,6 +279,86 @@ class DuplicateChecker:
         """关闭资源"""
         try:
             self.visited_urls.close()
+            self.visited_api_paths.close()
         except:
             pass
         logger.info("🔒 [Dedup] 去重管理器已关闭")
+
+    def is_api_path_processed(self, api_path: str) -> bool:
+        """
+        检查 API path 是否已处理（内存 + 数据库双重检查）
+
+        :param api_path: API 路径
+        :return: 是否已处理
+        """
+        if not isinstance(api_path, str) or len(api_path.strip()) == 0:
+            return True
+
+        # 先查内存布隆过滤器（快速）
+        if not self.visited_api_paths.contains(api_path):
+            return False
+
+        # 再查数据库确认（准确）
+        if self.db_handler:
+            return self.db_handler.is_api_path_processed(api_path)
+
+        return True
+
+    def mark_api_path_processed(self, api_path: str, js_url: str = ""):
+        """
+        标记 API path 为已处理（同步写入内存 + 数据库）
+
+        :param api_path: API 路径
+        :param js_url: 来源 JS URL（可选）
+        """
+        if not isinstance(api_path, str) or len(api_path.strip()) == 0:
+            return
+
+        # Layer 1: 写入内存布隆过滤器
+        self.visited_api_paths.add(api_path)
+
+        # Layer 2: 写入数据库（持久化）
+        if self.db_handler:
+            try:
+                self.db_handler.mark_api_path_processed(api_path, js_url)
+            except Exception as e:
+                logger.error(f"⚠️ [Dedup] API path 数据库写入失败：{e}")
+
+    def mark_api_paths_processed_batch(self, paths_data: list):
+        """
+        批量标记 API paths 为已处理
+
+        :param paths_data: [(api_path, js_url), ...] 列表
+        """
+        if not paths_data:
+            return
+
+        # Layer 1: 写入内存
+        for api_path, _ in paths_data:
+            self.visited_api_paths.add(api_path)
+
+        # Layer 2: 批量写入数据库
+        if self.db_handler:
+            try:
+                self.db_handler.mark_api_paths_processed_batch(paths_data)
+            except Exception as e:
+                logger.error(f"⚠️ [Dedup] 批量 API path 数据库写入失败：{e}")
+
+    def clear_api_paths(self):
+        """
+        清空已处理 API path 记录
+        """
+        # 清空内存布隆过滤器
+        self.visited_api_paths.close()
+        if os.path.exists(self.visited_api_paths.filepath):
+            os.remove(self.visited_api_paths.filepath)
+        self.visited_api_paths = DiskBloomFilter("Result/api_path_dedup.bloom", capacity=1000000)
+
+        # 清空数据库记录
+        if self.db_handler:
+            try:
+                self.db_handler.clear_processed_api_paths()
+            except Exception as e:
+                logger.warning(f"⚠️ [Dedup] 清空 API path 数据库记录失败：{e}")
+
+        logger.info("🗑️ [Dedup] 已清空所有已处理 API path 记录")

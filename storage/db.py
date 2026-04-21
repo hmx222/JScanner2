@@ -98,6 +98,18 @@ class SQLiteStorage:
             cursor.execute(create_visited_table_sql)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_visited_url ON visited_urls(url);")
 
+            # ✅ 5. 已处理 API Path 记录表（防止重复分析）
+            create_processed_paths_table_sql = """
+            CREATE TABLE IF NOT EXISTS processed_api_paths (
+                api_path TEXT PRIMARY KEY,
+                js_url TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+            cursor.execute(create_processed_paths_table_sql)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_processed_path ON processed_api_paths(api_path);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_processed_js ON processed_api_paths(js_url);")
+
             self.conn.commit()
             logger.info(f"✅ [DB] 数据库初始化成功：{self.db_path}")
 
@@ -292,6 +304,113 @@ class SQLiteStorage:
         except Exception as e:
             self.conn.rollback()
             logger.error(f"❌ [DB] 清空已访问 URL 失败：{e}")
+            return 0
+
+    def is_api_path_processed(self, api_path: str) -> bool:
+        """
+        检查 API path 是否已被处理过
+
+        Args:
+            api_path: API 路径
+
+        Returns:
+            是否已处理
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1 FROM processed_api_paths WHERE api_path = ? LIMIT 1", (api_path,))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 检查 API path 状态失败：{e}")
+            return False
+
+    def mark_api_path_processed(self, api_path: str, js_url: str) -> bool:
+        """
+        标记 API path 为已处理
+
+        Args:
+            api_path: API 路径
+            js_url: 来源 JS URL
+
+        Returns:
+            是否成功标记
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO processed_api_paths (api_path, js_url) VALUES (?, ?)",
+                (api_path, js_url)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 标记 API path 失败：{e}")
+            return False
+
+    def mark_api_paths_processed_batch(self, paths_data: List[tuple]) -> int:
+        """
+        批量标记 API paths 为已处理
+
+        Args:
+            paths_data: [(api_path, js_url), ...] 列表
+
+        Returns:
+            成功标记的数量
+        """
+        if not paths_data:
+            return 0
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION;")
+
+            cursor.executemany(
+                "INSERT OR IGNORE INTO processed_api_paths (api_path, js_url) VALUES (?, ?)",
+                paths_data
+            )
+
+            self.conn.commit()
+            logger.debug(f"📝 [DB] 批量标记 {len(paths_data)} 个 API path 为已处理")
+            return len(paths_data)
+        except Exception as e:
+            self.conn.rollback()
+            logger.warning(f"⚠️ [DB] 批量标记 API path 失败：{e}")
+            return 0
+
+    def get_all_processed_api_paths(self) -> List[str]:
+        """
+        获取所有已处理的 API paths
+
+        Returns:
+            API path 列表
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT api_path FROM processed_api_paths")
+            paths = [row[0] for row in cursor.fetchall()]
+            logger.info(f"📚 [DB] 从数据库加载 {len(paths)} 个历史 API path")
+            return paths
+        except Exception as e:
+            logger.warning(f"⚠️ [DB] 获取已处理 API path 失败：{e}")
+            return []
+
+    def clear_processed_api_paths(self) -> int:
+        """
+        清空已处理 API path 记录
+
+        Returns:
+            清空的记录数
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM processed_api_paths")
+            count = cursor.rowcount
+            self.conn.commit()
+            logger.info(f"🗑️ [DB] 已清空 {count} 条已处理 API path 记录")
+            return count
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 清空已处理 API path 失败：{e}")
             return 0
 
     # ==================== 基础数据写入方法 ====================
