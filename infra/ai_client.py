@@ -360,7 +360,7 @@ class AIHubClient:
                         )
                         failed_messages = [batch[i] for i in failed_indices]
                         retry_results = self._fallback_to_single_calls(
-                            failed_messages, model, require_json, max_tokens, temperature, **kwargs
+                            failed_messages, model=None, require_json=require_json, max_tokens=max_tokens, temperature=temperature, **kwargs
                         )
                         
                         # 将重试结果填回原位置
@@ -382,8 +382,9 @@ class AIHubClient:
                         f"⚠️ 批次 {current_batch_num} 整体失败，降级为单调用重试 {len(batch)} 个任务..."
                     )
                     retry_results = self._fallback_to_single_calls(
-                        batch, model, require_json, max_tokens, temperature, **kwargs
+                        batch, model=None, require_json=require_json, max_tokens=max_tokens, temperature=temperature, **kwargs
                     )
+
                     all_results.extend(retry_results)
                     logger.info(
                         f"✅ 批次 {current_batch_num} 重试完成 | "
@@ -531,7 +532,7 @@ class AIHubClient:
         """降级为单调用模式"""
         logger.info(f"🔄 降级为单调用模式处理 {len(batch_messages)} 个任务")
         
-        selected_model = model or (self._batch_models[0] if self._batch_models else (self._models[0] if self._models else "qwen-plus"))
+        selected_model = model or (self._models[0] if self._models else "qwen-plus")
         results = []
         
         for idx, item in enumerate(batch_messages):
@@ -559,6 +560,13 @@ class AIHubClient:
                 else:
                     results.append(self._clean_content(raw_text))
                     
+            except APIStatusError as e:
+                if e.status_code == 400 and 'Prompt exceeds max length' in str(e):
+                    logger.warning(f"⚠️ 单调用任务 {idx} Prompt 超出最大长度限制，跳过该任务")
+                    results.append(None)
+                else:
+                    logger.error(f"❌ 单调用任务 {idx} 失败: {e}")
+                    results.append(None)
             except Exception as e:
                 logger.error(f"❌ 单调用任务 {idx} 失败: {e}")
                 results.append(None)

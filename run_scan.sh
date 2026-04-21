@@ -12,7 +12,7 @@ INITIAL_HEIGHT=5
 
 # --- 📁 文件夹配置 ---
 OVERFLOW_DIR="./Overflow_Queue"
-LOG_DIR="./Log_Data"
+LOG_DIR="./logs"
 RESULT_DIR="./Result"
 
 # --- 📄 文件路径配置 ---
