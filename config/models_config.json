@@ -1,11 +1,14 @@
 {
   "models": [
     "glm-4.7-flash",
+    "deepseek-ai/deepseek-v3.2",
     "MiniMax-M2.5",
-    "hunyuan-2.0-instruct-20251111",
-    "z-ai/glm4.7"
+    "glm-4.7",
+    "glm-5",
+    "minimax-m2.5",
+    "qwen3.5-plus"
   ],
-  "batch_api_models":[
+  "batch_api_models": [
     "qwen3.5-flash"
   ]
 }

@@ -53,6 +53,16 @@ class AISecurityAuditor:
         if not content:
             return {"has_value": 1, "param_keys": []}
 
+        # 如果 content 已经是字典，直接使用
+        if isinstance(content, dict):
+            has_value = content.get("has_value", 1)
+            param_keys = content.get("param_keys", [])
+            param_keys = [k for k in param_keys if len(k) > 1 or k.lower() in ['id', 'ip', 'os']]
+            return {
+                "has_value": has_value,
+                "param_keys": param_keys
+            }
+
         content = content.strip()
 
         try:
