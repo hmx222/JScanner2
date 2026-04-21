@@ -240,6 +240,9 @@ class Scanner:
                     source_map[info["url"]] = info["source_code"]
 
         processed_count = 0
+        skipped_dup_count = 0
+        paths_to_mark = []
+
         for item in batch_all_next_paths_with_source:
             js_url = item.get("sourceURL")
             found_apis = item.get("next_paths", [])
@@ -253,6 +256,12 @@ class Scanner:
                     continue
                 if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
                     continue
+
+                # ✅ 检查 API path 是否已处理过（去重）
+                if self.checker.is_api_path_processed(api_path):
+                    skipped_dup_count += 1
+                    continue
+
                 if getattr(self.args, 'fastscan', False):
                     if qualified_api_paths and api_path in qualified_api_paths:
                         apis_to_scan.append(api_path)
@@ -270,10 +279,19 @@ class Scanner:
                         processed_count += 1
                         self.db_handler.save_ai_result(js_url=js_url, api_endpoint=api_path,
                                                        advisory_report=advisory_report)
+                        # ✅ 标记该 path 为已处理
+                        paths_to_mark.append((api_path, js_url))
                 except Exception:
                     print_exc()
+
+        # ✅ 批量标记已处理的 API paths
+        if paths_to_mark:
+            self.checker.mark_api_paths_processed_batch(paths_to_mark)
+
         if processed_count > 0:
             print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
+        if skipped_dup_count > 0:
+            print(f"⏭️ [Path Dedup] Skipped {skipped_dup_count} duplicate API paths")
 
     async def parallel_fetch(self, batch_dynamic, batch_static):
         """异步并行请求：静态 + 动态"""
