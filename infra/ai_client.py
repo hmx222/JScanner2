@@ -528,48 +528,133 @@ class AIHubClient:
                                   require_json: bool = False,
                                   max_tokens: int = 2048,
                                   temperature: float = 0.1,
+                                  max_retries: int = 2,
                                   **kwargs) -> List[Any]:
-        """降级为单调用模式"""
-        logger.info(f"🔄 降级为单调用模式处理 {len(batch_messages)} 个任务")
+        """降级为单调用模式（支持模型故障转移）"""
+        logger.info(f"🔄 降级为单调用模式处理 {len(batch_messages)} 个任务（启用模型故障转移）")
         
-        selected_model = model or (self._models[0] if self._models else "qwen-plus")
         results = []
         
         for idx, item in enumerate(batch_messages):
-            try:
-                messages = item.get("messages", [])
-                params = item.get("params", {})
+            success = False
+            result = None
+            
+            max_model_attempts = len(self._model_statuses)
+            
+            for model_attempt in range(max_model_attempts):
+                model_status = self._get_available_model()
+                if not model_status:
+                    logger.error(f"❌ 任务 {idx} 所有模型均不可用，放弃")
+                    break
                 
-                merged_params = {**params, **kwargs}
-                merged_params.pop('max_tokens', None)
-                merged_params.pop('temperature', None)
+                selected_model = model_status.model_name
                 
-                response = self._client.chat.completions.create(
-                    model=selected_model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    **merged_params
-                )
+                if model_attempt > 0:
+                    logger.info(
+                        f"🔄 任务 {idx} 切换到模型 [{selected_model}] 进行尝试 "
+                        f"(第 {model_attempt + 1}/{max_model_attempts} 个模型)"
+                    )
                 
-                raw_text = response.choices[0].message.content
-                if require_json:
-                    cleaned = self._clean_content(raw_text)
-                    obj = json_repair.repair_json(cleaned, return_objects=True)
-                    results.append(obj if isinstance(obj, (dict, list)) else None)
+                for attempt in range(max_retries + 1):
+                    try:
+                        messages = item.get("messages", [])
+                        params = item.get("params", {})
+                        
+                        merged_params = {**params, **kwargs}
+                        merged_params.pop('max_tokens', None)
+                        merged_params.pop('temperature', None)
+                        
+                        response = self._client.chat.completions.create(
+                            model=selected_model,
+                            messages=messages,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            **merged_params
+                        )
+                        
+                        raw_text = response.choices[0].message.content
+                        if require_json:
+                            cleaned = self._clean_content(raw_text)
+                            obj = json_repair.repair_json(cleaned, return_objects=True)
+                            result = obj if isinstance(obj, (dict, list)) else None
+                        else:
+                            result = self._clean_content(raw_text)
+                        
+                        model_status.mark_success()
+                        success = True
+                        
+                        if attempt > 0 or model_attempt > 0:
+                            logger.info(
+                                f"✅ 任务 {idx} 在模型 [{selected_model}] "
+                                f"第 {attempt + 1} 次尝试成功"
+                            )
+                        break
+                        
+                    except APIStatusError as e:
+                        if e.status_code == 400 and 'Prompt exceeds max length' in str(e):
+                            logger.warning(f"⚠️ 任务 {idx} Prompt 超出最大长度限制，跳过")
+                            model_status.mark_success()
+                            result = None
+                            success = True
+                            break
+                        elif e.status_code >= 500 and attempt < max_retries:
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] "
+                                f"第 {attempt + 1} 次尝试失败 (服务器错误 {e.status_code}): {e}"
+                            )
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            model_status.mark_error(f"API Error: {e.status_code}")
+                            logger.error(
+                                f"❌ 任务 {idx} 模型 [{selected_model}] 失败 "
+                                f"(HTTP {e.status_code}): {e}"
+                            )
+                            break
+                            
+                    except (APIConnectionError, APITimeoutError, RateLimitError) as e:
+                        model_status.mark_error(f"Network/Limit: {type(e).__name__}")
+                        if attempt < max_retries:
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] "
+                                f"第 {attempt + 1} 次尝试失败 (网络错误): {e}"
+                            )
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            logger.error(f"❌ 任务 {idx} 模型 [{selected_model}] 网络错误: {e}")
+                            break
+                            
+                    except Exception as e:
+                        model_status.mark_error(str(e))
+                        if attempt < max_retries:
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] "
+                                f"第 {attempt + 1} 次尝试失败: {e}"
+                            )
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            logger.error(f"❌ 任务 {idx} 模型 [{selected_model}] 异常: {e}")
+                            break
+                
+                if success:
+                    break
                 else:
-                    results.append(self._clean_content(raw_text))
-                    
-            except APIStatusError as e:
-                if e.status_code == 400 and 'Prompt exceeds max length' in str(e):
-                    logger.warning(f"⚠️ 单调用任务 {idx} Prompt 超出最大长度限制，跳过该任务")
-                    results.append(None)
-                else:
-                    logger.error(f"❌ 单调用任务 {idx} 失败: {e}")
-                    results.append(None)
-            except Exception as e:
-                logger.error(f"❌ 单调用任务 {idx} 失败: {e}")
-                results.append(None)
+                    logger.warning(
+                        f"⚠️ 模型 [{selected_model}] 已标记为不可用，准备切换下一个模型..."
+                    )
+            
+            if not success:
+                logger.error(f"❌ 任务 {idx} 在所有模型上均失败")
+            
+            results.append(result)
+        
+        success_count = sum(1 for r in results if r is not None)
+        logger.info(
+            f"✅ 单调用降级处理完成 | "
+            f"成功: {success_count}/{len(results)}"
+        )
         
         return results
 
