@@ -24,13 +24,14 @@ class DuplicateChecker:
         :param db_handler: SQLiteStorage 实例（用于持久化）
         :param initial_root_domain: 目标根域名列表（用于 URL 有效性检查）
         """
-        # Layer 1: 内存布隆过滤器（临时缓存）
+        # Layer 1: 内存 Set 缓存（最快，O(1) 查询）
+        self.api_path_cache = set()
+        
+        # Layer 2: 磁盘布隆过滤器（快速，低内存）
         self.visited_urls = DiskBloomFilter("Result/global_dedup.bloom", capacity=10000000)
-
-        # ✅ API Path 去重布隆过滤器
         self.visited_api_paths = DiskBloomFilter("Result/api_path_dedup.bloom", capacity=1000000)
 
-        # Layer 2: 数据库持久化（重启续扫核心）
+        # Layer 3: 数据库持久化（重启续扫核心）
         self.db_handler = db_handler
 
         # 标题去重缓存
@@ -40,7 +41,7 @@ class DuplicateChecker:
         self.MAX_TITLE_PER_DOMAIN = 3000
         self.MAX_DOMAIN_CACHE = 200
 
-        # ✅ 从数据库加载历史已访问 URL
+        # 从数据库加载历史记录到缓存
         if db_handler:
             self._load_visited_urls_from_db()
             self._load_processed_api_paths_from_db()
@@ -69,9 +70,11 @@ class DuplicateChecker:
             historical_paths = self.db_handler.get_all_processed_api_paths()
             count = 0
             for path in historical_paths:
+                # 同时加载到 Set 和 Bloom Filter
+                self.api_path_cache.add(path)
                 self.visited_api_paths.add(path)
                 count += 1
-            logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 API path")
+            logger.info(f"📚 [Dedup] 从数据库加载 {count} 个历史 API path 到缓存")
         except Exception as e:
             logger.error(f"⚠️ [Dedup] 加载历史 API path 失败：{e}")
 
@@ -286,7 +289,7 @@ class DuplicateChecker:
 
     def is_api_path_processed(self, api_path: str) -> bool:
         """
-        检查 API path 是否已处理（内存 + 数据库双重检查）
+        检查 API path 是否已处理（三层缓存：Set → Bloom → DB）
 
         :param api_path: API 路径
         :return: 是否已处理
@@ -294,19 +297,26 @@ class DuplicateChecker:
         if not isinstance(api_path, str) or len(api_path.strip()) == 0:
             return True
 
-        # 先查内存布隆过滤器（快速）
+        # Layer 1: Set 缓存（最快，O(1)）
+        if api_path in self.api_path_cache:
+            return True
+        
+        # Layer 2: Bloom Filter（快速，可能有假阳性）
         if not self.visited_api_paths.contains(api_path):
             return False
-
-        # 再查数据库确认（准确）
+        
+        # Layer 3: 数据库（准确，但慢）
         if self.db_handler:
-            return self.db_handler.is_api_path_processed(api_path)
-
-        return True
+            if self.db_handler.is_api_path_processed(api_path):
+                # 同步更新缓存
+                self.api_path_cache.add(api_path)
+                return True
+        
+        return False
 
     def mark_api_path_processed(self, api_path: str, js_url: str = ""):
         """
-        标记 API path 为已处理（同步写入内存 + 数据库）
+        标记 API path 为已处理（同步写入三层缓存）
 
         :param api_path: API 路径
         :param js_url: 来源 JS URL（可选）
@@ -314,10 +324,13 @@ class DuplicateChecker:
         if not isinstance(api_path, str) or len(api_path.strip()) == 0:
             return
 
-        # Layer 1: 写入内存布隆过滤器
+        # Layer 1: 写入 Set 缓存
+        self.api_path_cache.add(api_path)
+        
+        # Layer 2: 写入布隆过滤器
         self.visited_api_paths.add(api_path)
 
-        # Layer 2: 写入数据库（持久化）
+        # Layer 3: 写入数据库（持久化）
         if self.db_handler:
             try:
                 self.db_handler.mark_api_path_processed(api_path, js_url)
@@ -333,11 +346,15 @@ class DuplicateChecker:
         if not paths_data:
             return
 
-        # Layer 1: 写入内存
+        # Layer 1: 写入 Set 缓存
+        for api_path, _ in paths_data:
+            self.api_path_cache.add(api_path)
+        
+        # Layer 2: 写入 Bloom Filter
         for api_path, _ in paths_data:
             self.visited_api_paths.add(api_path)
 
-        # Layer 2: 批量写入数据库
+        # Layer 3: 批量写入数据库
         if self.db_handler:
             try:
                 self.db_handler.mark_api_paths_processed_batch(paths_data)

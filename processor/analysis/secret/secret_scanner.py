@@ -367,7 +367,13 @@ class LLMSecretVerifier:
                     "risk_level": ai_result.get("risk_level", "Low"),
                     "confidence": float(ai_result.get("confidence", 0.5)),
                     "test_suggestion": ai_result.get("test_suggestion", ""),
-                    "ai_raw_analysis": ai_result
+                    "ai_raw_analysis": {
+                        "is_secret": ai_result.get("is_secret", 1),
+                        "secret_type": ai_result.get("secret_type", "unknown"),
+                        "risk_level": ai_result.get("risk_level", "Low"),
+                        "confidence": ai_result.get("confidence", 0.5),
+                        "test_suggestion": ai_result.get("test_suggestion", "")
+                    }
                 }
                 
                 if verified_item["is_secret"]:
@@ -427,7 +433,13 @@ class LLMSecretVerifier:
                 "risk_level": ai_result.get("risk_level", "Low"),
                 "confidence": float(ai_result.get("confidence", 0.5)),
                 "test_suggestion": ai_result.get("test_suggestion", ""),
-                "ai_raw_analysis": ai_result
+                "ai_raw_analysis": {
+                    "is_secret": ai_result.get("is_secret", 1),
+                    "secret_type": ai_result.get("secret_type", "unknown"),
+                    "risk_level": ai_result.get("risk_level", "Low"),
+                    "confidence": ai_result.get("confidence", 0.5),
+                    "test_suggestion": ai_result.get("test_suggestion", "")
+                }
             }
             if result["is_secret"]: verified.append(result)
         return verified

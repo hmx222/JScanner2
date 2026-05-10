@@ -181,6 +181,10 @@ class Scanner:
     async def _process_ai_batch(self, batch_all_next_paths_with_source, batch_scan_info_list, batch_next_urls):
         if not self.ai_auditor:
             return
+        
+        if not getattr(self.args, 'findparam', False):
+            return
+
         qualified_api_paths = set()
         if getattr(self.args, 'fastscan', False) and batch_next_urls:
             print("⚡ [FastScan] 快速扫描模式已启用")
@@ -241,57 +245,98 @@ class Scanner:
 
         processed_count = 0
         skipped_dup_count = 0
-        paths_to_mark = []
-
+        
+        # ✅ 第一步：收集当前批次所有唯一的 API paths（跨 JS 文件去重）
+        all_unique_apis = {}  # {api_path: js_url}
+        
         for item in batch_all_next_paths_with_source:
             js_url = item.get("sourceURL")
             found_apis = item.get("next_paths", [])
+            
             if not js_url or js_url not in source_map:
                 continue
-            js_source = source_map[js_url]
-            unique_apis = set(found_apis)
-            apis_to_scan = []
-            for api_path in unique_apis:
-                if len(api_path) < API_MIN_LENGTH or api_path.startswith("http") or api_path.startswith("//"):
+            
+            for api_path in found_apis:
+                api_path = api_path.strip()
+                
+                # 基础过滤
+                if len(api_path) < API_MIN_LENGTH:
+                    continue
+                if api_path.startswith("http") or api_path.startswith("//"):
                     continue
                 if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
                     continue
-
-                # ✅ 检查 API path 是否已处理过（去重）
-                if self.checker.is_api_path_processed(api_path):
-                    skipped_dup_count += 1
-                    continue
-
+                
+                # FastScan 模式过滤
                 if getattr(self.args, 'fastscan', False):
-                    if qualified_api_paths and api_path in qualified_api_paths:
-                        apis_to_scan.append(api_path)
-                else:
-                    apis_to_scan.append(api_path)
-            if apis_to_scan and getattr(self.args, 'findparam', False):
-                try:
-                    batch_ai_advisories = self.ai_auditor.scan_multiple_apis(
-                        js_code=js_source, api_paths=apis_to_scan, target_url=self.args.url.strip())
-                    for api_path, advisory_report in batch_ai_advisories.items():
-                        if not advisory_report:
-                            continue
-                        print(f"🤖 [AI Advisor] Generated Advisory for {api_path}")
-                        print(advisory_report)
-                        processed_count += 1
-                        self.db_handler.save_ai_result(js_url=js_url, api_endpoint=api_path,
-                                                       advisory_report=advisory_report)
-                        # ✅ 标记该 path 为已处理
-                        paths_to_mark.append((api_path, js_url))
-                except Exception:
-                    print_exc()
+                    if qualified_api_paths and api_path not in qualified_api_paths:
+                        continue
+                
+                # ✅ 关键：只保留第一个遇到的 JS 来源（避免同批次内重复）
+                if api_path not in all_unique_apis:
+                    all_unique_apis[api_path] = js_url
 
-        # ✅ 批量标记已处理的 API paths
-        if paths_to_mark:
-            self.checker.mark_api_paths_processed_batch(paths_to_mark)
+        # ✅ 第二步：批量检查去重（三层缓存，全局去重）
+        apis_to_scan = []
+        for api_path, js_url in all_unique_apis.items():
+            if self.checker.is_api_path_processed(api_path):
+                skipped_dup_count += 1
+            else:
+                apis_to_scan.append((api_path, js_url))
+        
+        if skipped_dup_count > 0:
+            print(f"⏭️ [Path Dedup] Skipped {skipped_dup_count} duplicate API paths in this batch")
+        
+        if not apis_to_scan:
+            print(f"✅ [Batch] All APIs already processed, skipping AI analysis...")
+            return
+
+        # ✅ 第三步：立即标记为已处理（在 AI 分析之前！防止失败后重复）
+        mark_data = [(api_path, js_url) for api_path, js_url in apis_to_scan]
+        self.checker.mark_api_paths_processed_batch(mark_data)
+        print(f"✅ [Dedup] Marked {len(apis_to_scan)} API paths as processed BEFORE analysis")
+
+        # ✅ 第四步：按 JS 文件分组进行 AI 分析
+        js_groups = {}  # {js_url: [api_paths]}
+        for api_path, js_url in apis_to_scan:
+            if js_url not in js_groups:
+                js_groups[js_url] = []
+            js_groups[js_url].append(api_path)
+        
+        # ✅ 第五步：执行 AI 分析
+        for js_url, api_paths in js_groups.items():
+            js_source = source_map.get(js_url, "")
+            if not js_source:
+                continue
+            
+            try:
+                batch_ai_advisories = self.ai_auditor.scan_multiple_apis(
+                    js_code=js_source, 
+                    api_paths=api_paths, 
+                    target_url=self.args.url.strip()
+                )
+                
+                for api_path, advisory_report in batch_ai_advisories.items():
+                    if not advisory_report:
+                        continue
+                    
+                    print(f"🤖 [AI Advisor] Generated Advisory for {api_path}")
+                    print(advisory_report)
+                    processed_count += 1
+                    
+                    self.db_handler.save_ai_result(
+                        js_url=js_url, 
+                        api_endpoint=api_path,
+                        advisory_report=advisory_report
+                    )
+                    
+            except Exception as e:
+                print_exc()
+                logger.error(f"❌ [AI] Failed to analyze APIs from {js_url}: {e}")
+                # ⚠️ 注意：即使失败，path 已经被标记，不会重复处理
 
         if processed_count > 0:
             print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
-        if skipped_dup_count > 0:
-            print(f"⏭️ [Path Dedup] Skipped {skipped_dup_count} duplicate API paths")
 
     async def parallel_fetch(self, batch_dynamic, batch_static):
         """异步并行请求：静态 + 动态"""
