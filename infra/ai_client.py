@@ -606,9 +606,9 @@ class AIHubClient:
                             continue
                         else:
                             model_status.mark_error(f"API Error: {e.status_code}")
-                            logger.error(
-                                f"❌ 任务 {idx} 模型 [{selected_model}] 失败 "
-                                f"(HTTP {e.status_code}): {e}"
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] 失败 "
+                                f"(HTTP {e.status_code})，准备切换模型: {e}"
                             )
                             break
                             
@@ -622,7 +622,9 @@ class AIHubClient:
                             time.sleep(2 ** attempt)
                             continue
                         else:
-                            logger.error(f"❌ 任务 {idx} 模型 [{selected_model}] 网络错误: {e}")
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] 网络错误，准备切换模型: {e}"
+                            )
                             break
                             
                     except Exception as e:
@@ -635,7 +637,9 @@ class AIHubClient:
                             time.sleep(2 ** attempt)
                             continue
                         else:
-                            logger.error(f"❌ 任务 {idx} 模型 [{selected_model}] 异常: {e}")
+                            logger.warning(
+                                f"⚠️ 任务 {idx} 模型 [{selected_model}] 异常，准备切换模型: {e}"
+                            )
                             break
                 
                 if success:
