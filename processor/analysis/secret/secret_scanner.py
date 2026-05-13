@@ -11,7 +11,7 @@ import json_repair
 
 from config.scanner_rules import HTTPX_STATIC_EXTENSIONS, EXCLUDED_CONTEXT_PATTERNS, SENSITIVE_KEYWORD_SET, EXCLUDED_LITERAL_VALUES, \
     SECRET_DETECTION_BLACKLIST, WEB_TECHNICAL_WORDS
-from config.config import NLTK_DIR, BATCH_REQ, MIN_BATCH_THRESHOLD, POLL_INTERVAL, MAX_WAIT_TIME
+from config.config import NLTK_DIR
 from infra.bloom import DiskBloomFilter
 from infra.utils import remove_html_tags
 from logger import get_logger
@@ -283,19 +283,14 @@ class LLMSecretVerifier:
         self._local_logger = get_logger("LLMSecretVerifier")
 
     def verify_with_context(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """使用 LLM 验证候选敏感信息（支持批量调用）"""
+        """使用 LLM 验证候选敏感信息"""
         if not candidates:
             return []
         
-        use_batch_api = BATCH_REQ and len(candidates) >= MIN_BATCH_THRESHOLD
-        
-        if use_batch_api:
-            return self._verify_with_batch_api(candidates)
-        else:
-            return self._verify_with_single_api(candidates)
+        return self._verify_with_single_api(candidates)
     
     def _verify_with_single_api(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """原有的单调用逻辑"""
+        """单调用逻辑"""
         input_data = self._format_candidates_for_single(candidates)
         analysis_result = self._call_llm(input_data)
         if not analysis_result:
@@ -313,85 +308,6 @@ class LLMSecretVerifier:
                 "callers": cand.get("callers", [])
             }
         return json.dumps(formatted, ensure_ascii=False, indent=2)
-    
-    def _verify_with_batch_api(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """使用批量 API 进行验证"""
-        logger.info(f"📦 使用批量 API 验证 {len(candidates)} 个候选 (BATCH_REQ={BATCH_REQ})")
-        
-        batch_messages = []
-        
-        for cand in candidates:
-            single_input = self._format_single_candidate(cand)
-            
-            messages = [
-                {"role": "system", "content": SECRET_PROMPT},
-                {"role": "user", "content": f"Analyze this hardcoded value:\n\n{single_input}"}
-            ]
-            
-            batch_messages.append({
-                "custom_id": str(cand.get("id", "")),
-                "messages": messages,
-                "params": {
-                    "max_tokens": 2048,
-                    "temperature": 0.1
-                }
-            })
-        
-        try:
-            results = self.client.chat_batch(
-                batch_messages=batch_messages,
-                require_json=True,
-                poll_interval=POLL_INTERVAL,
-                max_wait_time=MAX_WAIT_TIME
-            )
-            
-            verified = []
-            for cand, result in zip(candidates, results):
-                if result is None:
-                    logger.warning(f"⚠️ 候选 {cand.get('id')} 批量调用返回空")
-                    continue
-                
-                cand_id = str(cand.get("id", ""))
-                
-                if isinstance(result, dict):
-                    ai_result = result
-                else:
-                    json_str = self._extract_json(str(result))
-                    ai_result = json_repair.loads(json_str) if json_str else {}
-                
-                is_secret = ai_result.get("is_secret", 1)
-                verified_item = {
-                    **cand,
-                    "is_secret": bool(is_secret) if isinstance(is_secret, int) else is_secret,
-                    "secret_type": ai_result.get("secret_type", "unknown"),
-                    "risk_level": ai_result.get("risk_level", "Low"),
-                    "confidence": float(ai_result.get("confidence", 0.5)),
-                    "test_suggestion": ai_result.get("test_suggestion", ""),
-                    "ai_raw_analysis": {
-                        "is_secret": ai_result.get("is_secret", 1),
-                        "secret_type": ai_result.get("secret_type", "unknown"),
-                        "risk_level": ai_result.get("risk_level", "Low"),
-                        "confidence": ai_result.get("confidence", 0.5),
-                        "test_suggestion": ai_result.get("test_suggestion", "")
-                    }
-                }
-                
-                if verified_item["is_secret"]:
-                    verified.append(verified_item)
-            
-            return verified
-            
-        except Exception as e:
-            logger.error(f"❌ 批量 API 调用失败，降级为单调用: {e}")
-            return self._verify_with_single_api(candidates)
-    
-    def _format_single_candidate(self, cand: Dict[str, Any]) -> str:
-        """格式化单个候选对象"""
-        return json.dumps({
-            "value": cand.get("value", ""),
-            "context": cand.get("context", ""),
-            "callers": cand.get("callers", [])
-        }, ensure_ascii=False, indent=2)
 
     def _call_llm(self, input_data: str) -> Dict[str, Any]:
         messages = [
