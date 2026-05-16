@@ -4,38 +4,11 @@ BASE_URL = "http://127.0.0.1:3000/v1/"
 # API Key（请替换为您自己的密钥）
 API_KEY = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-# 启用 batch 调用
-BATCH_REQ = True
-
-# batch 调用大模型
-BATCH_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
-# batch 大模型Key
-API_KEY_BATCH = "sk-cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
-
-# batch 启用阈值（任务数 >= 此值才使用 Batch API）
-MIN_BATCH_THRESHOLD = 5
-
-# batch 单次推荐批量数（平衡效率与稳定性）
-RECOMMENDED_BATCH_SIZE = 25
-
-# batch 单次最大批量数（保守设置，远低于阿里云 50,000 限制）
-MAX_BATCH_SIZE = 50
-
-# batch 单文件最大大小限制（阿里云限制 500 MB，我们设置为 80% 即 400 MB）
-MAX_BATCH_FILE_SIZE_MB = 300
-
-# batch 单个 JSON 对象最大大小（阿里云限制 6 MB，我们设置为 5 MB）
-MAX_SINGLE_REQUEST_SIZE_MB = 4
-
-# batch 文件大小估算安全系数（预留 20-30% 余量）
-BATCH_SIZE_SAFETY_FACTOR = 0.6
-
-# 轮询间隔（秒）
-POLL_INTERVAL = 40
-
-# 最大等待时间（秒）
-MAX_WAIT_TIME = 3600
+# 🔧 提示词缓存配置（阿里云 DashScope）
+ENABLE_PROMPT_CACHE = True  # 是否启用提示词缓存
+CACHE_CONTROL_TYPE = "ephemeral"  # 缓存类型：ephemeral（临时缓存，5分钟有效期）
+MIN_CACHE_TOKENS = 1024  # 最小缓存 token 数（约等于字符数）
+MAX_CACHE_MARKERS = 4  # 单次请求最多缓存标记数
 
 DEFAULT_CONFIG_PATH = "config/models_config.json"  # 模型配置文件路径
 

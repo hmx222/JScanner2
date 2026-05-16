@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional, List
 
 import json_repair
 
-from config.config import BATCH_REQ, MIN_BATCH_THRESHOLD, POLL_INTERVAL, MAX_WAIT_TIME
 from infra.ai_client import client
 from logger import get_logger
 from processor.analysis.prompts import SYSTEM_PROMPT_ADVISORY, SYSTEM_PROMPT_JUDGE
@@ -176,14 +175,9 @@ class AISecurityAuditor:
 
     def _analyze_multiple_api_values(self, candidates: List[Dict[str, Any]]) -> Dict[str, Dict]:
         """
-        Level 2: 并行判断多个 API 是否有参数值
+        Level 2: 逐个判断多个 API 是否有参数值
         """
         strategy_results = {}
-        
-        use_batch_api = BATCH_REQ and len(candidates) >= MIN_BATCH_THRESHOLD
-        
-        if use_batch_api:
-            return self._analyze_with_batch_api(candidates)
         
         for candidate in candidates:
             api_path = candidate['api_path']
@@ -225,110 +219,6 @@ class AISecurityAuditor:
                     "param_keys": []
                 }
 
-        return strategy_results
-    
-    def _analyze_with_batch_api(self, candidates: List[Dict[str, Any]]) -> Dict[str, Dict]:
-        """使用批量 API 进行 Level 2 分析"""
-        logger.info(f"📦 使用批量 API 分析 {len(candidates)} 个 API (BATCH_REQ={BATCH_REQ})")
-        
-        batch_messages = []
-        
-        for candidate in candidates:
-            api_path = candidate['api_path']
-            context_data = candidate['context_data']
-            
-            raw_wrapper = context_data.get('wrapper_code', '')
-            caller_codes = context_data.get('caller_codes', [])
-            
-            wrapper_code = self._compress_code_loop(raw_wrapper, self.CODE_MAX_LENGTH // 2)
-            processed_callers = [self._compress_code_loop(c, self.CODE_MAX_LENGTH // 6) for c in caller_codes[:3]]
-            callers_str = "\n\n".join([f"--- 业务调用点 {i + 1} ---\n{c}" for i, c in enumerate(processed_callers)])
-            
-            full_desc = f"目标 API: {api_path}\n\n[JS 底层发包函数]:\n{wrapper_code}\n\n[JS 业务调用点]:\n{callers_str}"
-            
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT_JUDGE},
-                {"role": "user", "content": f"请对该单一 API 的全量源码进行审查，提取 HTTP 参数名：\n\n{full_desc}"}
-            ]
-            
-            batch_messages.append({
-                "custom_id": api_path,
-                "messages": messages,
-                "params": {
-                    "max_tokens": 1000,
-                    "temperature": 0.1
-                }
-            })
-        
-        try:
-            results = client.chat_batch(
-                batch_messages=batch_messages,
-                require_json=True,
-                poll_interval=POLL_INTERVAL,
-                max_wait_time=MAX_WAIT_TIME
-            )
-            
-            strategy_results = {}
-            for candidate, result in zip(candidates, results):
-                api_path = candidate['api_path']
-                
-                if result is None:
-                    logger.warning(f"⚠️ API {api_path} 批量调用返回空，使用默认值")
-                    strategy_results[api_path] = {"decision": 1, "param_keys": []}
-                    continue
-                
-                try:
-                    level2_result = self._parse_level2_result(result)
-                    strategy_results[api_path] = {
-                        "decision": level2_result["has_value"],
-                        "param_keys": level2_result["param_keys"]
-                    }
-                    logger.debug(f"[{api_path}] Has value: {level2_result['has_value']}, Keys: {level2_result['param_keys']}")
-                except Exception as e:
-                    logger.error(f"[-] Level 2 解析异常 ({api_path}): {e}，默认 has_value=1")
-                    strategy_results[api_path] = {"decision": 1, "param_keys": []}
-            
-            return strategy_results
-            
-        except Exception as e:
-            logger.error(f"❌ 批量 API 调用失败，降级为逐个调用: {e}")
-            return self._fallback_to_single_call(candidates)
-
-    def _fallback_to_single_call(self, candidates: List[Dict[str, Any]]) -> Dict[str, Dict]:
-        """降级为原来的逐个调用方式"""
-        logger.info("🔄 降级为逐个调用模式")
-        strategy_results = {}
-        
-        for candidate in candidates:
-            api_path = candidate['api_path']
-            context_data = candidate['context_data']
-            
-            raw_wrapper = context_data.get('wrapper_code', '')
-            caller_codes = context_data.get('caller_codes', [])
-            
-            wrapper_code = self._compress_code_loop(raw_wrapper, self.CODE_MAX_LENGTH // 2)
-            processed_callers = [self._compress_code_loop(c, self.CODE_MAX_LENGTH // 6) for c in caller_codes[:3]]
-            callers_str = "\n\n".join([f"--- 业务调用点 {i + 1} ---\n{c}" for i, c in enumerate(processed_callers)])
-            
-            full_desc = f"目标 API: {api_path}\n\n[JS 底层发包函数]:\n{wrapper_code}\n\n[JS 业务调用点]:\n{callers_str}"
-            
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT_JUDGE},
-                {"role": "user", "content": f"请对该单一 API 的全量源码进行审查，提取 HTTP 参数名：\n\n{full_desc}"}
-            ]
-            
-            try:
-                result = client.chat(messages=messages, max_tokens=1000, require_json=True)
-                level2_result = self._parse_level2_result(result)
-                
-                strategy_results[api_path] = {
-                    "decision": level2_result["has_value"],
-                    "param_keys": level2_result["param_keys"]
-                }
-            except Exception as e:
-                logger.error(f"[-] Level 2 单点 ({api_path}) 解析异常：{e}，默认 has_value=1")
-                strategy_results[api_path] = {"decision": 1, "param_keys": []}
-        
         return strategy_results
 
     def analyze(self, context_data: Dict[str, Any], param_keys: List[str] = None) -> Optional[Dict[str, Any]]:
