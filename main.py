@@ -479,7 +479,11 @@ class Scanner:
             print(f"\n[D{depth}] 批次 {current_batch}/{total_batches} (Size: {len(batch_urls)})")
 
             try:
-                batch_result = await self._process_single_batch(batch_urls, depth)
+                batch_result = await asyncio.wait_for(
+                    self._process_single_batch(batch_urls, depth),
+                    timeout=BATCH_SIZE * 5
+                )
+
                 all_scan_info_list.extend(batch_result["scan_info_list"])
                 for n_url in batch_result["next_urls"]:
                     if self.checker.should_scan(n_url):
