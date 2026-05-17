@@ -3,6 +3,10 @@ from tree_sitter import Node
 
 from processor.js.context.parse import get_parser, get_logger
 
+# 上下文大小限制常量
+MAX_CONTEXT_BYTES = 5000  # 约5KB
+MAX_CONTEXT_TOKENS_ESTIMATE = 1500
+
 
 def _node_text_equals(node: Node, source_bytes: bytes, target_bytes: bytes) -> bool:
     if not node:
@@ -20,11 +24,55 @@ def _find_identifiers_in_node(node: Node, code_bytes: bytes) -> Set[str]:
     return idents
 
 
+def _find_semantic_boundary(node: Node) -> Optional[Node]:
+    """
+    寻找包含该节点的最小有意义语义边界
+    优先级：函数/方法定义 > 对象属性 > 语句
+    """
+    current = node
+    while current:
+        # 第一优先级：函数/方法定义
+        if current.type in {
+            'function_declaration',
+            'function_expression',
+            'arrow_function',
+            'method_definition'
+        }:
+            return current
+
+        # 第二优先级：对象属性（当值是函数时）
+        if current.type in {'pair', 'property'}:
+            value_node = current.child_by_field_name('value')
+            if value_node and value_node.type in {
+                'function',
+                'function_expression',
+                'arrow_function',
+                'method_definition'
+            }:
+                return current
+
+        current = current.parent
+
+    return None
+
+
+def _extract_complete_boundary(boundary_node: Node, code_bytes: bytes) -> str:
+    """提取完整的语义边界节点代码"""
+    return code_bytes[boundary_node.start_byte:boundary_node.end_byte].decode('utf-8')
+
+
 def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
-    """
-    轻量级切片 [抗 Webpack 混淆逗号声明增强版]
-    专治: var a = 1, b = 2, c = a + 3; 这种连体婴结构。
-    """
+
+    # 策略1：尝试提取语义边界
+    semantic_boundary = _find_semantic_boundary(api_node)
+    if semantic_boundary:
+        boundary_code = _extract_complete_boundary(semantic_boundary, code_bytes)
+
+        # 检查大小是否在合理范围内
+        if len(boundary_code.encode('utf-8')) <= MAX_CONTEXT_BYTES:
+            return boundary_code
+
+    # 策略2：降级到原有的语句级别提取
     stmt_node = api_node
     # 往上找，停在变量声明(Declarator)或独立语句(Statement/Property)
     while stmt_node and not (stmt_node.type.endswith(
@@ -42,7 +90,6 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
     used_vars = {v for v in used_vars if v not in ignore_list}
 
     dependencies = []
-
 
     if stmt_node.type == 'variable_declarator':
         parent_decl = stmt_node.parent
@@ -66,7 +113,6 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
                             'utf-8')  # 提取 var/let/const
                         dependencies.append(f"{decl_kind} {sibling_code};")
 
-
     parent_scope = stmt_node.parent
     # 如果上面进了同宗家族逻辑，作用域还要再往上跳一层
     if stmt_node.type == 'variable_declarator' and parent_scope:
@@ -88,8 +134,14 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
                 if any(f" {var} " in sibling_code or f"{var}=" in sibling_code.replace(" ", "") for var in used_vars):
                     dependencies.append(sibling_code)
 
-    # 4. 完美缝合
+    # 完美缝合
     final_slice = "\n".join(dependencies) + "\n" + core_line
+
+    # 最终大小检查
+    if len(final_slice.encode('utf-8')) > MAX_CONTEXT_BYTES:
+        # 如果加上依赖后超限，只返回核心代码
+        return core_line
+
     return final_slice
 
 
@@ -207,7 +259,7 @@ def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> D
         result_data = results[target_api]
         result_data["found"] = True
 
-        # 1. 切片提取 (这个因为范围限定在当前语句，不慢)
+        # 1. 切片提取 (使用增强版语义边界优先策略)
         result_data["wrapper_code"] = _extract_heuristic_slice(api_node, code_bytes)
 
         # 2. 寻找调用链 (享受刚才建立的索引带来的极速快感)

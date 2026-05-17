@@ -198,7 +198,7 @@ UNAUTHORIZED_PAGE_KEYWORDS: List[str] = [
 SECRET_DETECTION_BLACKLIST: List[str] = [
     "ABCDEFGHIJKLMNOP",  # 字母序列
     "abcdefghijklmnop",  # 小写字母序列
-    "0123456789",  # 数字序列
+    "123456789",  # 数字序列
     "0000000000",  # 重复数字
     "&lt;",  # HTML 转义字符
     "I18N",  # 国际化标识
