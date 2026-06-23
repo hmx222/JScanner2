@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from tldextract import tldextract
 
 from config.scanner_rules import STATIC_RESOURCE_EXTENSIONS
-from config.config import  WHITE_SCOPE_PATH
+from config.config import WHITE_SCOPE_PATH
 
 
 def analysis_by_rex(source) -> list:
@@ -34,7 +34,6 @@ def analysis_by_rex(source) -> list:
             """
     pattern = re.compile(pattern_raw, re.VERBOSE)
     links = pattern.findall(source)
-    # findall返回的是元组，取第一个元素(整个匹配组)
     relist = [link[0] for link in links]
     return list(set(relist))
 
@@ -54,11 +53,46 @@ def is_potential_domain(url: str) -> bool:
     return True
 
 
-def data_clean(base_url: str, dirty_data) -> list:
+def get_root_domain(url):
+    """
+    提取根域名 (例如: www.baidu.com -> baidu.com)
+    """
+    try:
+        parsed_url = urlparse(url)
+        full_domain = parsed_url.netloc
+        extracted = tldextract.extract(full_domain)
+        if not extracted.suffix:
+            return full_domain
+        root_domain = f"{extracted.domain}.{extracted.suffix}"
+        return root_domain
+    except:
+        return "unknown"
+
+
+def is_js_file(url):
+    js_pattern = re.compile(r'\.js(?=[^a-zA-Z]|$)')
+    json_pattern = re.compile(r'\.json')
+    return not json_pattern.search(url) and bool(js_pattern.search(url))
+
+
+def data_clean(current_url: str, dirty_data, seed_url: str = None) -> list:
+    """
+    清理和标准化URL列表
+
+    Args:
+        current_url: 当前正在处理的URL（可能是跨域JS文件）
+        dirty_data: 从正则表达式提取的原始URL列表
+        seed_url: 原始种子URL（用于跨域JS的URL拼接基准）。如果为None，则使用current_url
+
+    Returns:
+        标准化后的URL列表
+    """
     return_url_list = []
     if not dirty_data:
         return []
 
+    # 确定拼接基准URL：优先使用seed_url，否则使用current_url
+    base_url = seed_url if seed_url else current_url
 
     # 解析基础URL
     base_parsed = urlparse(base_url)
@@ -71,6 +105,11 @@ def data_clean(base_url: str, dirty_data) -> list:
     Protocol = base_parsed.scheme
     Domain = base_parsed.netloc
     Path = base_parsed.path.rstrip('/') or '/'
+
+    # 获取当前URL的根域名（用于判断是否跨域）
+    current_root_domain = get_root_domain(current_url)
+    base_root_domain = get_root_domain(base_url)
+    is_cross_domain = (current_root_domain != base_root_domain)
 
     for main_url in dirty_data:
         # 增加部分黑名单
@@ -87,7 +126,7 @@ def data_clean(base_url: str, dirty_data) -> list:
             continue
 
         if len(main_url) <= 5:
-             continue
+            continue
 
         if not main_url:
             continue
@@ -106,16 +145,15 @@ def data_clean(base_url: str, dirty_data) -> list:
         if main_url.startswith('//'):
             return_url = f"{Protocol}:{main_url}"
 
-        # 情况2: 以/开头的绝对路径
+        # 情况2: 以/开头的绝对路径 - 始终拼接到base_url
         elif main_url.startswith('/'):
             return_url = f"{Protocol}://{Domain}{main_url}"
 
-        # 情况3: 以./或../开头的相对路径
+        # 情况3: 以./或../开头的相对路径 - 始终拼接到base_url
         elif main_url.startswith(('./', '../')):
-            # 使用urljoin处理相对路径（最可靠的方式）
             return_url = urljoin(base_url, main_url)
 
-        # 情况4: 以http/https开头的绝对URL
+        # 情况4: 以http/https开头的绝对URL - 直接使用，不拼接
         elif main_url.startswith(('http://', 'https://')):
             return_url = main_url
 
@@ -127,7 +165,7 @@ def data_clean(base_url: str, dirty_data) -> list:
             else:
                 return_url = f"{Protocol}://{main_url}/"
 
-        # 情况6: 相对路径 (如 aaa/bbbb/ccc)
+        # 情况6: 相对路径 (如 aaa/bbbb/ccc) - 始终拼接到base_url
         else:
             # 检查是否包含路径分隔符且不像是域名
             if '/' in main_url and not is_potential_domain(main_url.split('/')[0]):
@@ -144,6 +182,7 @@ def data_clean(base_url: str, dirty_data) -> list:
             return_url_list.append(return_url)
 
     return return_url_list
+
 
 def check_url(original_url, splicing_url):
     """
@@ -167,29 +206,6 @@ def check_url(original_url, splicing_url):
         return False
 
 
-def get_root_domain(url):
-    """
-    提取根域名 (例如: www.baidu.com -> baidu.com)
-    """
-    try:
-        parsed_url = urlparse(url)
-        full_domain = parsed_url.netloc
-        extracted = tldextract.extract(full_domain)
-        # 处理 IP 地址的情况
-        if not extracted.suffix:
-            return full_domain
-        root_domain = f"{extracted.domain}.{extracted.suffix}"
-        return root_domain
-    except:
-        return "unknown"
-
-
-def is_js_file(url):
-    js_pattern = re.compile(r'\.js(?=[^a-zA-Z]|$)')
-    json_pattern = re.compile(r'\.json')
-    return not json_pattern.search(url) and bool(js_pattern.search(url))
-
-
 def extract_pure_js(html_content):
     """从包含HTML标签的内容中提取<pre>标签内的JS代码"""
     try:
@@ -204,3 +220,4 @@ def extract_pure_js(html_content):
             return html_content
     except:
         return html_content
+
