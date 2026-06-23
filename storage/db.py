@@ -53,19 +53,22 @@ class SQLiteStorage:
             CREATE TABLE IF NOT EXISTS ai_vulns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 js_url TEXT NOT NULL,
-                api_endpoint TEXT NOT NULL,
+                full_url TEXT NOT NULL,
                 http_method TEXT DEFAULT 'UNKNOWN',
                 risk_level TEXT NOT NULL DEFAULT 'Low',
                 path TEXT,
                 params JSON,
+                status_code INTEGER DEFAULT NULL,
+                content_summary TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(js_url, api_endpoint)
+                UNIQUE(js_url, full_url)
             );
             """
             cursor.execute(create_ai_table_sql)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_risk ON ai_vulns(risk_level);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_endpoint ON ai_vulns(api_endpoint);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_url ON ai_vulns(full_url);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_js_url ON ai_vulns(js_url);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_status_code ON ai_vulns(status_code);")
 
             # 3. 敏感信息硬编码表
             create_sensitive_table_sql = """
@@ -109,6 +112,18 @@ class SQLiteStorage:
             cursor.execute(create_processed_paths_table_sql)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_processed_path ON processed_api_paths(api_path);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_processed_js ON processed_api_paths(js_url);")
+
+            create_source_map_table_sql = """
+            CREATE TABLE IF NOT EXISTS js_source_maps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                js_url TEXT NOT NULL UNIQUE,
+                is_sourceMap TEXT NOT NULL DEFAULT 'N',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+            cursor.execute(create_source_map_table_sql)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sourcemap_js ON js_source_maps(js_url);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sourcemap_flag ON js_source_maps(is_sourceMap);")
 
             self.conn.commit()
             logger.info(f"✅ [DB] 数据库初始化成功：{self.db_path}")
@@ -479,13 +494,13 @@ class SQLiteStorage:
                 return True
         return False
 
-    def save_ai_result(self, js_url: str, api_endpoint: str, advisory_report: Dict[str, Any]):
+    def save_ai_result(self, js_url: str, full_url: str, advisory_report: Dict[str, Any]):
         if not advisory_report or not isinstance(advisory_report, dict):
             logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
             return
 
-        if not js_url or not api_endpoint:
-            logger.warning("⚠️ [DB] js_url 或 api_endpoint 为空")
+        if not js_url or not full_url:
+            logger.warning("⚠️ [DB] js_url 或 full_url 为空")
             return
 
         try:
@@ -501,13 +516,13 @@ class SQLiteStorage:
 
             sql = """
                 INSERT OR REPLACE INTO ai_vulns
-                (js_url, api_endpoint, http_method, risk_level, path, params)
+                (js_url, full_url, http_method, risk_level, path, params)
                 VALUES (?, ?, ?, ?, ?, ?)
             """
 
             cursor.execute(sql, (
                 js_url,
-                api_endpoint,
+                full_url,
                 http_method,
                 risk_level,
                 path,
@@ -517,17 +532,171 @@ class SQLiteStorage:
             self.conn.commit()
 
             if risk_level == "High":
-                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {api_endpoint}")
+                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {full_url}")
                 if params_parsed:
                     logger.info(f"   🔑 关键参数：{params_parsed}")
             else:
-                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {api_endpoint} [{risk_level}]")
+                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {full_url} [{risk_level}]")
 
         except Exception as e:
             self.conn.rollback()
             logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
             raise
 
+    def save_ai_result_with_id(
+        self,
+        js_url: str,
+        full_url: str,
+        advisory_report: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        保存 AI 分析结果并返回记录 ID（用于后续更新请求结果）
+        
+        Args:
+            js_url: JS 文件 URL
+            full_url: 完整 API URL
+            advisory_report: AI 分析报告
+        
+        Returns:
+            记录 ID，失败时返回 None
+        """
+        if not advisory_report or not isinstance(advisory_report, dict):
+            logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
+            return None
+
+        if not js_url or not full_url:
+            logger.warning("⚠️ [DB] js_url 或 full_url 为空")
+            return None
+
+        try:
+            cursor = self.conn.cursor()
+
+            raw_method = advisory_report.get("method", "")
+            http_method = self._normalize_method(raw_method)
+            path = advisory_report.get("path", "")
+            params_raw = advisory_report.get("params", "")
+            params_parsed = self._parse_params(params_raw)
+            params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
+            risk_level = self._calculate_risk_level(path, params_parsed, http_method)
+
+            sql = """
+                INSERT OR REPLACE INTO ai_vulns
+                (js_url, full_url, http_method, risk_level, path, params)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+
+            cursor.execute(sql, (
+                js_url,
+                full_url,
+                http_method,
+                risk_level,
+                path,
+                params_json
+            ))
+
+            self.conn.commit()
+            
+            # 获取插入或更新的记录 ID
+            record_id = cursor.lastrowid
+            
+            if risk_level == "High":
+                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {full_url} (ID={record_id})")
+                if params_parsed:
+                    logger.info(f"   🔑 关键参数：{params_parsed}")
+            else:
+                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {full_url} [{risk_level}] (ID={record_id})")
+            
+            return record_id
+
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
+            return None
+
+    def update_ai_vuln_request_result(
+        self,
+        record_id: int,
+        status_code: int,
+        content_summary: str
+    ) -> bool:
+        """
+        更新 ai_vulns 表的请求结果（status_code 和 content_summary）
+        
+        Args:
+            record_id: ai_vulns 表的记录 ID
+            status_code: HTTP 状态码（-1/-2 表示失败）
+            content_summary: 响应内容摘要（前500字符）
+        
+        Returns:
+            是否更新成功
+        """
+        try:
+            cursor = self.conn.cursor()
+            sql = """
+                UPDATE ai_vulns
+                SET status_code = ?, content_summary = ?
+                WHERE id = ?
+            """
+            cursor.execute(sql, (status_code, content_summary, record_id))
+            self.conn.commit()
+            
+            if cursor.rowcount > 0:
+                logger.debug(f"✅ [DB] 更新请求结果: ID={record_id}, status={status_code}")
+                return True
+            else:
+                logger.warning(f"⚠️ [DB] 未找到记录: ID={record_id}")
+                return False
+                
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 更新请求结果失败: ID={record_id}, Error={e}")
+            return False
+
+    def batch_update_ai_vuln_request_results(
+        self,
+        results: list
+    ) -> int:
+        """
+        批量更新 ai_vulns 表的请求结果
+        
+        Args:
+            results: 结果列表，每个元素包含:
+                - id: 记录 ID
+                - status_code: 状态码
+                - content_summary: 内容摘要
+        
+        Returns:
+            成功更新的记录数
+        """
+        if not results:
+            return 0
+        
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION;")
+            
+            sql = """
+                UPDATE ai_vulns
+                SET status_code = ?, content_summary = ?
+                WHERE id = ?
+            """
+            
+            data = [
+                (r["status_code"], r["content_summary"], r["id"])
+                for r in results
+            ]
+            
+            cursor.executemany(sql, data)
+            self.conn.commit()
+            
+            updated_count = cursor.rowcount
+            logger.info(f"✅ [DB] 批量更新请求结果: {updated_count}/{len(results)} 条")
+            return updated_count
+            
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 批量更新请求结果失败: {e}")
+            return 0
 
     def save_sensitive_info(self, js_url: str, sensitive_items: List[Dict[str, Any]]):
         if not js_url:
@@ -754,11 +923,11 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] 按 JS URL 读取失败：{e}")
             return []
 
-    def get_vuln_by_endpoint(self, api_endpoint: str) -> Optional[Dict[str, Any]]:
+    def get_vuln_by_full_url(self, full_url: str) -> Optional[Dict[str, Any]]:
         try:
             cursor = self.conn.cursor()
-            sql = "SELECT * FROM ai_vulns WHERE api_endpoint = ? LIMIT 1"
-            cursor.execute(sql, (api_endpoint,))
+            sql = "SELECT * FROM ai_vulns WHERE full_url = ? LIMIT 1"
+            cursor.execute(sql, (full_url,))
             row = cursor.fetchone()
             if row:
                 columns = [desc[0] for desc in cursor.description]
@@ -771,7 +940,7 @@ class SQLiteStorage:
                 return record
             return None
         except Exception as e:
-            logger.error(f"❌ [DB] 按端点读取失败：{e}")
+            logger.error(f"❌ [DB] 按完整URL读取失败：{e}")
             return None
 
     def get_stats(self) -> Dict[str, Any]:
@@ -838,7 +1007,7 @@ class SQLiteStorage:
                 f.write("URL,Method,Risk Level,Path,Params\n")
 
                 for vuln in high_risks:
-                    url = vuln.get("api_endpoint", "")
+                    url = vuln.get("full_url", "")
                     method = vuln.get("http_method", "UNKNOWN")
                     risk = vuln.get("risk_level", "Low")
 
@@ -859,3 +1028,48 @@ class SQLiteStorage:
         except Exception as e:
             logger.error(f"❌ [DB] 导出 Burp 格式失败：{e}")
             return False
+
+    def save_source_map_result(self, js_url: str, is_source_map: str) -> bool:
+        try:
+            cursor = self.conn.cursor()
+            sql = """
+                INSERT OR REPLACE INTO js_source_maps (js_url, is_sourceMap)
+                VALUES (?, ?)
+            """
+            cursor.execute(sql, (js_url, is_source_map))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] SourceMap 结果写入失败：{e}")
+            return False
+
+    def batch_save_source_map_results(self, results: list) -> int:
+        if not results:
+            return 0
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION;")
+            sql = """
+                INSERT OR REPLACE INTO js_source_maps (js_url, is_sourceMap)
+                VALUES (?, ?)
+            """
+            cursor.executemany(sql, results)
+            self.conn.commit()
+            logger.info(f"💾 [DB] SourceMap 检测结果写入：{len(results)} 条")
+            return len(results)
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] SourceMap 批量写入失败：{e}")
+            return 0
+
+    def get_source_map_results(self) -> List[Dict[str, Any]]:
+        try:
+            cursor = self.conn.cursor()
+            sql = "SELECT * FROM js_source_maps ORDER BY created_at DESC"
+            cursor.execute(sql)
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"❌ [DB] 读取 SourceMap 结果失败：{e}")
+            return []
