@@ -1,10 +1,3 @@
-"""
-敏感信息检测配置模块
-
-本模块包含敏感信息扫描器所需的各种过滤规则、关键词字典和黑名单配置。
-主要用于减少误报、提高检测准确率。
-"""
-
 from typing import Set, List
 
 # =============================================================================
@@ -142,7 +135,7 @@ VALID_HTTP_METHODS: List[str] = [
 STATIC_RESOURCE_EXTENSIONS: Set[str] = {
     '.aac', '.apk', '.css', '.eot', '.exe', '.gif', '.ico',
     '.jpg', '.jpeg', '.m4v', '.mp3', '.mp4', '.otf', '.png',
-    '.svg', '.swf', '.ttf', '.webp', '.woff', '.woff2'
+    '.svg', '.swf', '.ttf', '.webp', '.woff', '.woff2','.html','.htm'
 }
 
 # Playwright 浏览器自动化时需要拦截的资源类型
@@ -160,14 +153,9 @@ HTTPX_STATIC_EXTENSIONS: List[str] = [
     '.aac', '.apk', '.css', '.csv', '.eot', '.exe', '.gif', '.ico',
     '.jpg', '.jpeg', '.js', '.json', '.m4v', '.map', '.mp3', '.mp4',
     '.otf', '.png', '.svg', '.swf', '.ttf', '.txt', '.wav', '.webp',
-    '.woff', '.woff2', '.xls', '.xlsx', '.xml'
+    '.woff', '.woff2', '.xls', '.xlsx', '.xml','.html','.htm'
 ]
 
-# 需要使用 Playwright 渲染的页面后缀列表
-# 这些页面包含 JavaScript 逻辑，需要浏览器环境执行
-PLAYWRIGHT_RENDER_EXTENSIONS: List[str] = [
-    '.html', '.htm', '.xhtml'
-]
 
 # =============================================================================
 # 6. FastScan 快速扫描模式过滤规则
@@ -198,7 +186,7 @@ UNAUTHORIZED_PAGE_KEYWORDS: List[str] = [
 SECRET_DETECTION_BLACKLIST: List[str] = [
     "ABCDEFGHIJKLMNOP",  # 字母序列
     "abcdefghijklmnop",  # 小写字母序列
-    "0123456789",  # 数字序列
+    "123456789",  # 数字序列
     "0000000000",  # 重复数字
     "&lt;",  # HTML 转义字符
     "I18N",  # 国际化标识
@@ -212,4 +200,40 @@ WEB_TECHNICAL_WORDS: Set[str] = {
     'const', 'json', 'facebook', 'webpack', 'redis', 'params',
     'bitbucket', 'django', 'admin', 'github', 'href',
     'gitlab', 'config', 'laravel', "microsoft", "I18N"
+}
+
+
+# =============================================================================
+# 8. HTTP 请求模板与配置
+# =============================================================================
+
+# 固定请求头配置（用于 ai_vulns 表的自动化请求验证）
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
+    "Referer": "https://cloud.tencent.com",
+    "Content-Type": "application/json"
+}
+
+# 请求超时时间（秒）
+REQUEST_TIMEOUT = 5
+
+# 响应内容摘要长度限制（字符数）
+CONTENT_SUMMARY_MAX_LENGTH = 500
+
+# 支持的 HTTP 方法列表（用于请求执行）
+SUPPORTED_REQUEST_METHODS = {"GET", "POST", "PUT"}
+
+# 默认降级方法（当 method 不在支持列表中时使用）
+DEFAULT_REQUEST_METHOD = "GET"
+
+
+# =============================================================================
+# 9. API Path 黑名单关键词
+# =============================================================================
+
+# API Path 黑名单关键词（小写）
+# 如果 API path 包含这些关键词，将直接跳过处理
+API_PATH_BLACKLIST_KEYWORDS: Set[str] = {
+    'del',
+    'delete',
 }

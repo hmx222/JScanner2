@@ -211,99 +211,100 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
             thread_num=min(thread_num, 10),
             headers=None,
             cookies=None,
-            timeout=GLOBAL_TIMEOUT,
-            method="GET"
+            timeout=10
         )
-
-        for fb_result in fallback_results:
-            if not fb_result.get("error"):
-                html = fb_result.get("response_content", "")
-                fb_url = fb_result.get("url", "")
-                fb_status = fb_result.get("status_code", 500)
-                results.append(({
-                                    "type": "success",
-                                    "html": html,
-                                    "url": fb_url,
-                                    "status": fb_status,
-                                    "redirect_count": 0,
-                                    "redirect_locations": []
-                                }, fb_url, fb_status))
+        # 更新结果
+        updated_count = 0
+        for i, (scan_result, url, status) in enumerate(results):
+            if scan_result and scan_result.get("type") == "error":
+                for fb_result in fallback_results:
+                    if fb_result["url"] == url and not fb_result.get("error"):
+                        results[i] = (
+                            {
+                                "type": "success",
+                                "html": fb_result["response_content"],
+                                "url": url,
+                                "status": fb_result["status_code"],
+                                "redirect_count": fb_result.get("redirect_count", 0),
+                                "redirect_locations": []
+                            },
+                            url,
+                            fb_result["status_code"]
+                        )
+                        updated_count += 1
+                        break
+        print(f"✅ 成功补救 {updated_count} 个 URL")
 
     # 处理结果
-    scan_info_list = []
     all_next_urls_with_source = []
-    all_next_paths_with_source = []
+    scan_info_list = []
     all_next_urls = set()
+    all_next_paths_with_source = []
 
-    for item in results:
-        if not item or item[0] is None:
+    # 获取 seed_url（从 args 中）
+    seed_url = getattr(args, 'url', None)
+
+    for scan_result, url, final_status in results:
+        if not scan_result or scan_result.get("type") != "success":
             continue
 
-        scan_result, url, status = item
+        html = scan_result.get("html", "")
+        final_url = scan_result.get("url", url)
+        redirect_count = scan_result.get("redirect_count", 0)
 
-        # 处理多次跳转情况 (超过 1 次)
-        if scan_result.get("type") == "redirect_loop":
-            redirect_stats["redirect_loop"] += 1
-            redirect_count = scan_result.get("redirect_count", 0)
-            print(f"🚫 跳过 {url} (跳转 {redirect_count} 次，超过限制)")
+        if not html:
             continue
 
-        # 处理错误情况
-        if scan_result.get("type") == "error":
-            redirect_stats["error"] += 1
-            continue
-
-        # 处理成功情况 (包含 0 次和 1 次跳转)
-        if scan_result.get("type") == "success":
-            redirect_count = scan_result.get("redirect_count", 0)
-
+        # 统计跳转次数
+        redirect_stats["total"] += 1
+        if final_status and 200 <= final_status < 400:
+            redirect_stats["success"] += 1
             if redirect_count == 0:
                 redirect_stats["redirect_0"] += 1
             elif redirect_count == 1:
                 redirect_stats["redirect_1"] += 1
+            else:
+                redirect_stats["redirect_loop"] += 1
+        else:
+            redirect_stats["error"] += 1
 
-            redirect_stats["success"] += 1
+        parsed = urlparse(final_url)
 
-            html = scan_result.get("html", "")
-            final_url = scan_result.get("url", url)
-            final_status = scan_result.get("status", status)
+        scan_info = {
+            "domain": parsed.hostname,
+            "url": final_url,
+            "path": parsed.path,
+            "port": parsed.port or (443 if parsed.scheme == "https" else 80),
+            "status": final_status,
+            "length": len(html),
+            "source_code": html,
+            "is_valid": 0,
+            "redirect_count": redirect_count,
+            "redirect_locations": scan_result.get("redirect_locations", []),
+            "original_url": url  # 记录原始请求 URL
+        }
 
-            parsed = urlparse(final_url)
+        # 传递 seed_url 给 process_scan_result
+        is_valid, next_urls_without_source, next_paths_without_source = \
+            await process_scan_result(scan_info, checker, args, seed_url=seed_url)
 
-            scan_info = {
-                "domain": parsed.hostname,
-                "url": final_url,
-                "path": parsed.path,
-                "port": parsed.port or (443 if parsed.scheme == "https" else 80),
-                "status": final_status,
-                "length": len(html),
-                "source_code": html,
-                "is_valid": 0,
-                "redirect_count": redirect_count,
-                "redirect_locations": scan_result.get("redirect_locations", []),
-                "original_url": url  # 记录原始请求 URL
+        if is_valid:
+            scan_info["is_valid"] = 1
+
+            next_urls_with_source = {
+                "next_urls": next_urls_without_source,
+                "sourceURL": final_url
             }
+            all_next_urls_with_source.append(next_urls_with_source)
+            all_next_urls.update(next_urls_without_source)
 
-            is_valid, next_urls_without_source, next_paths_without_source = \
-                await process_scan_result(scan_info, checker, args)
+            next_paths_with_source = {
+                "next_paths": next_paths_without_source,
+                "sourceURL": final_url
+            }
+            all_next_paths_with_source.append(next_paths_with_source)
 
-            if is_valid:
-                scan_info["is_valid"] = 1
-
-                next_urls_with_source = {
-                    "next_urls": next_urls_without_source,
-                    "sourceURL": final_url
-                }
-                all_next_urls_with_source.append(next_urls_with_source)
-                all_next_urls.update(next_urls_without_source)
-
-                next_paths_with_source = {
-                    "next_paths": next_paths_without_source,
-                    "sourceURL": final_url
-                }
-                all_next_paths_with_source.append(next_paths_with_source)
-
-            scan_info_list.append(scan_info)
+        scan_info_list.append(scan_info)
 
     return (
         all_next_urls_with_source,
@@ -311,5 +312,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
         all_next_urls,
         all_next_paths_with_source
     )
+
 
 

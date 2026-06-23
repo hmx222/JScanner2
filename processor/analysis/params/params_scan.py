@@ -1,4 +1,6 @@
 import re
+import traceback
+from traceback import print_exc
 from typing import Any, Dict, Optional, List
 
 import json_repair
@@ -62,20 +64,36 @@ class AISecurityAuditor:
                 "param_keys": param_keys
             }
 
+        # 如果 content 是列表，说明 AI 返回格式错误，使用默认值
+        if isinstance(content, list):
+            logger.warning(f"⚠️ Level 2 返回了列表而非字典：{content}，默认 has_value=1")
+            return {"has_value": 1, "param_keys": []}
+
         content = content.strip()
 
         try:
             parsed = json_repair.loads(content)
-            has_value = parsed.get("has_value", 1)
-            param_keys = parsed.get("param_keys", [])
+            
+            # 再次检查解析后的类型
+            if isinstance(parsed, list):
+                logger.warning(f"⚠️ Level 2 JSON 解析后为列表：{parsed}，默认 has_value=1")
+                return {"has_value": 1, "param_keys": []}
+            
+            if isinstance(parsed, dict):
+                has_value = parsed.get("has_value", 1)
+                param_keys = parsed.get("param_keys", [])
 
-            # 过滤单字母参数名
-            param_keys = [k for k in param_keys if len(k) > 1 or k.lower() in ['id', 'ip', 'os']]
+                # 过滤单字母参数名
+                param_keys = [k for k in param_keys if len(k) > 1 or k.lower() in ['id', 'ip', 'os']]
 
-            return {
-                "has_value": has_value,
-                "param_keys": param_keys
-            }
+                return {
+                    "has_value": has_value,
+                    "param_keys": param_keys
+                }
+            
+            # 其他类型，使用默认值
+            logger.warning(f"⚠️ Level 2 JSON 解析后为未知类型：{type(parsed)}，默认 has_value=1")
+            return {"has_value": 1, "param_keys": []}
 
         except Exception as e:
             logger.warning(f"⚠️ Level 2 JSON 解析失败：{e}，默认 has_value=1")
@@ -213,7 +231,8 @@ class AISecurityAuditor:
                 logger.debug(f"[{api_path}] Has value: {level2_result['has_value']}, Keys: {level2_result['param_keys']}")
 
             except Exception as e:
-                logger.error(f"[-] Level 2 单点 ({api_path}) 解析异常：{e}，默认 has_value=1")
+                exc = traceback.format_exc()
+                logger.error(f"[-] Level 2 单点 ({api_path}) 解析异常：{exc}，默认 has_value=1")
                 strategy_results[api_path] = {
                     "decision": 1,
                     "param_keys": []
