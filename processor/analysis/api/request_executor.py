@@ -91,34 +91,6 @@ def _parse_params_string(params_str: str) -> Dict[str, Any]:
     return params
 
 
-def _check_405_response(response: httpx.Response) -> bool:
-    """
-    检查响应是否为 405 Method Not Allowed
-
-    检测逻辑：
-    1. HTTP 状态码为 405
-    2. 响应文本前200字符或后200字符中包含 "405" 或 "Not Allowed"
-    """
-    if response.status_code == 405:
-        return True
-
-    text = response.text
-    if not text:
-        return False
-
-    head = text[:200]
-    tail = text[-200:] if len(text) > 200 else ""
-    check_zone = (head + tail).lower()
-
-    return "405" in check_zone or "not allowed" in check_zone
-
-
-def _switch_method(current_method: str) -> str:
-    """在 GET → POST → PUT 之间轮换"""
-    cycle = {"GET": "POST", "POST": "PUT", "PUT": "GET"}
-    return cycle.get(current_method, "GET")
-
-
 def execute_api_request(
         full_url: str,
         method: str,
@@ -161,17 +133,6 @@ def execute_api_request(
         # Step 3: 构建请求头
         headers = REQUEST_HEADERS.copy()
 
-        # Step 4: 根据 method 发起请求（含 405 自动切换重试）
-        for attempt in range(2):
-            response = _dispatch_request(normalized_method, full_url, headers, params_dict)
-
-            if attempt == 0 and _check_405_response(response):
-                old_method = normalized_method
-                normalized_method = _switch_method(normalized_method)
-                logger.info(f"🔄 [Request] 405 detected ({old_method}), 切换为 {normalized_method} 重试: {full_url}")
-                continue
-
-            break
 
         # Step 5: 提取结果（先去除HTML标签，再截取长度）
         clean_content = _strip_html_tags(response.text)
@@ -196,26 +157,6 @@ def execute_api_request(
         logger.error(f"❌ [Request] 未知错误: {full_url} | {e}")
 
     return result
-
-
-def _dispatch_request(
-        method: str,
-        url: str,
-        headers: Dict[str, str],
-        params: Dict[str, Any]
-) -> httpx.Response:
-    """
-    根据 HTTP 方法分发请求，自动处理参数位置：
-    - GET: 参数作为 query string
-    - POST/PUT: 参数作为 JSON body
-    """
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        if method == "GET":
-            return client.get(url, headers=headers, params=params)
-        elif method == "POST":
-            return client.post(url, headers=headers, json=params)
-        else:  # PUT
-            return client.put(url, headers=headers, json=params)
 
 
 def _normalize_method(method: str) -> str:
