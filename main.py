@@ -634,12 +634,21 @@ class Scanner:
             print(f"✅ 深度 {depth} 完成")
 
     async def _extract_sensitive_info(self, scan_info_list):
+        source_map_results = []
         for scan_info in scan_info_list:
             url = scan_info["url"]
             if not (scan_info["is_valid"] == 1 or url in self.initial_urls):
                 continue
             if ".js" not in scan_info["url"]:
                 continue
+
+            source_code = scan_info.get("source_code", "")
+            tail = source_code[-300:] if len(source_code) > 300 else source_code
+            has_source_map = "Y" if "sourceMappingURL=" in tail else "N"
+            source_map_results.append((url, has_source_map))
+            if has_source_map == "Y":
+                print(f"🗺️ [SourceMap] 发现 SourceMap 暴露：{url}")
+
             combined_sensitive_info = set()
             if self.args.analyzeSensitiveInfoAI and self.sensitive_scanner:
                 try:
@@ -667,6 +676,12 @@ class Scanner:
                         combined_sensitive_info.update(rex_results)
                 except Exception:
                     pass
+
+        if source_map_results:
+            self.db_handler.batch_save_source_map_results(source_map_results)
+            yes_count = sum(1 for _, flag in source_map_results if flag == "Y")
+            print(f"🗺️ [SourceMap] 检测完成：{len(source_map_results)} 个JS文件，{yes_count} 个暴露了 SourceMap")
+
 
 
 if __name__ == '__main__':

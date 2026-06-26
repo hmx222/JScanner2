@@ -133,16 +133,6 @@ def execute_api_request(
         # Step 3: 构建请求头
         headers = REQUEST_HEADERS.copy()
 
-        # Step 4: 根据 method 发起请求
-        if normalized_method == "GET":
-            response = _execute_get(full_url, headers, params_dict)
-        elif normalized_method == "POST":
-            response = _execute_post_put("POST", full_url, headers, params_dict)
-        elif normalized_method == "PUT":
-            response = _execute_post_put("PUT", full_url, headers, params_dict)
-        else:
-            # 理论上不会到这里，因为 _normalize_method 已经处理了
-            response = _execute_get(full_url, headers, params_dict)
 
         # Step 5: 提取结果（先去除HTML标签，再截取长度）
         clean_content = _strip_html_tags(response.text)
@@ -190,54 +180,6 @@ def _normalize_method(method: str) -> str:
     # 非标准方法降级为 GET
     logger.debug(f"⚠️ [Request] 不支持的方法 '{method}'，降级为 GET")
     return DEFAULT_REQUEST_METHOD
-
-
-def _execute_get(
-        url: str,
-        headers: Dict[str, str],
-        params: Dict[str, Any]
-) -> httpx.Response:
-    """
-    执行 GET 请求
-
-    Args:
-        url: 目标 URL
-        headers: 请求头
-        params: 查询参数（会自动拼接到 URL）
-
-    Returns:
-        httpx 响应对象
-    """
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        response = client.get(url, headers=headers, params=params)
-        return response
-
-
-def _execute_post_put(
-        method: str,
-        url: str,
-        headers: Dict[str, str],
-        body: Dict[str, Any]
-) -> httpx.Response:
-    """
-    执行 POST 或 PUT 请求
-
-    Args:
-        method: "POST" 或 "PUT"
-        url: 目标 URL
-        headers: 请求头
-        body: 请求体（会自动序列化为 JSON）
-
-    Returns:
-        httpx 响应对象
-    """
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        if method == "POST":
-            response = client.post(url, headers=headers, json=body)
-        else:  # PUT
-            response = client.put(url, headers=headers, json=body)
-        return response
-
 
 async def batch_execute_requests(
         vuln_records: list
