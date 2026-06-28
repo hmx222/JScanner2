@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
----
+
 [中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
 [English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
@@ -17,7 +17,7 @@
   * 自动识别参数
   * AI 风险分析（例如：硬编码 Token → 可利用）
 
----
+
 
 
 ## 🚀 为什么选择 JScanner2
@@ -97,7 +97,7 @@ docker compose run --rm scanner run_scan.sh urls.txt
 
 👉 结果会被保存以供后续分析
 
----
+
 
 ## ⚠️ 免责声明
 
@@ -107,7 +107,7 @@ docker compose run --rm scanner run_scan.sh urls.txt
 * 遵守法律法规
 * 严禁非法使用
 
----
+
 
 ## 🤝 致谢
 
@@ -116,7 +116,7 @@ docker compose run --rm scanner run_scan.sh urls.txt
 * NLTK
 * 阿里云
 
----
+
 
 ## 📧 问题反馈
 
