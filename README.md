@@ -4,7 +4,7 @@
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
 
----
+
 [中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
 [English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
@@ -16,7 +16,7 @@
   * Parameters auto-identified
   * AI risk analysis (e.g. HARD-CODED TOKEN → exploitable)
 
----
+
 
 
 ## 🚀 Why JScanner2
@@ -98,7 +98,7 @@ docker compose run --rm scanner run_scan.sh urls.txt
 
 👉 Results are stored for analysis
 
----
+
 
 ## ⚠️ Disclaimer
 
@@ -108,7 +108,7 @@ For authorized security testing only.
 * Follow laws
 * No illegal usage
 
----
+
 
 ## 🤝 Acknowledgements
 
@@ -116,7 +116,7 @@ For authorized security testing only.
 * LinkFinder
 * NLTK
 * 阿里云
----
+
 
 ## 📧 Feedback
 
