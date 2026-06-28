@@ -56,11 +56,9 @@ In real-world SRC testing:
 
 👉 JScanner2 bridges this gap
 
----
+
 
 # ⚡ Usage Overview
-
----
 
 ## ⚡ Start 
 
