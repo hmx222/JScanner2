@@ -8,10 +8,6 @@
 [中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
 [English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
-## 🎬 Demo
-
-![B0CIOkQJ_converted](https://github.com/user-attachments/assets/d9034311-8343-4c08-b298-6403b09b012f)
-
 
 * Input: [https://example.com](https://example.com)
 * Output:
@@ -64,126 +60,36 @@ In real-world SRC testing:
 
 # ⚡ Usage Overview
 
-> 🎯 Three usage levels depending on your needs:
-
-* **Quick Scan** → No config, fast results
-* **AI Scan (Recommended)** → Full capability
-* **Automation Mode** → Batch + notification
-
 ---
 
-## ⚡ Quick Start (No Configuration)
-
-Run a basic scan without any configuration:
+## ⚡ Start 
 
 ```bash
-python main.py -u https://example.com -H 6
-```
+git clone https://github.com/hmx222/JScanner2.git
 
-### Features:
-
-* ✅ No API key required
-* ✅ Fast execution
-
-> 💡 Uses regex-based detection only (no AI)
-
----
-
-## 🚀 AI-Powered Scan (Recommended)
-
-Enable full functionality:
-
-```bash
-# install dependencies
-pip install -r requirements.txt
-playwright install
-playwright install-deps
-npm install prettier
-
-# configure
-vim config/config.py
-# set: BASE_URL, API_KEY
-
-# run(Recommended)
-python main.py -u https://example.com -asia -fp -H 6
-```
-
-### Features:
-
-* Intelligent parameter identification
-* AI-based sensitive info detection
-* Exploit suggestions
-
-> 🔥 Recommended for real vulnerability discovery
-
----
-
-## 🤖 Automation Mode (Batch + Notification)
-
-Run large-scale scans with notification:
-
-```bash
+# [Optional] Edit `run_scan.sh` to configure the `FEISHU_WEBHOOK`. 
+# Replace the default URL with your own Feishu (Lark) bot webhook.
 vim run_scan.sh
-# configure FEISHU_WEBHOOK
 
-echo urls.txt | ./run_scan.sh
+# [REQUIRED] You must configure the LLM API Key in this file. 
+# You can also configure the Feishu bot token here (optional). 
+# Note: If the Feishu token is not set, error messages and task completion notifications 
+# will not be pushed to Feishu. You won't receive timely alerts or know when the task finishes.
+vim config/config.py
+
+# [REQUIRED] Strictly configure the model parameters in this JSON file.
+vim config/models_config.json
+
+# [Optional] You can customize the scanner rules according to your own needs.
+vim config/scanner_rules.py
+
+# [Optional] Configure the whitelist. Add the specific domains that are allowed to be crawled by the spider.
+vim config/whiteList.txt
+
+docker compose run --rm scanner run_scan.sh urls.txt
 ```
 
-### Features:
 
-* Batch scanning
-* Background execution (server)
-* Feishu notification
-
-> 💡 Ideal for VPS / long-running tasks
-
----
-
-## 🛠️ Installation
-
-### Requirements
-
-* Python 3.9+
-
-### Full Installation
-
-```bash
-pip install -r requirements.txt
-playwright install-deps
-playwright install
-npm install prettier
-```
-
----
-
-## ⚙️ Configuration
-
-Edit:
-
-```bash
-config/config.py
-```
-
-Modify:
-
-* BASE_URL
-* API_KEY
-* Proxy (optional)
-* FEISHU_WEBHOOK (optional)
-
----
-
-## 🧠 Core Parameters
-
-| Parameter | Description           |
-| --------- | --------------------- |
-| -asia     | AI-based analysis     |
-| -asir     | Regex-based detection |
-| -fp       | Parameter discovery   |
-| -fs       | Fast scan             |
-| -H        | Scan depth            |
-
----
 
 ## 📊 Output
 
