@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, Set
+from typing import Any, Dict, Optional, List, Set, Tuple
 from tree_sitter import Node
 
 from processor.js.context.parse import get_parser, get_logger
@@ -6,6 +6,12 @@ from processor.js.context.parse import get_parser, get_logger
 # 上下文大小限制常量
 MAX_CONTEXT_BYTES = 5000  # 约5KB
 MAX_CONTEXT_TOKENS_ESTIMATE = 1500
+_MAX_OBJECT_BYTES = 50000
+
+_FUNCTION_TYPES = {
+    'function_declaration', 'function_expression',
+    'arrow_function', 'method_definition'
+}
 
 
 def _node_text_equals(node: Node, source_bytes: bytes, target_bytes: bytes) -> bool:
@@ -61,6 +67,287 @@ def _extract_complete_boundary(boundary_node: Node, code_bytes: bytes) -> str:
     return code_bytes[boundary_node.start_byte:boundary_node.end_byte].decode('utf-8')
 
 
+# ==================== 变量传播法 ====================
+
+def _is_scope_boundary(node: Node) -> bool:
+    return node.type in _FUNCTION_TYPES or node.type == 'program'
+
+
+def _extract_string_content(node_bytes: bytes) -> Optional[str]:
+    """从 string 节点的原始 bytes 中提取字符串内容（去掉引号）"""
+    text = node_bytes.decode('utf-8')
+    if len(text) < 2:
+        return None
+    quote = text[0]
+    if quote in ('"', "'", '`') and text[-1] == quote:
+        inner = text[1:-1]
+        return inner.replace('\\"', '"').replace("\\'", "'").replace('\\\\', '\\')
+    return text
+
+
+def _build_scope_chain(usage_node: Node, code_bytes: bytes) -> List[List[Node]]:
+    """
+    从使用点向上遍历，收集作用域链（局部 → 全局）
+    每个 scope 是该作用域内所有 variable_declaration / lexical_declaration / assignment_expression 节点列表
+    """
+    scopes = []
+    current = usage_node.parent
+
+    while current:
+        if _is_scope_boundary(current):
+            scope_decls = []
+            _collect_decls_in_subtree(current, scope_decls)
+            scopes.append(scope_decls)
+            if current.type == 'program':
+                break
+        current = current.parent
+
+    return scopes
+
+
+def _collect_decls_in_subtree(node: Node, decls: List[Node]):
+    """递归收集节点子树中所有声明/赋值节点"""
+    if node.type in ('variable_declaration', 'lexical_declaration'):
+        decls.append(node)
+        return
+    if node.type == 'assignment_expression':
+        decls.append(node)
+    for child in node.children:
+        if child.type in _FUNCTION_TYPES:
+            continue
+        _collect_decls_in_subtree(child, decls)
+
+
+def _find_var_value_node(var_name: str, usage_node: Node, code_bytes: bytes) -> Optional[Node]:
+    """
+    带作用域优先级的变量查找：局部作用域 → 全局作用域
+    返回变量定义的 value 节点（声明必须在使用点之前）
+    """
+    target = var_name.encode('utf-8')
+    scopes = _build_scope_chain(usage_node, code_bytes)
+
+    for decls in scopes:
+        for decl in decls:
+            if decl.start_byte >= usage_node.start_byte:
+                continue
+            if decl.type == 'assignment_expression':
+                left_node = decl.child_by_field_name('left')
+                if left_node and left_node.type == 'identifier':
+                    if code_bytes[left_node.start_byte:left_node.end_byte] == target:
+                        value_node = decl.child_by_field_name('right')
+                        if value_node:
+                            return value_node
+                continue
+            for child in decl.children:
+                if child.type != 'variable_declarator':
+                    continue
+                name_node = child.child_by_field_name('name')
+                if not name_node:
+                    continue
+                if code_bytes[name_node.start_byte:name_node.end_byte] == target:
+                    value_node = child.child_by_field_name('value')
+                    if value_node:
+                        return value_node
+    return None
+
+
+def _resolve_object_lookup(obj_node: Node, prop_name: str, code_bytes: bytes) -> Optional[Node]:
+    """在对象字面量 AST 节点中查找指定 key 的 value 节点"""
+    if obj_node.type != 'object':
+        return None
+    if obj_node.end_byte - obj_node.start_byte > _MAX_OBJECT_BYTES:
+        return None
+
+    target = prop_name.encode('utf-8')
+    for child in obj_node.children:
+        if child.type != 'pair':
+            continue
+        key_node = child.child_by_field_name('key')
+        if not key_node:
+            continue
+        key_text = code_bytes[key_node.start_byte:key_node.end_byte]
+        key_str = key_text.decode('utf-8')
+        if len(key_str) >= 2 and key_str[0] in ('"', "'"):
+            key_str = key_str[1:-1]
+        if key_str == prop_name:
+            return child.child_by_field_name('value')
+    return None
+
+
+def _resolve_array_lookup(arr_node: Node, index: int, code_bytes: bytes) -> Optional[Node]:
+    """在数组字面量 AST 节点中按索引取值"""
+    if arr_node.type != 'array':
+        return None
+    if arr_node.end_byte - arr_node.start_byte > _MAX_OBJECT_BYTES:
+        return None
+
+    elements = [c for c in arr_node.children if c.type not in ('[', ']', ',')]
+    if 0 <= index < len(elements):
+        return elements[index]
+    return None
+
+
+def _resolve_node_to_string(node: Node, code_bytes: bytes, resolving: Set[str]) -> Optional[str]:
+    """
+    统一递归解析入口：将 AST 节点解析为字符串值
+    支持：字符串字面量、+拼接、变量引用、对象属性访问、数组索引访问
+    """
+    if not node:
+        return None
+
+    if node.type == 'string':
+        return _extract_string_content(code_bytes[node.start_byte:node.end_byte])
+
+    if node.type == 'binary_expression':
+        op_node = node.child_by_field_name('operator')
+        if op_node and code_bytes[op_node.start_byte:op_node.end_byte] == b'+':
+            left = _resolve_node_to_string(node.child_by_field_name('left'), code_bytes, resolving)
+            right = _resolve_node_to_string(node.child_by_field_name('right'), code_bytes, resolving)
+            if left is not None and right is not None:
+                return left + right
+        return None
+
+    if node.type == 'identifier':
+        var_name = code_bytes[node.start_byte:node.end_byte].decode('utf-8')
+        if var_name in resolving:
+            return None
+        resolving.add(var_name)
+        value_node = _find_var_value_node(var_name, node, code_bytes)
+        resolving.discard(var_name)
+        if not value_node:
+            return None
+        return _resolve_node_to_string(value_node, code_bytes, resolving)
+
+    if node.type == 'member_expression':
+        obj_node = node.child_by_field_name('object')
+        prop_node = node.child_by_field_name('property')
+        if not obj_node or not prop_node:
+            return None
+        prop_name = code_bytes[prop_node.start_byte:prop_node.end_byte].decode('utf-8')
+        if obj_node.type != 'identifier':
+            return None
+        obj_var_name = code_bytes[obj_node.start_byte:obj_node.end_byte].decode('utf-8')
+        obj_ast_node = _find_var_value_node(obj_var_name, obj_node, code_bytes)
+        if not obj_ast_node or obj_ast_node.type != 'object':
+            return None
+        target_node = _resolve_object_lookup(obj_ast_node, prop_name, code_bytes)
+        if not target_node:
+            return None
+        return _resolve_node_to_string(target_node, code_bytes, resolving)
+
+    if node.type == 'subscript_expression':
+        obj_node = node.child_by_field_name('object')
+        idx_node = node.child_by_field_name('index')
+        if not obj_node or not idx_node:
+            return None
+        if obj_node.type != 'identifier':
+            return None
+        obj_var_name = code_bytes[obj_node.start_byte:obj_node.end_byte].decode('utf-8')
+        if idx_node.type == 'string':
+            prop_name = _extract_string_content(code_bytes[idx_node.start_byte:idx_node.end_byte])
+            if prop_name is None:
+                return None
+            obj_ast_node = _find_var_value_node(obj_var_name, obj_node, code_bytes)
+            if not obj_ast_node or obj_ast_node.type != 'object':
+                return None
+            target_node = _resolve_object_lookup(obj_ast_node, prop_name, code_bytes)
+            if not target_node:
+                return None
+            return _resolve_node_to_string(target_node, code_bytes, resolving)
+        elif idx_node.type == 'number':
+            try:
+                index = int(code_bytes[idx_node.start_byte:idx_node.end_byte].decode('utf-8'))
+            except ValueError:
+                return None
+            obj_ast_node = _find_var_value_node(obj_var_name, obj_node, code_bytes)
+            if not obj_ast_node or obj_ast_node.type != 'array':
+                return None
+            target_node = _resolve_array_lookup(obj_ast_node, index, code_bytes)
+            if not target_node:
+                return None
+            return _resolve_node_to_string(target_node, code_bytes, resolving)
+
+    return None
+
+
+def _propagate_variables(stmt_node: Node, target_node: Node, code_bytes: bytes) -> str:
+    """
+    对代码切片内的字符串变量执行传播替换
+    在字节层面做精确替换，避免编码偏移问题
+    """
+    slice_start = stmt_node.start_byte
+    slice_end = stmt_node.end_byte
+    slice_bytes = code_bytes[slice_start:slice_end]
+
+    replacements = []
+    resolved_ranges = []
+
+    def _collect(node):
+        if node.type in ('member_expression', 'subscript_expression'):
+            resolved_ranges.append((node.start_byte, node.end_byte))
+        for child in node.children:
+            _collect(child)
+
+    _collect(stmt_node)
+
+    def _traverse(node):
+        if node.start_byte < slice_start or node.end_byte > slice_end:
+            return
+
+        if node.start_byte >= target_node.start_byte and node.end_byte <= target_node.end_byte:
+            for child in node.children:
+                _traverse(child)
+            return
+
+        if node.type == 'identifier':
+            for rs, re in resolved_ranges:
+                if node.start_byte >= rs and node.end_byte <= re:
+                    return
+            resolving = set()
+            value = _resolve_node_to_string(node, code_bytes, resolving)
+            if value is not None:
+                original = code_bytes[node.start_byte:node.end_byte].decode('utf-8')
+                replacement = f'"{value}"'
+                if replacement != original:
+                    replacements.append((
+                        node.start_byte - slice_start,
+                        node.end_byte - slice_start,
+                        replacement.encode('utf-8')
+                    ))
+
+        elif node.type in ('member_expression', 'subscript_expression'):
+            resolving = set()
+            value = _resolve_node_to_string(node, code_bytes, resolving)
+            if value is not None:
+                original = code_bytes[node.start_byte:node.end_byte].decode('utf-8')
+                replacement = f'"{value}"'
+                if replacement != original:
+                    replacements.append((
+                        node.start_byte - slice_start,
+                        node.end_byte - slice_start,
+                        replacement.encode('utf-8')
+                    ))
+            return
+
+        for child in node.children:
+            _traverse(child)
+
+    _traverse(stmt_node)
+
+    if not replacements:
+        return slice_bytes.decode('utf-8')
+
+    replacements.sort(key=lambda x: x[0], reverse=True)
+    result = bytearray(slice_bytes)
+    for start, end, new_bytes in replacements:
+        result[start:end] = new_bytes
+
+    return result.decode('utf-8')
+
+
+# ==================== 变量传播法 END ====================
+
+
 def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
 
     # 策略1：尝试提取语义边界
@@ -70,6 +357,9 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
 
         # 检查大小是否在合理范围内
         if len(boundary_code.encode('utf-8')) <= MAX_CONTEXT_BYTES:
+            propagated = _propagate_variables(semantic_boundary, api_node, code_bytes)
+            if len(propagated.encode('utf-8')) <= MAX_CONTEXT_BYTES:
+                return propagated
             return boundary_code
 
     # 策略2：降级到原有的语句级别提取
@@ -82,7 +372,8 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
     if not stmt_node:
         return code_bytes[api_node.start_byte:api_node.end_byte].decode('utf-8')
 
-    core_line = code_bytes[stmt_node.start_byte:stmt_node.end_byte].decode('utf-8')
+    # 变量传播：在核心代码中解析字符串变量
+    core_line = _propagate_variables(stmt_node, api_node, code_bytes)
 
     # 获取靶心代码使用的变量
     used_vars = _find_identifiers_in_node(stmt_node, code_bytes)
@@ -98,17 +389,17 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
             for sibling_decl in parent_decl.children:
                 if sibling_decl.type != 'variable_declarator':
                     continue
-                # 只找排在咱们目标代码前面的声明
+                # 只找排在咱们目标代码前面的
                 if sibling_decl.start_byte >= stmt_node.start_byte:
                     break
 
                 sibling_code = code_bytes[sibling_decl.start_byte:sibling_decl.end_byte].decode('utf-8')
-                # 提取那个哥哥声明的变量名，看看是不是我们依赖的 r
+                # 提取那个哥哥声明的变量名，看看是不是我们依赖的
                 name_node = sibling_decl.child_by_field_name('name')
                 if name_node:
                     var_name = code_bytes[name_node.start_byte:name_node.end_byte].decode('utf-8')
                     if var_name in used_vars:
-                        # 找到了！强行给它拼上个 var 关键字，保证语法独立完整
+                        # 找到了！强行给它拼上个 var/let/const 关键字，保证语法独立完整
                         decl_kind = code_bytes[parent_decl.start_byte:parent_decl.children[0].end_byte].decode(
                             'utf-8')  # 提取 var/let/const
                         dependencies.append(f"{decl_kind} {sibling_code};")
@@ -139,7 +430,7 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
 
     # 最终大小检查
     if len(final_slice.encode('utf-8')) > MAX_CONTEXT_BYTES:
-        # 如果加上依赖后超限，只返回核心代码
+        # 如果加上依赖后超限，只返回传播后的核心代码
         return core_line
 
     return final_slice
