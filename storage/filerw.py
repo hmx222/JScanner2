@@ -1,9 +1,13 @@
+import os
 import re
 
 import chardet
 
 
 def read(file_path):
+    if not os.path.isfile(file_path):
+        return []
+
     with open(file_path, 'rb') as f:
         raw_data = f.read(1000)
         result = chardet.detect(raw_data)

@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jscanner2
+    entrypoint: ["bash"]
+    volumes:
+      - ./config/config.py:/app/config/config.py:ro
+      - ./config/models_config.json:/app/config/models_config.json:ro
+      - ./config/scanner_rules.py:/app/config/scanner_rules.py:ro
+      - ./config/whiteList.txt:/app/config/whiteList.txt:ro
+      - ./config/nltk_data:/app/config/nltk_data
+      - ./run_scan.sh:/app/run_scan.sh
+      - ./Result:/app/Result
+      - ./Overflow_Queue:/app/Overflow_Queue
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    deploy:
+      resources:
+        limits:
+          memory: 6G
