@@ -8,15 +8,16 @@ services:
     container_name: jscanner2
     entrypoint: ["bash"]
     volumes:
-      - ./config/config.py:/app/config/config.py:ro
-      - ./config/models_config.json:/app/config/models_config.json:ro
-      - ./config/scanner_rules.py:/app/config/scanner_rules.py:ro
-      - ./config/whiteList.txt:/app/config/whiteList.txt:ro
+      - ./config/config.py:/app/config/config.py
+      - ./config/models_config.json:/app/config/models_config.json
+      - ./config/scanner_rules.py:/app/config/scanner_rules.py
+      - ./config/whiteList.txt:/app/config/whiteList.txt
       - ./config/nltk_data:/app/config/nltk_data
       - ./run_scan.sh:/app/run_scan.sh
       - ./Result:/app/Result
       - ./Overflow_Queue:/app/Overflow_Queue
       - ./logs:/app/logs
+      - ./setup.sh:/app/setup.sh
     environment:
       - TZ=Asia/Shanghai
     network_mode: host
