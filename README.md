@@ -63,28 +63,20 @@ In real-world SRC testing:
 ## ⚡ Start 
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/hmx222/JScanner2.git
+cd JScanner2
 
-# [Optional] Edit `run_scan.sh` to configure the `FEISHU_WEBHOOK`. 
-# Replace the default URL with your own Feishu (Lark) bot webhook.
-vim run_scan.sh
+# 2. 初始化配置
+vim setup.sh
+docker compose run --rm scanner /app/setup.sh
 
-# [REQUIRED] You must configure the LLM API Key in this file. 
-# You can also configure the Feishu bot token here (optional). 
-# Note: If the Feishu token is not set, error messages and task completion notifications 
-# will not be pushed to Feishu. You won't receive timely alerts or know when the task finishes.
-vim config/config.py
+# 3. 准备目标URL列表
+# 将您需要扫描的url，放入urls.txt（必须）
+# 将您的白名单域，放入config/whiteList.txt（可选）
 
-# [REQUIRED] Strictly configure the model parameters in this JSON file.
-vim config/models_config.json
-
-# [Optional] You can customize the scanner rules according to your own needs.
-vim config/scanner_rules.py
-
-# [Optional] Configure the whitelist. Add the specific domains that are allowed to be crawled by the spider.
-vim config/whiteList.txt
-
-docker compose run --rm scanner run_scan.sh urls.txt
+# 4. 开始扫描
+docker compose run --rm scanner /app/run_scan.sh urls.txt
 ```
 
 
