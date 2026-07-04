@@ -40,5 +40,5 @@ COPY . .
 # 创建必要目录
 RUN mkdir -p Result Overflow_Queue logs
 
-# 默认入口用 bash，方便执行 shell 脚本
-ENTRYPOINT ["bash"]
+ENTRYPOINT []
+CMD []
