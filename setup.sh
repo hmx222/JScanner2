@@ -132,8 +132,8 @@ echo -e "  \033[32m✅ config/models_config.json 已生成 ($(echo ${MODELS} | w
 # ------------------------------------------------------------------
 echo -e "  📄 正在更新 run_scan.sh 中的飞书通知地址 ..."
 
-# 匹配 FEISHU_URL="..." 这一行并替换
-sed -i "s|^FEISHU_URL=.*|FEISHU_URL=\"${FEISHU_WEBHOOK}\"|" run_scan.sh
+tmp=$(mktemp)
+sed "s|^FEISHU_URL=.*|FEISHU_URL=\"${FEISHU_WEBHOOK}\"|" run_scan.sh > "$tmp" && cat "$tmp" > run_scan.sh && rm "$tmp"
 
 echo -e "  \033[32m✅ run_scan.sh 已更新\033[0m"
 

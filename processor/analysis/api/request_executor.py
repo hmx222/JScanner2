@@ -133,6 +133,14 @@ def execute_api_request(
         # Step 3: 构建请求头
         headers = REQUEST_HEADERS.copy()
 
+        # Step 4: 发起 HTTP 请求
+        with httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=False) as client:
+            if normalized_method == "POST":
+                response = client.post(full_url, headers=headers, json=params_dict if params_dict else None)
+            elif normalized_method == "PUT":
+                response = client.put(full_url, headers=headers, json=params_dict if params_dict else None)
+            else:
+                response = client.get(full_url, headers=headers)
 
         # Step 5: 提取结果（先去除HTML标签，再截取长度）
         clean_content = _strip_html_tags(response.text)

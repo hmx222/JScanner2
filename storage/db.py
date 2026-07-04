@@ -58,6 +58,10 @@ class SQLiteStorage:
                 risk_level TEXT NOT NULL DEFAULT 'Low',
                 path TEXT,
                 params JSON,
+                request_status TEXT,
+                response_code INTEGER,
+                response_length INTEGER,
+                response_body_preview TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(js_url, api_endpoint)
             );
@@ -121,6 +125,24 @@ class SQLiteStorage:
             cursor.execute(create_source_map_table_sql)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sourcemap_js ON js_source_maps(js_url);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sourcemap_flag ON js_source_maps(is_sourceMap);")
+
+            # 迁移：为已有 ai_vulns 表添加缺失字段
+            try:
+                cursor.execute("ALTER TABLE ai_vulns ADD COLUMN request_status TEXT")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE ai_vulns ADD COLUMN response_code INTEGER")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE ai_vulns ADD COLUMN response_length INTEGER")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE ai_vulns ADD COLUMN response_body_preview TEXT")
+            except Exception:
+                pass
 
             self.conn.commit()
             logger.info(f"✅ [DB] 数据库初始化成功：{self.db_path}")
@@ -540,6 +562,104 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
             raise
 
+    def save_ai_result_with_id(self, js_url: str, full_url: str, advisory_report: Dict[str, Any]) -> Optional[int]:
+        """保存 AI 分析结果并返回记录 ID"""
+        if not advisory_report or not isinstance(advisory_report, dict):
+            logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
+            return None
+
+        if not js_url or not full_url:
+            logger.warning("⚠️ [DB] js_url 或 full_url 为空")
+            return None
+
+        try:
+            cursor = self.conn.cursor()
+
+            raw_method = advisory_report.get("method", "")
+            http_method = self._normalize_method(raw_method)
+            path = advisory_report.get("path", "")
+            params_raw = advisory_report.get("params", "")
+            params_parsed = self._parse_params(params_raw)
+            params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
+            risk_level = self._calculate_risk_level(path, params_parsed, http_method)
+
+            sql = """
+                INSERT OR REPLACE INTO ai_vulns
+                (js_url, api_endpoint, http_method, risk_level, path, params)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+
+            cursor.execute(sql, (
+                js_url,
+                full_url,
+                http_method,
+                risk_level,
+                path,
+                params_json
+            ))
+
+            self.conn.commit()
+
+            record_id = cursor.lastrowid
+
+            if risk_level == "High":
+                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {full_url}")
+                if params_parsed:
+                    logger.info(f"   🔑 关键参数：{params_parsed}")
+            else:
+                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {full_url} [{risk_level}]")
+
+            return record_id
+
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
+            return None
+
+    def batch_update_ai_vuln_request_results(self, request_results: List[Dict[str, Any]]) -> int:
+        """批量更新 AI 漏洞记录的请求验证结果"""
+        if not request_results:
+            return 0
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION;")
+
+            sql = """
+                UPDATE ai_vulns
+                SET request_status = ?, response_code = ?, response_length = ?, response_body_preview = ?
+                WHERE id = ?
+            """
+
+            updated_count = 0
+            for result in request_results:
+                record_id = result.get("id")
+                if not record_id:
+                    continue
+
+                status_code = result.get("status_code", -1)
+                content_summary = result.get("content_summary", "")
+                
+                request_status = "success" if status_code > 0 else "failed"
+                response_length = len(content_summary) if content_summary else 0
+
+                cursor.execute(sql, (
+                    request_status,
+                    status_code,
+                    response_length,
+                    content_summary,
+                    record_id
+                ))
+                updated_count += 1
+
+            self.conn.commit()
+            logger.info(f"💾 [DB] 批量更新请求验证结果：{updated_count} 条")
+            return updated_count
+
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 批量更新请求结果失败：{e}")
+            return 0
 
     def save_sensitive_info(self, js_url: str, sensitive_items: List[Dict[str, Any]]):
         if not js_url:

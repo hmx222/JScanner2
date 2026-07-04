@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: jscanner2
-    entrypoint: ["bash"]
+    entrypoint: ["/bin/bash"]
     volumes:
       - ./config/config.py:/app/config/config.py
       - ./config/models_config.json:/app/config/models_config.json
