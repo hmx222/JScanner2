@@ -18,6 +18,7 @@ services:
       - ./Overflow_Queue:/app/Overflow_Queue
       - ./logs:/app/logs
       - ./setup.sh:/app/setup.sh
+      - ./urls.txt:/app/urls.txt
     environment:
       - TZ=Asia/Shanghai
     network_mode: host
