@@ -62,28 +62,20 @@ JScanner2 结合了 **AST（抽象语法树）解析 + AI 分析**，以实现�
 ## ⚡ 快速开始 
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/hmx222/JScanner2.git
+cd JScanner2
 
-# [可选] 编辑 `run_scan.sh` 以配置 `FEISHU_WEBHOOK`。
-# 将默认 URL 替换为您自己的飞书机器人 Webhook 地址。
-vim run_scan.sh
+# 2. 初始化配置
+vim setup.sh
+docker compose run --rm scanner /app/setup.sh
 
-# [必填] 必须在此文件中配置大模型的 API Key。
-# 您也可以在此处配置飞书机器人 Token（可选）。
-# 注意：如果不配置飞书 Token，报错信息和任务完成通知将无法回传到飞书，
-# 导致您无法及时看到报错，也无法在任务结束后收到通知。
-vim config/config.py
+# 3. 准备目标URL列表
+# 将您需要扫描的url，放入urls.txt（必须）
+# 将您的白名单域，放入config/whiteList.txt（可选）
 
-# [必填] 必须严格配置此 JSON 文件中的模型参数。
-vim config/models_config.json
-
-# [可选] 可根据自身需求自行配置扫描规则。
-vim config/scanner_rules.py
-
-# [可选] 配置白名单，设置哪些域名允许被爬虫抓取。
-vim config/whiteList.txt
-
-docker compose run --rm scanner run_scan.sh urls.txt
+# 4. 开始扫描
+docker compose run --rm scanner /app/run_scan.sh urls.txt
 ```
 
 
