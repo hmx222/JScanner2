@@ -1,6 +1,5 @@
 import re
 from urllib.parse import urlparse, urljoin
-from bs4 import BeautifulSoup
 from tldextract import tldextract
 
 from config.scanner_rules import STATIC_RESOURCE_EXTENSIONS
@@ -145,11 +144,6 @@ def data_clean(current_url: str, dirty_data, seed_url: str = None) -> list:
     Domain = base_parsed.netloc  # 提取域名地址
     Path = base_parsed.path.rstrip('/') or '/'  # 提取路径部分
 
-    # 获取当前 URL 的根域名（用于判断是否跨域）
-    current_root_domain = get_root_domain(current_url)  # 获取当前根域名
-    base_root_domain = get_root_domain(base_url)  # 获取基准根域名
-    is_cross_domain = (current_root_domain != base_root_domain)  # 判断是否跨域
-
     for main_url in dirty_data:  # 遍历原始URL列表
         # 需要跳过的内容类型黑名单
         SKIP_CONTENT_TYPES = {
@@ -246,30 +240,3 @@ def check_url(original_url, splicing_url):
     return False
 
 
-def extract_pure_js(html_content):
-    """
-    从包含 HTML 标签的内容中提取 <pre> 标签内的 JS 代码
-
-    用于从响应中提取美化后的 JS 代码块。
-
-    Args:
-        html_content: 包含 HTML 标签的文本
-
-    Returns:
-        str: 提取到的纯 JS 代码，如果没有 <pre> 标签则返回原始内容
-    """
-    try:
-        # 使用 BeautifulSoup 解析 HTML
-        soup = BeautifulSoup(html_content, 'html.parser')  # 解析HTML内容
-        # 查找常见的代码展示格式
-        pre_tag = soup.find('pre', style="word-wrap: break-word; white-space: pre-wrap;")  # 查找格式化的pre标签
-        if pre_tag:
-            return pre_tag.get_text().strip()
-        else:
-            # 回退：使用第一个 <pre> 标签
-            fallback_pre = soup.find('pre')  # 回退查找pre标签
-            if fallback_pre:
-                return fallback_pre.get_text().strip()
-            return html_content
-    except:
-        return html_content

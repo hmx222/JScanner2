@@ -5,13 +5,12 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 import json_repair
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError, APITimeoutError
 
-from config.config import BASE_URL, API_KEY, ENABLE_PROMPT_CACHE, CACHE_CONTROL_TYPE, MIN_CACHE_TOKENS, MAX_CACHE_MARKERS
+from config.config import BASE_URL, API_KEY
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

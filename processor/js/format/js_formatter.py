@@ -1,4 +1,3 @@
-import logging
 import os
 import shutil
 import subprocess
@@ -261,15 +260,3 @@ def format_code(
     else:
         raise RuntimeError("All beautification methods failed")
 
-
-def check_prettier_available(prettier_path: Optional[str] = None) -> bool:
-    """
-    检查 prettier 是否可用
-
-    Args:
-        prettier_path: prettier 可执行文件路径（可选）
-
-    Returns:
-        bool: prettier 是否可用
-    """
-    return _find_prettier_path(prettier_path) is not None

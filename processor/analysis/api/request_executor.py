@@ -2,8 +2,6 @@ import json
 import re
 import httpx
 from typing import Dict, Any, Optional
-from urllib.parse import urlparse
-
 from config.scanner_rules import (
     REQUEST_HEADERS,
     REQUEST_TIMEOUT,

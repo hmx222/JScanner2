@@ -231,7 +231,3 @@ def get_logger(name: str = "JScanner") -> logging.Logger:
     _init_global_logging()
     return logging.getLogger(name)
 
-
-def shutdown_logger():
-    """关闭日志系统，刷新所有未写入的日志"""
-    logging.shutdown()

@@ -25,7 +25,7 @@ logger = get_logger(__name__)  # 获取日志器
 try:
     import wordninja
     import nltk
-    from nltk.corpus import wordnet, words
+    from nltk.corpus import words
 
     try:
         from processor.js.format.js_formatter import format_code
@@ -335,11 +335,7 @@ class SecretMathScorer:
         Returns:
             List[str]: 分词结果列表
         """
-        try:
-            import wordninja
-            return wordninja.split(s)
-        except:
-            return []
+        return wordninja.split(s)
 
     def calc_P(self, s: str) -> float:
         """
@@ -419,7 +415,6 @@ class AdvancedSecretFilter:
         """
         self.threshold = threshold  # 判定阈值
         self.scorer = SecretMathScorer(weights)  # 数学评分器
-        self.code_syntax_indicators = {'${', '||', '&&', '?', '+=', '-=', '===', '!==', '?.', '??', '=>'}  # 代码语法特征
         self.sensitive_keywords = SENSITIVE_KEYWORD_SET  # 敏感关键词集合
         self._local_logger = get_logger("AdvancedSecretFilter")  # 本地日志器
 
@@ -464,18 +459,6 @@ class AdvancedSecretFilter:
 
         result = score >= thr  # 判定是否为秘密
         return result
-
-    def get_debug_info(self, text: str) -> Dict:
-        """
-        获取评分的详细信息（调试用）
-
-        Args:
-            text: 待分析的字符串
-
-        Returns:
-            dict: 评分详情
-        """
-        return self.scorer.score(text)
 
 
 class LLMSecretVerifier:
@@ -877,10 +860,8 @@ def cleanup_bloom_filters():
     """清理全局布隆过滤器资源"""
     _AI_CANDIDATE_DEDUP.close()
     _OUTPUT_LINE_DEDUP.close()
-    _WORD_ANALYSIS_DEDUP.close()
 
 
 # 全局布隆过滤器实例（用于各阶段去重）
 _AI_CANDIDATE_DEDUP = DiskBloomFilter("Result/ai_candidates.bloom", capacity=5_000_000)  # AI候选去重
 _OUTPUT_LINE_DEDUP = DiskBloomFilter("Result/output_lines.bloom", capacity=5_000_000)  # 输出去重过滤器
-_WORD_ANALYSIS_DEDUP = DiskBloomFilter("Result/word_analysis.bloom", capacity=10_000_000)  # 单词分析去重

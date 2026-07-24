@@ -18,9 +18,7 @@ from crawler.httpx_crawler import fetch_urls_with_dedup
 from crawler.response_process import process_scan_result
 from crawler.url_classifier import classify_url, is_skip_ext  # URL 分类器
 from crawler.fetcher import parallel_fetch                    # 并发爬取器
-from infra.dedup import DuplicateChecker
 from processor.analysis.api.api_scan import data_clean
-from processor.analysis.secret.js_sensitive_rex import find_all_info_by_rex
 from processor.analysis.secret.secret_scanner import cleanup_bloom_filters, remove_html_tags
 from processor.analysis.api.request_executor import batch_execute_requests
 
@@ -246,8 +244,7 @@ class Scanner:
             print(f"✅ [Batch] All APIs already processed, skipping AI analysis...")
             return None
 
-        mark_data = [(api_path, js_url) for api_path, js_url in apis_to_scan]  # 待标记数据
-        self.checker.mark_api_paths_processed_batch(mark_data)
+        self.checker.mark_api_paths_processed_batch(apis_to_scan)  # 预标记已处理
         print(f"✅ [Dedup] Marked {len(apis_to_scan)} API paths as processed BEFORE analysis")
 
         return apis_to_scan
@@ -448,17 +445,16 @@ class Scanner:
         if depth > self.args.height:
             return
 
-        raw_urls_list = [url.strip() for url in urls if url.strip()]  # 原始 URL 列表
-        urls_list = []  # 有效 URL 列表
+        # strip + 去空 + 按深度过滤
         if depth > 0:
-            for u in raw_urls_list:  # 遍历原始 URL
-                if self.checker.should_scan(u):
+            urls_list = []
+            for u in urls:
+                u = u.strip()
+                if u and self.checker.should_scan(u):
                     self.checker.mark_url_visited(u)
                     urls_list.append(u)
         else:
-            for u in raw_urls_list:  # 遍历种子 URL
-                if self.checker.is_within_scope(u):
-                    urls_list.append(u)
+            urls_list = [u.strip() for u in urls if u.strip()]
 
         if not urls_list:
             return
@@ -547,36 +543,6 @@ class Scanner:
             source_map_results.append((url, has_source_map))
             if has_source_map == "Y":
                 print(f"🗺️ [SourceMap] 发现 SourceMap 暴露：{url}")
-
-            combined_sensitive_info = set()  # 合并敏感信息集合
-
-            if self.args.analyzeSensitiveInfoAI and self.sensitive_scanner:
-                try:
-                    ai_results = self.sensitive_scanner.scan(js_code=scan_info["source_code"], js_url=url)  # AI 扫描敏感信息
-                    if ai_results:
-                        for item in ai_results:  # 遍历 AI 结果
-                            combined_sensitive_info.add(item.get("value", ""))
-                        high_risk = [r for r in ai_results if r.get("risk_level") == "High"]  # 高风险项
-                        if high_risk:
-                            print(f"🔥 [High Risk] URL: {url}")
-                            for hr in high_risk[:5]:  # 遍历前 5 高风险
-                                value_preview = hr.get('value', '')[:50]  # 值预览
-                                print(f"   └─ {value_preview}...")
-                                print(f"      类型：{hr.get('secret_type', 'unknown')}")
-                                suggestion = hr.get('test_suggestion', '')[:50]  # 测试建议
-                                print(f"      建议：{suggestion}...")
-                except Exception as e:  # 捕获 AI 扫描异常
-                    print_exc()
-                    logger.error(f"❌ [AI Scan] 分析失败 {url}: {e}")
-                    print(f"❌ [AI Scan] 分析失败 {url}: {e}")
-
-            if self.args.analyzeSensitiveInfoRex:
-                try:
-                    rex_results = find_all_info_by_rex(scan_info["source_code"])  # 正则扫描敏感信息
-                    if rex_results:
-                        combined_sensitive_info.update(rex_results)
-                except Exception:
-                    pass
 
         if source_map_results:
             self.db_handler.batch_save_source_map_results(source_map_results)

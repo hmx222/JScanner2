@@ -115,41 +115,6 @@ class CRUDMixin:
 
     # ==================== AI 结果保存 ====================
 
-    def save_ai_result(self, js_url: str, api_endpoint: str, advisory_report: dict):
-        """保存 AI 渗透建议结果（旧接口，不返回 ID）"""
-        if not advisory_report or not isinstance(advisory_report, dict):
-            logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
-            return
-        if not js_url or not api_endpoint:
-            logger.warning("⚠️ [DB] js_url 或 api_endpoint 为空")
-            return
-
-        try:
-            cursor = self.conn.cursor()
-            raw_method = advisory_report.get("method", "")
-            http_method = self._normalize_method(raw_method)
-            path = advisory_report.get("path", "")
-            params_raw = advisory_report.get("params", "")
-            params_parsed = self._parse_params(params_raw)
-            params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
-            risk_level = self._calculate_risk_level(path, params_parsed, http_method)
-
-            cursor.execute("""
-                INSERT OR REPLACE INTO ai_vulns
-                (js_url, api_endpoint, http_method, risk_level, path, params)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (js_url, api_endpoint, http_method, risk_level, path, params_json))
-            self.conn.commit()
-
-            if risk_level == "High":
-                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {api_endpoint}")
-            else:
-                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {api_endpoint} [{risk_level}]")
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
-            raise
-
     def save_ai_result_with_id(self, js_url: str, full_url: str, advisory_report: dict):
         """保存 AI 分析结果并返回记录 ID"""
         if not advisory_report or not isinstance(advisory_report, dict):
@@ -272,21 +237,6 @@ class CRUDMixin:
             raise
 
     # ==================== SourceMap 保存 ====================
-
-    def save_source_map_result(self, js_url: str, is_source_map: str) -> bool:
-        """保存单个 SourceMap 检测结果"""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                INSERT OR REPLACE INTO js_source_maps (js_url, is_sourceMap)
-                VALUES (?, ?)
-            """, (js_url, is_source_map))
-            self.conn.commit()
-            return True
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"❌ [DB] SourceMap 结果写入失败：{e}")
-            return False
 
     def batch_save_source_map_results(self, results: list) -> int:
         """批量保存 SourceMap 检测结果"""

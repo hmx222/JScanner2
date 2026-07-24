@@ -176,14 +176,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
     progress = tqdm_asyncio(total=len(urls), desc="🕷️ Crawling", unit="url", ncols=100)  # 创建进度条
 
     request_failed_urls = set()  # 失败URL集合
-    redirect_stats = {  # 跳转统计字典
-        "total": 0,
-        "success": 0,
-        "error": 0,
-        "redirect_0": 0,
-        "redirect_1": 0,
-        "redirect_loop": 0
-    }
 
     async with async_playwright() as p:  # 启动Playwright上下文
         browser = await p.chromium.launch(executable_path= r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",  # 启动浏览器实例
@@ -282,18 +274,6 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
 
         if not html:
             continue
-
-        redirect_stats["total"] += 1  # 总计加一
-        if final_status and 200 <= final_status < 400:
-            redirect_stats["success"] += 1  # 成功计数加一
-            if redirect_count == 0:
-                redirect_stats["redirect_0"] += 1  # 零次跳转加一
-            elif redirect_count == 1:
-                redirect_stats["redirect_1"] += 1  # 一次跳转加一
-            else:
-                redirect_stats["redirect_loop"] += 1  # 多次跳转加一
-        else:
-            redirect_stats["error"] += 1  # 错误计数加一
 
         parsed = urlparse(final_url)  # 解析最终URL
 

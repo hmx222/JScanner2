@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, Set, Tuple
+from typing import Any, Dict, Optional, List, Set
 from tree_sitter import Node
 
 from processor.js.context.parse import get_parser, get_logger

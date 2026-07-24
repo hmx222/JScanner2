@@ -1,6 +1,5 @@
 import re
 import traceback
-from traceback import print_exc
 from typing import Any, Dict, Optional, List
 
 import json_repair
@@ -8,8 +7,6 @@ import json_repair
 from logger import get_logger
 from config.prompts import SYSTEM_PROMPT_ADVISORY, SYSTEM_PROMPT_JUDGE
 from processor.js.context.context_extractor import extract_multiple_apis_from_raw_code
-
-from config.config import proxies
 
 logger = get_logger(__name__)  # 获取模块日志器
 
