@@ -237,3 +237,33 @@ API_PATH_BLACKLIST_KEYWORDS: Set[str] = {
     'del',
     'delete',
 }
+
+
+def is_api_path_blacklisted(api_path: str) -> bool:
+    """
+    检查 API path 是否包含黑名单关键词
+
+    逐段检查路径中的每个部分，匹配黑名单关键词（如 del, delete）。
+    支持精确匹配和前缀/后缀匹配（如 delete_user, user_del）。
+
+    Args:
+        api_path: API 路径
+
+    Returns:
+        bool: 如果包含黑名单关键词返回 True，否则返回 False
+    """
+    if not api_path or not isinstance(api_path, str):
+        return True
+
+    path_lower = api_path.lower()
+
+    for keyword in API_PATH_BLACKLIST_KEYWORDS:
+        path_segments = path_lower.split('/')
+        for segment in path_segments:
+            segment_clean = segment.split('?')[0]
+            if keyword == segment_clean:
+                return True
+            if segment_clean.startswith(keyword + '_') or segment_clean.endswith('_' + keyword):
+                return True
+
+    return False

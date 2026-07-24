@@ -1,0 +1,577 @@
+2026-07-24 10:36:34 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:36:35 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：C:\Users\fanxin\AppData\Local\Temp\tmpg46kxoz0.db
+2026-07-24 10:36:35 - storage.query - INFO - 📚 [DB] 从数据库加载 1 个历史 URL
+2026-07-24 10:36:35 - storage.crud - INFO - 💾 [DB] 渗透建议已存档：GET http://test.com/api [Med]
+2026-07-24 10:49:41 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:49:42 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:49:42 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:49:42 - filelock - DEBUG - Attempting to acquire lock 1900507921808 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:49:42 - filelock - DEBUG - Lock 1900507921808 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:49:42 - filelock - DEBUG - Attempting to release lock 1900507921808 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:49:42 - filelock - DEBUG - Lock 1900507921808 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:49:42 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 URL
+2026-07-24 10:49:42 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 URL
+2026-07-24 10:49:42 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:49:42 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:49:42 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 10:54:33 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:54:33 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:54:33 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:54:33 - filelock - DEBUG - Attempting to acquire lock 2425344569104 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:54:33 - filelock - DEBUG - Lock 2425344569104 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:54:33 - filelock - DEBUG - Attempting to release lock 2425344569104 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:54:33 - filelock - DEBUG - Lock 2425344569104 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:54:33 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 URL
+2026-07-24 10:54:33 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 URL
+2026-07-24 10:54:33 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:54:33 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:54:33 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 10:56:24 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:56:24 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:56:24 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:56:24 - filelock - DEBUG - Attempting to acquire lock 1665106193168 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:56:24 - filelock - DEBUG - Lock 1665106193168 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:56:24 - filelock - DEBUG - Attempting to release lock 1665106193168 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:56:24 - filelock - DEBUG - Lock 1665106193168 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:56:24 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 URL
+2026-07-24 10:56:24 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 URL
+2026-07-24 10:56:24 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:56:24 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:56:24 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 10:58:17 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:58:18 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:58:18 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:58:18 - filelock - DEBUG - Attempting to acquire lock 2521911929616 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:18 - filelock - DEBUG - Lock 2521911929616 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:18 - filelock - DEBUG - Attempting to release lock 2521911929616 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:18 - filelock - DEBUG - Lock 2521911929616 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:18 - storage.query - INFO - 📚 [DB] 从数据库加载 1 个历史 URL
+2026-07-24 10:58:18 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 1 个历史 URL
+2026-07-24 10:58:18 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:58:18 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:58:18 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 10:58:37 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:58:38 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:58:38 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:58:38 - filelock - DEBUG - Attempting to acquire lock 2037118151824 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:38 - filelock - DEBUG - Lock 2037118151824 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:38 - filelock - DEBUG - Attempting to release lock 2037118151824 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:38 - filelock - DEBUG - Lock 2037118151824 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:58:38 - storage.query - INFO - 📚 [DB] 从数据库加载 3 个历史 URL
+2026-07-24 10:58:38 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 3 个历史 URL
+2026-07-24 10:58:38 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:58:38 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:58:38 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 10:58:53 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:59:52 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 10:59:53 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 10:59:53 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 10:59:53 - filelock - DEBUG - Attempting to acquire lock 2939382837840 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:59:53 - filelock - DEBUG - Lock 2939382837840 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:59:53 - filelock - DEBUG - Attempting to release lock 2939382837840 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:59:53 - filelock - DEBUG - Lock 2939382837840 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 10:59:53 - storage.query - INFO - 📚 [DB] 从数据库加载 2 个历史 URL
+2026-07-24 10:59:53 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 2 个历史 URL
+2026-07-24 10:59:53 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 10:59:53 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 10:59:53 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 11:01:14 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 11:01:14 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 11:01:14 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 11:01:14 - filelock - DEBUG - Attempting to acquire lock 2211891572688 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:01:14 - filelock - DEBUG - Lock 2211891572688 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:01:14 - filelock - DEBUG - Attempting to release lock 2211891572688 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:01:14 - filelock - DEBUG - Lock 2211891572688 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:01:14 - storage.query - INFO - 📚 [DB] 从数据库加载 1 个历史 URL
+2026-07-24 11:01:14 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 1 个历史 URL
+2026-07-24 11:01:14 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 11:01:14 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 11:01:14 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 11:02:34 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 11:02:35 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 11:02:35 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 11:02:35 - filelock - DEBUG - Attempting to acquire lock 1504272118352 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:02:35 - filelock - DEBUG - Lock 1504272118352 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:02:35 - filelock - DEBUG - Attempting to release lock 1504272118352 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:02:35 - filelock - DEBUG - Lock 1504272118352 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:02:35 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 URL
+2026-07-24 11:02:35 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 URL
+2026-07-24 11:02:35 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 11:02:35 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 11:02:35 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 11:06:29 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 11:06:30 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 11:06:30 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 11:06:30 - filelock - DEBUG - Attempting to acquire lock 2168944586832 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:06:30 - filelock - DEBUG - Lock 2168944586832 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:06:30 - filelock - DEBUG - Attempting to release lock 2168944586832 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:06:30 - filelock - DEBUG - Lock 2168944586832 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 11:06:30 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 URL
+2026-07-24 11:06:30 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 URL
+2026-07-24 11:06:30 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 11:06:30 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 11:06:30 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=10808 local_address=None timeout=10 socket_options=None
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F8980185D0>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F898069D50>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F898019710>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801A4D0>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801A850>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801BC10>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801A290>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F898019B90>
+2026-07-24 11:06:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F898018950>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'CONNECT']>
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'Connection established', [])
+2026-07-24 11:06:37 - httpcore.proxy - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001F898054560> server_hostname='xk.lut.edu.cn' timeout=10
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801A950>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89804AED0>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801BCD0>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801A410>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89801B450>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89804BF10>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F8980197D0>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F898018510>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.proxy - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001F89800E510>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/js/xfimage.min.js "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 301, b'Moved Permanently', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Location', b'https://xk.lut.edu.cn/xsxk/profile/index.html')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/js/lang/en.js "HTTP/1.1 301 Moved Permanently"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/js/cryptojs.js "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/js/config.min.js "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/js/common.js "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/browerTips/browerTips.js?v=1784102624376 "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'application/javascript; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/js/index.min.js?v=1784102624376 "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 301, b'Moved Permanently', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Location', b'https://xk.lut.edu.cn/xsxk/profile/index.html')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/js/lang/zh.js "HTTP/1.1 301 Moved Permanently"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 301, b'Moved Permanently', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Location', b'https://xk.lut.edu.cn/xsxk/profile/index.html')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/js/vue-i18n.js "HTTP/1.1 301 Moved Permanently"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/index.html "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/index.html "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'none'), (b'Date', b'Fri, 24 Jul 2026 03:06:38 GMT'), (b'Content-Type', b'text/html; charset=UTF-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Headers', b'x-requested-with, authorization, Content-Type, Authorization, credential, X-XSRF-TOKEN'), (b'Access-Control-Expose-Headers', b'*'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS'), (b'Access-Control-Max-Age', b'18000L'), (b'Expires', b'Sun, 23 Aug 2026 03:06:28 GMT'), (b'Cache-Control', b'max-age=2592000'), (b'X-Cache', b'HIT from 219.246.114.146'), (b'Content-Encoding', b'gzip')])
+2026-07-24 11:06:38 - httpx - INFO - HTTP Request: GET https://xk.lut.edu.cn/xsxk/profile/index.html "HTTP/1.1 200 OK"
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 11:06:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 11:14:26 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 13:36:50 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 13:36:55 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 13:36:55 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 13:36:55 - storage.query - INFO - 📚 [DB] 从数据库加载 31 个历史 URL
+2026-07-24 13:36:55 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 31 个历史 URL
+2026-07-24 13:36:55 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 13:36:55 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 13:36:55 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：0 个
+2026-07-24 15:03:15 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:08:31 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:10:24 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:10:28 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:10:29 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 15:10:29 - filelock - DEBUG - Attempting to acquire lock 2689439144848 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:10:29 - filelock - DEBUG - Lock 2689439144848 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:10:29 - filelock - DEBUG - Attempting to release lock 2689439144848 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:10:29 - filelock - DEBUG - Lock 2689439144848 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:10:29 - storage.query - INFO - 📚 [DB] 从数据库加载 31 个历史 URL
+2026-07-24 15:10:29 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 31 个历史 URL
+2026-07-24 15:10:29 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 15:10:29 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 15:10:29 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 15:10:29 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 15:11:23 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:11:23 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 15:11:23 - filelock - DEBUG - Attempting to acquire lock 1974808740368 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:11:23 - filelock - DEBUG - Lock 1974808740368 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:11:23 - filelock - DEBUG - Attempting to release lock 1974808740368 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:11:23 - filelock - DEBUG - Lock 1974808740368 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 15:11:23 - storage.query - INFO - 📚 [DB] 从数据库加载 31 个历史 URL
+2026-07-24 15:11:23 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 31 个历史 URL
+2026-07-24 15:11:23 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 15:11:23 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 15:11:23 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 15:11:23 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.started host='oss.zhidx.com' port=443 local_address=None timeout=10 socket_options=None
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1730E90>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1731D90>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1732550>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1732CD0>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBCFF4B8D0>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1733450>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1733750>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1733BD0>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD14D2C50>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD14D2E10>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001CBD14DD640> server_hostname='oss.zhidx.com' timeout=10
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1728290>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD171AE10>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1728E90>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1733490>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD171B7D0>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1732E10>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD172B090>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBCBD76910>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD172BB50>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CBD1730710>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'2210'), (b'Connection', b'keep-alive'), (b'Date', b'Thu, 23 Jul 2026 03:55:27 GMT'), (b'x-oss-request-id', b'6A6190AF0A264D3330CC3127'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'Content-MD5', b'kdKOkyNbhcm5LuHv0LqglA=='), (b'x-oss-server-time', b'12'), (b'Via', b'cache48.l2cn3130[0,0,304-0,H], cache30.l2cn3130[6,0], kunlun4.cn9067[0,0,200-0,H], kunlun4.cn9067[2,0]'), (b'ETag', b'"91D28E93235B85C9B92EE1EFD0BAA094"'), (b'Last-Modified', b'Wed, 22 Jul 2020 04:02:58 GMT'), (b'x-oss-hash-crc64ecma', b'13806748441302496824'), (b'Age', b'98170'), (b'Ali-Swift-Global-Savetime', b'1784778927'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 04:00:59 GMT'), (b'X-Swift-CacheTime', b'604468'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0917848770970035906e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/common/lib/lazyload.min.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'5371'), (b'Connection', b'keep-alive'), (b'Date', b'Thu, 23 Jul 2026 03:20:59 GMT'), (b'x-oss-request-id', b'6A61889B82D2F5333337001A'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b's8UqdMrqraruc/R4iSCzsw=='), (b'x-oss-server-time', b'19'), (b'Via', b'cache44.l2cn8011[62,62,304-0,H], cache47.l2cn8011[64,0], kunlun9.cn9067[0,0,200-0,H], kunlun2.cn9067[2,0]'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'ETag', b'"B3C52A74CAEAADAAEE73F4788920B3B3"'), (b'Last-Modified', b'Thu, 28 May 2020 10:04:44 GMT'), (b'x-oss-hash-crc64ecma', b'18046564291062461781'), (b'Age', b'100238'), (b'Ali-Swift-Global-Savetime', b'1784776859'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 03:20:59 GMT'), (b'X-Swift-CacheTime', b'604800'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0717848770970091063e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/themes/zhidxcom/js/single.js?a=1 "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'2228'), (b'Connection', b'keep-alive'), (b'Date', b'Thu, 23 Jul 2026 03:27:49 GMT'), (b'x-oss-request-id', b'6A618A3511EA963639507D2C'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'Content-MD5', b'I6MV1WJ7++vxgofugLg2yw=='), (b'x-oss-server-time', b'44'), (b'Via', b'cache72.l2cn8011[49,49,304-0,H], cache16.l2cn8011[50,0], kunlun10.cn9067[0,0,200-0,H], kunlun9.cn9067[2,0]'), (b'ETag', b'"23A315D5627BFBEBF18287EE80B836CB"'), (b'Last-Modified', b'Thu, 28 May 2020 10:04:45 GMT'), (b'x-oss-hash-crc64ecma', b'14312061682611085358'), (b'Age', b'99828'), (b'Ali-Swift-Global-Savetime', b'1784777269'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 03:27:49 GMT'), (b'X-Swift-CacheTime', b'604800'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0e17848770970324226e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/themes/zhidxcom/js/base.js?a=1 "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'11509'), (b'Connection', b'keep-alive'), (b'Date', b'Thu, 23 Jul 2026 03:20:59 GMT'), (b'x-oss-request-id', b'6A61889BC0CBF539383DCF08'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b'Fe4bruQ/pRkxgZrMMWq2sA=='), (b'x-oss-server-time', b'27'), (b'Via', b'cache44.l2cn8011[52,52,304-0,H], cache33.l2cn8011[54,0], kunlun9.cn9067[0,0,200-0,H], kunlun8.cn9067[3,0]'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'ETag', b'"15EE1BAEE43FA51931819ACC316AB6B0"'), (b'Last-Modified', b'Thu, 28 May 2020 10:04:44 GMT'), (b'x-oss-hash-crc64ecma', b'2978557094107199645'), (b'Age', b'100238'), (b'Ali-Swift-Global-Savetime', b'1784776859'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 03:20:59 GMT'), (b'X-Swift-CacheTime', b'604800'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0d17848770970246619e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/themes/zhidxcom/js/tagcloud.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'application/javascript'), (b'Content-Length', b'1557'), (b'Connection', b'keep-alive'), (b'Date', b'Fri, 24 Jul 2026 03:09:21 GMT'), (b'Vary', b'Accept-Encoding'), (b'x-oss-request-id', b'6A62D761CF0ACE3136E905CC'), (b'x-oss-cdn-auth', b'success'), (b'Last-Modified', b'Thu, 16 May 2024 02:48:48 GMT'), (b'x-oss-object-type', b'Normal'), (b'x-oss-hash-crc64ecma', b'16055879490282747816'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b'HVaeZS8gGyR63R5i8MY7wg=='), (b'x-oss-server-time', b'114'), (b'Content-Encoding', b'gzip'), (b'Via', b'cache56.l2cn3130[0,0,200-0,H], cache55.l2cn3130[2,0], kunlun9.cn9067[26,26,200-0,M], kunlun3.cn9067[29,0]'), (b'Age', b'14536'), (b'Ali-Swift-Global-Savetime', b'1784862561'), (b'X-Cache', b'MISS TCP_MISS dirn:-2:-2'), (b'X-Swift-SaveTime', b'Fri, 24 Jul 2026 07:11:37 GMT'), (b'X-Swift-CacheTime', b'590264'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0817848770970096036e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/ab/zhidxad.js?b=a1 "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'application/javascript'), (b'Content-Length', b'2903'), (b'Connection', b'keep-alive'), (b'Date', b'Fri, 24 Jul 2026 03:09:20 GMT'), (b'Vary', b'Accept-Encoding'), (b'x-oss-request-id', b'6A62D76077B09D35389C2892'), (b'x-oss-cdn-auth', b'success'), (b'Last-Modified', b'Wed, 07 Nov 2018 02:37:06 GMT'), (b'x-oss-object-type', b'Normal'), (b'x-oss-hash-crc64ecma', b'12753125580743492988'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b'2TKPupcgpahEQUbkWOxtGg=='), (b'x-oss-server-time', b'32'), (b'Content-Encoding', b'gzip'), (b'Via', b'cache62.l2cn3130[0,0,200-0,H], cache4.l2cn3130[1,0], kunlun4.cn9067[36,36,200-0,M], kunlun5.cn9067[38,0]'), (b'Age', b'14537'), (b'Ali-Swift-Global-Savetime', b'1784862560'), (b'X-Cache', b'MISS TCP_MISS dirn:-2:-2'), (b'X-Swift-SaveTime', b'Fri, 24 Jul 2026 07:11:37 GMT'), (b'X-Swift-CacheTime', b'590263'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0a17848770970072737e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/common/lib/layui/layui.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'86927'), (b'Connection', b'keep-alive'), (b'Date', b'Thu, 23 Jul 2026 04:05:36 GMT'), (b'x-oss-request-id', b'6A6193102131AD3839E3591C'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'Content-MD5', b'oJ4T7pTVHFJLfipyjH1AOQ=='), (b'x-oss-server-time', b'21'), (b'Via', b'cache5.l2cn8011[0,0,304-0,H], cache25.l2cn8011[0,0], kunlun10.cn9067[0,0,200-0,H], kunlun1.cn9067[5,0]'), (b'ETag', b'"A09E13EE94D51C524B7E2A728C7D4039"'), (b'Last-Modified', b'Fri, 12 Oct 2018 07:06:39 GMT'), (b'x-oss-hash-crc64ecma', b'13757722867245515927'), (b'Age', b'97561'), (b'Ali-Swift-Global-Savetime', b'1784779536'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 04:20:38 GMT'), (b'X-Swift-CacheTime', b'603898'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0617848770970177075e')])
+2026-07-24 15:11:37 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/common/lib/jquery.min.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:37 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'application/javascript'), (b'Content-Length', b'7556'), (b'Connection', b'keep-alive'), (b'Date', b'Fri, 24 Jul 2026 03:09:26 GMT'), (b'Vary', b'Accept-Encoding'), (b'x-oss-request-id', b'6A62D7664FBFB83430340541'), (b'x-oss-cdn-auth', b'success'), (b'Last-Modified', b'Wed, 07 Nov 2018 02:37:29 GMT'), (b'x-oss-object-type', b'Normal'), (b'x-oss-hash-crc64ecma', b'2085373703720214195'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b'aP9YLYSQxIzLVXbqJ6NcjQ=='), (b'x-oss-server-time', b'22'), (b'Content-Encoding', b'gzip'), (b'Via', b'cache24.l2cn3130[0,0,200-0,H], cache10.l2cn3130[4,0], kunlun6.cn9067[77,77,200-0,M], kunlun10.cn9067[79,0]'), (b'Age', b'14531'), (b'Ali-Swift-Global-Savetime', b'1784862566'), (b'X-Cache', b'MISS TCP_MISS dirn:-2:-2'), (b'X-Swift-SaveTime', b'Fri, 24 Jul 2026 07:11:37 GMT'), (b'X-Swift-CacheTime', b'590269'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0f17848770970023155e')])
+2026-07-24 15:11:38 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/common/lib/layui/lay/modules/layer.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'text/javascript'), (b'Content-Length', b'62870'), (b'Connection', b'keep-alive'), (b'Date', b'Sat, 18 Jul 2026 04:58:48 GMT'), (b'x-oss-request-id', b'6A5B080877B09D3530A9E030'), (b'x-oss-cdn-auth', b'success'), (b'Accept-Ranges', b'bytes'), (b'x-oss-object-type', b'Normal'), (b'x-oss-storage-class', b'Standard'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET'), (b'Access-Control-Max-Age', b'1'), (b'Content-MD5', b'O7bHeWIkolO2AUjW6lL6Wg=='), (b'x-oss-server-time', b'15'), (b'Via', b'cache3.l2cn8011[0,0,304-0,H], cache16.l2cn8011[1,0], kunlun9.cn9067[0,0,200-0,H], kunlun6.cn9067[4,0]'), (b'ETag', b'"3BB6C7796224A253B60148D6EA52FA5A"'), (b'Last-Modified', b'Thu, 28 May 2020 10:04:44 GMT'), (b'x-oss-hash-crc64ecma', b'9837980781176953398'), (b'Age', b'526369'), (b'Ali-Swift-Global-Savetime', b'1784350728'), (b'X-Cache', b'HIT TCP_MEM_HIT dirn:-2:-2'), (b'X-Swift-SaveTime', b'Thu, 23 Jul 2026 04:23:17 GMT'), (b'X-Swift-CacheTime', b'174931'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0b17848770970294912e')])
+2026-07-24 15:11:38 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/themes/zhidxcom/js/jquery.share.min.js "HTTP/1.1 200 OK"
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'Tengine'), (b'Content-Type', b'application/javascript'), (b'Content-Length', b'2509'), (b'Connection', b'keep-alive'), (b'Date', b'Fri, 24 Jul 2026 03:09:21 GMT'), (b'Vary', b'Accept-Encoding'), (b'x-oss-request-id', b'6A62D761A7D90C33334125A8'), (b'x-oss-cdn-auth', b'success'), (b'Last-Modified', b'Tue, 15 Apr 2025 05:53:46 GMT'), (b'x-oss-object-type', b'Normal'), (b'x-oss-hash-crc64ecma', b'10843077322304069043'), (b'x-oss-storage-class', b'Standard'), (b'Content-MD5', b'/pvYJi1hdRVbla1mSlxlcA=='), (b'x-oss-server-time', b'26'), (b'Content-Encoding', b'gzip'), (b'Via', b'cache31.l2cn3130[0,0,200-0,H], cache53.l2cn3130[1,0], kunlun10.cn9067[70,70,200-0,M], kunlun7.cn9067[72,0]'), (b'Age', b'14536'), (b'Ali-Swift-Global-Savetime', b'1784862561'), (b'X-Cache', b'MISS TCP_MISS dirn:-2:-2'), (b'X-Swift-SaveTime', b'Fri, 24 Jul 2026 07:11:37 GMT'), (b'X-Swift-CacheTime', b'590264'), (b'Timing-Allow-Origin', b'*'), (b'EagleId', b'01c21f0c17848770970745076e')])
+2026-07-24 15:11:38 - httpx - INFO - HTTP Request: GET https://oss.zhidx.com/static/common/lib/feedback.js?b=2 "HTTP/1.1 200 OK"
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.started
+2026-07-24 15:11:38 - httpcore.http11 - DEBUG - response_closed.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.started
+2026-07-24 15:11:38 - httpcore.connection - DEBUG - close.complete
+2026-07-24 15:31:03 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:36:51 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 15:37:22 - storage.query - INFO - 📚 [DB] 从数据库加载 90 个历史 URL
+2026-07-24 15:37:22 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 90 个历史 URL
+2026-07-24 15:37:22 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 15:37:22 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 15:37:22 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：0 个
+2026-07-24 15:38:01 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 15:40:02 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:40:03 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 15:40:03 - storage.query - INFO - 📚 [DB] 从数据库加载 90 个历史 URL
+2026-07-24 15:40:03 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 90 个历史 URL
+2026-07-24 15:40:03 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 15:40:03 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 15:40:03 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：0 个
+2026-07-24 15:40:55 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 15:43:11 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 15:43:12 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 15:43:12 - storage.query - INFO - 📚 [DB] 从数据库加载 90 个历史 URL
+2026-07-24 15:43:12 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 90 个历史 URL
+2026-07-24 15:43:12 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 15:43:12 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 15:43:12 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：0 个
+2026-07-24 15:43:19 - asyncio - DEBUG - Using proactor: IocpProactor
+2026-07-24 16:44:33 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版) 初始化完成 | 代理模型数：11
+2026-07-24 16:44:33 - storage.schema - INFO - ✅ [DB] 数据库初始化成功：Result/JScanner_Result.db
+2026-07-24 16:44:33 - filelock - DEBUG - Attempting to acquire lock 1462067233424 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 16:44:33 - filelock - DEBUG - Lock 1462067233424 acquired on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 16:44:33 - filelock - DEBUG - Attempting to release lock 1462067233424 on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 16:44:33 - filelock - DEBUG - Lock 1462067233424 released on C:\Users\fanxin\AppData\Roaming\Python\Python311\site-packages\tldextract\.suffix_cache/publicsuffix.org-tlds\de84b5ca2167d4c83e38fb162f2e8738.tldextract.json.lock
+2026-07-24 16:44:33 - storage.query - INFO - 📚 [DB] 从数据库加载 90 个历史 URL
+2026-07-24 16:44:33 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 90 个历史 URL
+2026-07-24 16:44:33 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史 API path
+2026-07-24 16:44:33 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史 API path 到缓存
+2026-07-24 16:44:33 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 | 目标域名：1 个
+2026-07-24 16:44:33 - asyncio - DEBUG - Using proactor: IocpProactor

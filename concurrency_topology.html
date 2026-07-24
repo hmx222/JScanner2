@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JScanner 并发结构拓扑图</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --surface: #1e1e2e;
+    --text-primary: #f0f0f5;
+    --text-secondary: #a0a0b8;
+    --text-muted: #6c6c88;
+    --gridline: #2a2a3e;
+    --border: rgba(255,255,255,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--surface);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    min-height: 100vh;
+  }
+
+  .title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    opacity: 0.7;
+  }
+
+  .diagram {
+    max-width: 960px;
+    width: 100%;
+  }
+
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 1rem 0 1.5rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* Section labels */
+  .section-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.5rem 0;
+    padding: 0.5rem 0;
+  }
+
+  .section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--gridline);
+  }
+
+  /* Inline annotation */
+  .annotation-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 1.5rem;
+    line-height: 1.6;
+    max-width: 600px;
+  }
+
+  .annotation-note code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    background: rgba(255,255,255,0.05);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div class="title">JScanner 并发结构拓扑图</div>
+<div class="subtitle">E:\BaiduNetdiskDownload\JScanner2</div>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> 真正并发 (asyncio.gather + Semaphore)</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span> 伪并发 (run_in_executor 线程池包装)</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> 串行阻塞 (同步 LLM 调用阻塞事件循环)</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span> 后台线程 (daemon thread)</span>
+</div>
+
+<svg viewBox="0 0 920 1320" xmlns="http://www.w3.org/2000/svg" font-family="'Inter', system-ui, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4" y="-4" width="8" height="8">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+    </filter>
+    <filter id="glow-green" x="-2" y="-2" width="4" height="4">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#22c55e" flood-opacity="0.25"/>
+    </filter>
+    <filter id="glow-red" x="-2" y="-2" width="4" height="4">
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#ef4444" flood-opacity="0.2"/>
+    </filter>
+
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#4a4a6a"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#22c55e"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#ef4444"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#3b82f6"/>
+    </marker>
+  </defs>
+
+  <!-- ==================== SECTION DIVIDERS ==================== -->
+  <text x="20" y="118" font-size="11" font-weight="600" fill="#6c6c88" letter-spacing="2" text-transform="uppercase">爬虫阶段</text>
+  <line x1="140" y1="114" x2="900" y2="114" stroke="#2a2a3e" stroke-width="1"/>
+
+  <text x="20" y="400" font-size="11" font-weight="600" fill="#6c6c88" letter-spacing="2" text-transform="uppercase">AI 分析阶段</text>
+  <line x1="150" y1="396" x2="900" y2="396" stroke="#2a2a3e" stroke-width="1"/>
+
+  <text x="20" y="948" font-size="11" font-weight="600" fill="#6c6c88" letter-spacing="2" text-transform="uppercase">请求验证 / 敏感信息</text>
+  <line x1="200" y1="944" x2="900" y2="944" stroke="#2a2a3e" stroke-width="1"/>
+
+  <!-- ==================== MAIN ENTRY ==================== -->
+
+  <!-- main.py -->
+  <rect x="340" y="10" width="220" height="40" rx="6" fill="#2a2a3e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="26" text-anchor="middle" fill="#f0f0f5" font-size="13" font-weight="600">main.py</text>
+  <text x="450" y="42" text-anchor="middle" fill="#6c6c88" font-size="10">asyncio.run(scanner.run())</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="50" x2="450" y2="72" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Scanner.run() -->
+  <rect x="310" y="72" width="280" height="38" rx="6" fill="#261a2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="90" text-anchor="middle" fill="#f0f0f5" font-size="13" font-weight="600">Scanner.run()</text>
+  <text x="450" y="104" text-anchor="middle" fill="#6c6c88" font-size="10">加载种子 URL → 初始化去重</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="110" x2="450" y2="132" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ==================== CRAWLER PHASE ==================== -->
+
+  <!-- _scan_recursive -->
+  <rect x="310" y="132" width="280" height="38" rx="6" fill="#1e1a2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="150" text-anchor="middle" fill="#f0f0f5" font-size="13" font-weight="600">_scan_recursive()</text>
+  <text x="450" y="164" text-anchor="middle" fill="#6c6c88" font-size="10">深度优先 DFS · 批次串行 (Batch=200)</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="170" x2="450" y2="192" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- _process_single_batch -->
+  <rect x="300" y="192" width="300" height="38" rx="6" fill="#1e1e2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="210" text-anchor="middle" fill="#f0f0f5" font-size="13" font-weight="600">_process_single_batch()</text>
+  <text x="450" y="224" text-anchor="middle" fill="#6c6c88" font-size="10">分类 URL → dispatch dynamic / static</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="230" x2="450" y2="262" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- parallel_fetch - GREEN (true async concurrency) -->
+  <rect x="290" y="262" width="320" height="38" rx="6" fill="#14281a" stroke="#22c55e" stroke-width="1.5" filter="url(#glow-green)"/>
+  <text x="450" y="280" text-anchor="middle" fill="#22c55e" font-size="13" font-weight="600">parallel_fetch()  ←  asyncio.gather</text>
+  <text x="450" y="294" text-anchor="middle" fill="#6c6c88" font-size="10">并发分支：动态爬虫 | 静态爬虫</text>
+
+  <!-- fork: left = dynamic, right = static -->
+  <line x1="350" y1="300" x2="220" y2="330" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="550" y1="300" x2="680" y2="330" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <!-- Dynamic Playwright - GREEN -->
+  <rect x="60" y="330" width="320" height="50" rx="6" fill="#14281a" stroke="#22c55e" stroke-width="1.5" filter="url(#glow-green)"/>
+  <text x="220" y="349" text-anchor="middle" fill="#22c55e" font-size="12" font-weight="600">get_source_async()  [GREEN]</text>
+  <text x="220" y="364" text-anchor="middle" fill="#a0a0b8" font-size="10">Playwright · 单 BrowserContext</text>
+  <text x="220" y="377" text-anchor="middle" fill="#6c6c88" font-size="10">Semaphore(thread_num) + asyncio.gather</text>
+
+  <!-- Static httpx - GREEN -->
+  <rect x="540" y="330" width="320" height="50" rx="6" fill="#14281a" stroke="#22c55e" stroke-width="1.5" filter="url(#glow-green)"/>
+  <text x="700" y="349" text-anchor="middle" fill="#22c55e" font-size="12" font-weight="600">fetch_urls_async()  [GREEN]</text>
+  <text x="700" y="364" text-anchor="middle" fill="#a0a0b8" font-size="10">httpx.AsyncClient · 连接池限制</text>
+  <text x="700" y="377" text-anchor="middle" fill="#6c6c88" font-size="10">Semaphore(thread_num) + asyncio.gather</text>
+
+  <!-- merge back -->
+  <line x1="220" y1="380" x2="220" y2="408" stroke="#4a4a6a" stroke-width="1.5"/>
+  <line x1="700" y1="380" x2="700" y2="408" stroke="#4a4a6a" stroke-width="1.5"/>
+  <line x1="220" y1="408" x2="700" y2="408" stroke="#4a4a6a" stroke-width="1.5"/>
+  <line x1="450" y1="408" x2="450" y2="430" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- process results - serial, neutral -->
+  <rect x="310" y="430" width="280" height="34" rx="6" fill="#1e1e2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="448" text-anchor="middle" fill="#f0f0f5" font-size="12" font-weight="600">遍历结果 + process_scan_result()</text>
+  <text x="450" y="460" text-anchor="middle" fill="#6c6c88" font-size="10">去重 → DB 持久化</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="464" x2="450" y2="490" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ==================== AI ANALYSIS PHASE ==================== -->
+
+  <!-- _process_ai_batch -->
+  <rect x="310" y="490" width="280" height="38" rx="6" fill="#2a1a2e" stroke="#8b5cf6" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="508" text-anchor="middle" fill="#c4a0f0" font-size="13" font-weight="600">_process_ai_batch()</text>
+  <text x="450" y="522" text-anchor="middle" fill="#6c6c88" font-size="10">AI 分析流水线编排</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="528" x2="450" y2="550" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- _fastscan_prefilter - GREEN -->
+  <rect x="290" y="550" width="320" height="38" rx="6" fill="#14281a" stroke="#22c55e" stroke-width="1.5" filter="url(#glow-green)"/>
+  <text x="450" y="568" text-anchor="middle" fill="#22c55e" font-size="12" font-weight="600">_fastscan_prefilter()  [GREEN]</text>
+  <text x="450" y="582" text-anchor="middle" fill="#6c6c88" font-size="10">fetch_urls_with_dedup()  httpx 批量预请求</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="588" x2="450" y2="610" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- _collect_and_dedup_apis - serial logic, no strong color -->
+  <rect x="290" y="610" width="320" height="34" rx="6" fill="#1e1e2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="628" text-anchor="middle" fill="#f0f0f5" font-size="12" font-weight="600">_collect_and_dedup_apis()</text>
+  <text x="450" y="640" text-anchor="middle" fill="#6c6c88" font-size="10">全局去重 · 标记已处理</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="644" x2="450" y2="666" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- _run_ai_and_validate -->
+  <rect x="290" y="666" width="320" height="34" rx="6" fill="#1e1e2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="684" text-anchor="middle" fill="#f0f0f5" font-size="12" font-weight="600">_run_ai_and_validate()</text>
+  <text x="450" y="696" text-anchor="middle" fill="#6c6c88" font-size="10">按 JS 分组 → 调用 scan_multiple_apis()</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="700" x2="450" y2="722" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- scan_multiple_apis -->
+  <rect x="270" y="722" width="360" height="34" rx="6" fill="#1e1e2e" stroke="#8b5cf6" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="740" text-anchor="middle" fill="#c4a0f0" font-size="12" font-weight="600">scan_multiple_apis()  — 三层漏斗</text>
+  <text x="450" y="752" text-anchor="middle" fill="#6c6c88" font-size="10">Level 1: AST 上下文提取</text>
+
+  <!-- Level 1 -> Level 2 arrow -->
+  <line x1="450" y1="756" x2="450" y2="773" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- --- Level 2 SUB-AREA --- -->
+  <rect x="50" y="773" width="800" height="60" rx="8" fill="#1a1212" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+  <text x="70" y="792" fill="#ef4444" font-size="10" font-weight="600" opacity="0.7">Level 2 区域 — 串行瓶颈</text>
+
+  <!-- Level 2 - RED (for-loop, blocking eventloop) -->
+  <rect x="260" y="778" width="380" height="48" rx="6" fill="#2a1215" stroke="#ef4444" stroke-width="1.5" filter="url(#glow-red)"/>
+  <text x="450" y="796" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="600">Level 2: Judge  [🔴 RED]</text>
+  <text x="450" y="810" text-anchor="middle" fill="#a0a0b8" font-size="10">for 循环逐个调用 client.chat()</text>
+  <text x="450" y="822" text-anchor="middle" fill="#6c6c88" font-size="10">同步阻塞 · 事件循环冻结 · 串行 N 次 LLM 调用</text>
+
+  <!-- Level 2 -> Level 3 arrow -->
+  <line x1="450" y1="833" x2="450" y2="850" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+
+  <!-- --- Level 3 SUB-AREA --- -->
+  <rect x="50" y="850" width="800" height="60" rx="8" fill="#1a1212" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+  <text x="70" y="870" fill="#ef4444" font-size="10" font-weight="600" opacity="0.7">Level 3 区域 — 串行瓶颈</text>
+
+  <!-- Level 3 - RED -->
+  <rect x="260" y="856" width="380" height="48" rx="6" fill="#2a1215" stroke="#ef4444" stroke-width="1.5" filter="url(#glow-red)"/>
+  <text x="450" y="874" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="600">Level 3: Advisor  [🔴 RED]</text>
+  <text x="450" y="888" text-anchor="middle" fill="#a0a0b8" font-size="10">for 循环逐个调用 client.chat()</text>
+  <text x="450" y="900" text-anchor="middle" fill="#6c6c88" font-size="10">同步阻塞 · 一个 API 10-30s · N 个串行累加</text>
+
+  <!-- ==================== VALIDATION PHASE ==================== -->
+
+  <!-- Level 3 -> batch_execute_requests arrow -->
+  <line x1="450" y1="916" x2="450" y2="958" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- batch_execute_requests - ORANGE (run_in_executor) -->
+  <rect x="290" y="958" width="320" height="48" rx="6" fill="#1e1a10" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="450" y="976" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="600">batch_execute_requests()  [🟠 ORANGE]</text>
+  <text x="450" y="991" text-anchor="middle" fill="#a0a0b8" font-size="10">run_in_executor(线程池, execute_api_request)</text>
+  <text x="450" y="1004" text-anchor="middle" fill="#6c6c88" font-size="10">asyncio.gather 并发 · 但包装同步 httpx</text>
+
+  <!-- arrow with branching note -->
+  <line x1="450" y1="1006" x2="450" y2="1028" stroke="#4a4a6a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ==================== SENSITIVE INFO ==================== -->
+
+  <!-- _extract_sensitive_info - RED (serial sync) -->
+  <rect x="290" y="1028" width="320" height="38" rx="6" fill="#2a1215" stroke="#ef4444" stroke-width="1.5" filter="url(#glow-red)"/>
+  <text x="450" y="1046" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="600">_extract_sensitive_info()  [🔴 RED]</text>
+  <text x="450" y="1060" text-anchor="middle" fill="#6c6c88" font-size="10">遍历 JS 文件列表 · 串行扫描</text>
+
+  <!-- arrow -->
+  <line x1="450" y1="1066" x2="450" y2="1088" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+
+  <!-- secret_scanner.scan - RED (serial sync, blocking) -->
+  <rect x="250" y="1088" width="400" height="48" rx="6" fill="#2a1215" stroke="#ef4444" stroke-width="1.5" filter="url(#glow-red)"/>
+  <text x="450" y="1106" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="600">sensitive_scanner.scan()  [🔴 RED]</text>
+  <text x="450" y="1121" text-anchor="middle" fill="#a0a0b8" font-size="10">5 阶段流水线全部同步 · 最后 LLM 验证</text>
+  <text x="450" y="1134" text-anchor="middle" fill="#6c6c88" font-size="10">预处理 → 候选提取 → AST → 排序 → LLM (batch=20)</text>
+
+  <!-- ==================== SUB-AREA: AIHubClient.chat() ==================== -->
+  <rect x="50" y="1150" width="800" height="60" rx="8" fill="#1a1212" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+
+  <text x="260" y="1170" fill="#ef4444" font-size="11" font-weight="600" opacity="0.8">└─ 所有红色节点的共同瓶颈：</text>
+
+  <rect x="250" y="1176" width="420" height="28" rx="6" fill="#2a1215" stroke="#ef4444" stroke-width="1" filter="url(#glow-red)"/>
+  <text x="460" y="1186" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="600">AIHubClient.chat() → OpenAI() 同步 SDK 阻塞事件循环</text>
+  <text x="460" y="1198" text-anchor="middle" fill="#6c6c88" font-size="9">应使用 AsyncOpenAI() 而不是 OpenAI()</text>
+
+  <!-- ==================== BACKGROUND THREAD (BLUE) ==================== -->
+  <rect x="90" y="1240" width="240" height="34" rx="6" fill="#121a2e" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="210" y="1258" text-anchor="middle" fill="#3b82f6" font-size="12" font-weight="600">ConfigWatcher  [🔵 BLUE]</text>
+  <text x="210" y="1270" text-anchor="middle" fill="#6c6c88" font-size="10">daemon thread · sleep 30s</text>
+
+  <!-- dotted line from ConfigWatcher up to main -->
+  <line x1="210" y1="1240" x2="210" y2="1195" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <text x="160" y="1218" fill="#3b82f6" font-size="9" opacity="0.6">监控 models_config.json</text>
+
+  <line x1="210" y1="1190" x2="70" y2="1170" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3" opacity="0.3"/>
+  <line x1="70" y1="1170" x2="70" y2="100" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,3" opacity="0.2"/>
+  <text x="40" y="480" fill="#3b82f6" font-size="9" opacity="0.4" transform="rotate(-90, 40, 480)">热更新模型列表</text>
+
+  <!-- bottom note: context shared state -->
+  <rect x="580" y="1240" width="280" height="34" rx="6" fill="#1e1e2e" stroke="#4a4a6a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="720" y="1255" text-anchor="middle" fill="#a0a0b8" font-size="10">共享状态元数据</text>
+  <text x="720" y="1268" text-anchor="middle" fill="#6c6c88" font-size="9">Bloom Filter (mmap无锁) · SQLite · Lock</text>
+
+  <line x1="580" y1="1257" x2="370" y2="1257" stroke="#4a4a6a" stroke-width="1" stroke-dasharray="3,2" opacity="0.3"/>
+
+  <!-- ==================== LEGEND (SVG-footer) ==================== -->
+
+  <!-- Decorative: concurrent counts annotation -->
+  <g transform="translate(82, 390)" opacity="0.5">
+    <rect x="0" y="0" width="70" height="18" rx="3" fill="#14281a" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="35" y="12" text-anchor="middle" fill="#22c55e" font-size="9">√ 并发爬虫</text>
+  </g>
+  <g transform="translate(685, 900)" opacity="0.5">
+    <rect x="0" y="0" width="110" height="18" rx="3" fill="#2a1215" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="55" y="12" text-anchor="middle" fill="#ef4444" font-size="9">✗ 串行阻塞 LLM</text>
+  </g>
+</svg>
+
+<div class="annotation-note">
+  <strong>并发瓶颈总结：</strong><br>
+  爬虫层 ✅ 真正异步并发（<code>asyncio.gather</code> + <code>Semaphore</code>）<br>
+  AI 分析层 ❌ 同步 SDK 阻塞事件循环（<code>OpenAI()</code> → 应为 <code>AsyncOpenAI()</code>）<br>
+  且 Level 2 / Level 3 用 <code>for</code> 循环串行调用 LLM，<code>asyncio.gather</code> 完全无法发挥作用<br>
+  请求验证层 ⚠️ 用 <code>run_in_executor</code> 包装同步 <code>httpx.Client</code>，可行但多此一举
+</div>
+
+</body>
+</html>

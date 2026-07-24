@@ -1,0 +1,10 @@
+https://xk.lut.edu.cn/xsxk/profile/js/index.min.js?v=1784102624376
+https://xk.lut.edu.cn/xsxk/profile/browerTips/browerTips.js?v=1784102624376
+https://xk.lut.edu.cn/js/vue-i18n.js
+https://xk.lut.edu.cn/websocket/
+https://xk.lut.edu.cn/js/lang/zh.js
+https://xk.lut.edu.cn/xsxk/profile/js/xfimage.min.js
+https://xk.lut.edu.cn/xsxk/profile/js/config.min.js
+https://xk.lut.edu.cn/xsxk/profile/js/common.js
+https://xk.lut.edu.cn/js/lang/en.js
+https://xk.lut.edu.cn/xsxk/profile/js/cryptojs.js

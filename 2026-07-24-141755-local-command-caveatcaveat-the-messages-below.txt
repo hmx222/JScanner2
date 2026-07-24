@@ -1,0 +1,530 @@
+╭─── Claude Code v2.1.215 ─────────────────────────────────────────────────────╮
+│                                           │ Tips for getting started         │
+│               Welcome back!               │ Run /init to create a CLAUDE.md… │
+│                                           │ ──────────────────────────────── │
+│                  ▐▛███▜▌                  │ What's new                       │
+│                 ▝▜█████▛▘                 │ Claude no longer runs the `/ver… │
+│                   ▘▘ ▝▝                   │ Fixed single-segment `dir/**` a… │
+│                                           │ Fixed a permission-check bypass… │
+│   deepseek-v4-flash · API Usage Billing   │ /release-notes for more          │
+│     E:\BaiduNetdiskDownload\JScanner2     │                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+❯ /clear                                                                        
+
+❯ (base_llm) PS E:\BaiduNetdiskDownload\JScanner2>                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                   python main.py -u            
+  https://xk.lut.edu.cn/xsxk/profile/index.html                                 
+  2026-07-24 11:02:34 - infra.ai_client - INFO - 🚀 AIHubClient (SDK版)         
+  初始化完成 | 代理模型数：11                                                   
+  📂 扫描结果将存入数据库：Result/JScanner_Result.db                            
+  2026-07-24 11:02:35 - storage.schema - INFO - ✅ [DB]                         
+  数据库初始化成功：Result/JScanner_Result.db                                   
+  2026-07-24 11:02:35 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史    
+  URL                                                                           
+  2026-07-24 11:02:35 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史   
+  URL                                                                           
+  2026-07-24 11:02:35 - storage.query - INFO - 📚 [DB] 从数据库加载 0 个历史    
+  API path                                                                      
+  2026-07-24 11:02:35 - infra.dedup - INFO - 📚 [Dedup] 从数据库加载 0 个历史   
+  API path 到缓存                                                               
+  2026-07-24 11:02:35 - infra.dedup - INFO - ✅ [Dedup] 去重管理器初始化完成 |  
+  目标域名：1 个                                                                
+  初始 URL 已在历史记录中，跳过：https://xk.lut.edu.cn/xsxk/profile/index.html  
+  本次扫描耗时：0.07s 分析一下有bug                                             
+
+  Thought for 30s, read 4 files (ctrl+o to expand)
+
+● 找到 Bug 了。
+
+  问题出在 scanner.py:181 对种子 URL 的判重逻辑上。它只检查布隆过滤器，没有二次
+  确认数据库，而布隆过滤器的文件是跨运行持久化的。
+
+  追溯流程：
+
+  1. 初始化时 DiskBloomFilter 打开已有的 Result/global_dedup.bloom
+  文件（上次运行留下的位数据仍在）
+  2. _load_visited_urls_from_db() 从 DB 加载历史 URL → 0 条（DB 是空的）
+  3. 但在 scanner.py:181：
+
+  if not self.checker.visited_urls.contains(url):  # ← 只查布隆过滤器！
+      self.checker.visited_urls.add(url)
+      scan_seed_urls.append(url)
+  else:
+      print(f"初始 URL 已在历史记录中，跳过：{url}")
+
+  布隆过滤器文件里还保留着上次运行该 URL 时置的位，所以 contains() 返回
+  True，代码直接断定"已在历史记录中"跳过了——根本没有去数据库二次确认。
+
+  对比一下，should_scan()（dedup.py:122）和 is_url_visited()（dedup.py:199）都是
+  正确做法：布隆过滤器命中后再查数据库确认，处理了假阳性。
+
+  修复：
+
+● Update(core\scanner.py)
+  ⎿  Added 2 lines, removed 2 lines
+      178              url = url.strip()
+      179              if not url:
+      180                  continue
+      181 -            if not self.checker.visited_urls.contains(url):   
+      182 -                self.checker.visited_urls.add(url)            
+      181 +            if not self.checker.is_url_visited(url):          
+      182 +                self.checker.mark_url_visited(url)            
+      183                  scan_seed_urls.append(url)
+      184              else:
+      185                  print(f"初始 URL 已在历史记录中，跳过：{url}")
+
+  Thought for 2s (ctrl+o to expand)
+
+● Bug 根因： visited_urls.contains(url) 仅查布隆过滤器，而布隆过滤器的文件
+  Result/global_dedup.bloom
+  是跨运行持久化的——上次运行置的位还在，所以命中后直接跳过，不再去数据库核实。
+
+  修复内容：
+  - 用 is_url_visited() 替代 visited_urls.contains() →
+  布隆过滤器命中后会再去数据库二次确认，避免假阳性/旧数据导致误跳过
+  - 用 mark_url_visited() 替代 visited_urls.add() →
+  同步写入布隆过滤器和数据库，保持两者一致
+
+  现在再运行 python main.py -u https://xk.lut.edu.cn/xsxk/profile/index.html
+  就不会被错误跳过了。
+
+✻ Baked for 40s
+
+❯ 分析当前代码中的并发流程和并发结构                                            
+
+  Thought for 4s, read 4 files (ctrl+o to expand)
+
+● Let me also check a few more files for context on the AI client and the
+  response processing:
+
+  Thought for 11s, read 3 files (ctrl+o to expand)
+
+● 现在我对整个代码库有了完整的了解。以下是全面的并发分析：
+
+  ---
+  JScanner 并发结构与并发流程分析
+
+  一、并发模型概览
+
+  项目使用混合并发模型，以 asyncio 为主，多线程为辅：
+
+  ┌──────────────────┬──────────────────────────────────┬────────────────────┐
+  │       模型       │             使用位置             │        用途        │
+  ├──────────────────┼──────────────────────────────────┼────────────────────┤
+  │ asyncio          │ 扫描器核心、爬虫、请求验证       │ 主流程异步编排     │
+  ├──────────────────┼──────────────────────────────────┼────────────────────┤
+  │ threading.Thread │ ConfigWatcher（ai_client.py:85） │ 模型配置文件热更新 │
+  ├──────────────────┼──────────────────────────────────┼────────────────────┤
+  │ threading.Lock   │ ModelStatus 更新、标题去重       │ 保护共享状态       │
+  ├──────────────────┼──────────────────────────────────┼────────────────────┤
+  │ run_in_executor  │ request_executor.py:234          │ 将同步 httpx       │
+  │                  │                                  │ 请求伪装成异步     │
+  ├──────────────────┼──────────────────────────────────┼────────────────────┤
+  │ 同步阻塞         │ AIHubClient.chat()（所有 LLM     │ 调用 OpenAI        │
+  │                  │ 调用）                           │ SDK（非 Async）    │
+  └──────────────────┴──────────────────────────────────┴────────────────────┘
+
+  ---
+  二、主流程并发拓扑
+
+  main.py
+    └─ asyncio.run(scanner.run())               ← 单事件循环
+         └─ _scan_recursive(urls, depth)         ← 递归深度遍历（DFS）
+              └─ 按 BATCH_SIZE=200 分批
+                   └─ _process_single_batch(batch)
+                        └─ parallel_fetch()
+                             ├─ asyncio.gather(                            ←
+  并行分支
+                             │    ├─ get_source_async()    [dynamic]      │
+  Playwright
+                             │    │    └─ Semaphore(thread_num) 控制并发   │
+  单浏览器实例
+                             │    │         └─ asyncio.gather(all_urls)   │
+                             │    │              └─ fetch_page_async()    │
+                             │    └─ fetch_urls_async()    [static]       │
+  httpx
+                             │         └─ Semaphore(thread_num)            │
+  AsyncClient
+                             │              └─ asyncio.gather(all_urls)   │
+                             └────────────────────────────────────────────
+                        └─ 遍历结果, process_scan_result()   ← 同步处理
+                        └─ 数据持久化 → db_handler.append_data_batch()
+                   └─ _process_ai_batch()                  ← AI 分析阶段
+                        └─ _fastscan_prefilter()            ← httpx 预过滤
+                        │    └─ fetch_urls_with_dedup()     ← 智能请求+去重
+                        └─ _collect_and_dedup_apis()        ← 纯逻辑处理
+                        └─ _run_ai_and_validate()           ← LLM 分析+请求验证
+                             ├─ scan_multiple_apis()        ← 三层漏斗
+                             │    ├─ Level 1: AST 提取     ← 同步
+                             │    ├─ Level 2: for 循环逐个 LLM Judge  ← 串行！
+                             │    └─ Level 3: for 循环逐个 LLM Advisor  ← 串行！
+                             └─ batch_execute_requests()  ← asyncio.gather
+                                  └─ run_in_executor()     ← 线程池包装同步
+  httpx
+
+  ---
+  三、关键并发点详解
+
+  3.1 爬虫层并发（parallel_fetch, scanner.py:445）
+
+  Playwright 动态爬虫 (browser_crawler.py:225-242)：
+  - 单个 BrowserContext 实例，所有并发页面共享
+  - asyncio.Semaphore(thread_num) 限制并发页面数
+  - asyncio.gather() 发起全部任务
+  - 失败 URL 用 httpx 补救（fetch_urls_async 再请求一轮）
+
+  httpx 静态爬虫 (httpx_crawler.py:113-177)：
+  - 单个 httpx.AsyncClient，带连接池限制 Limits(max_connections=thread_num)
+  - 同样 Semaphore + gather 模式
+  - 智能请求模式（fetch_urls_smart）：两轮（POST → 405 回退 GET），串行两阶段
+
+  并发控制参数：
+  - parallel_fetch 内两个分支相互独立，各自的 Semaphore 互不影响
+  - get_source_async 接收 args.thread_num
+  - fetch_urls_async 限制 min(args.thread_num, 50)
+
+  3.2 递归扫描并发（_scan_recursive, scanner.py:558）
+
+  深度 0: process_single_batch → gather(dynamic, static) → 处理结果 → AI分析 →
+  去重
+  深度 1: process_single_batch → ...
+  深度 N: ...
+
+  - 深度遍历是递归串行的（DFS），每层内批次串行，批次内并发
+  - 批次间 asyncio.sleep(BATCH_SLEEP=0.2s) 限速
+  - 内存熔断 _check_memory_and_handle() 每批次后检查
+
+  3.3 AI 分析层并发（params_scan.py）
+
+  Level 2（Judge） 和 Level 3（Advisor） 存在严重并发瓶颈：
+
+  # Level 2: 串行逐个调用 LLM（params_scan.py:287-328）
+  for candidate in candidates:                  # ← for 循环，一次一个
+      result = client.chat(...)                 # ← 同步阻塞调用
+
+  # Level 3: 同样串行（params_scan.py:458-485）
+  for candidate in level_2_candidates:          # ← for 循环，一次一个
+      analysis_result = self.analyze(...)       # ← 同步阻塞调用
+
+  client.chat() 是同步阻塞的 — 使用的是 OpenAI()（同步客户端）而非
+  AsyncOpenAI()。每次调用会阻塞整个事件循环，导致所有并发任务在 LLM
+  调用期间停滞。
+
+  3.4 敏感信息扫描并发（secret_scanner.py）
+
+  # scanner.py:637 在深度遍历的每个批次后串行执行
+  if self.args.analyzeSensitiveInfoRex or self.args.analyzeSensitiveInfoAI:
+      await self._extract_sensitive_info(all_scan_info_list)
+
+  - _extract_sensitive_info 遍历 scan_info_list 串行
+  - 内部 sensitive_scanner.scan() 全程同步：
+    - _preprocess → _extract_candidates → _enrich_with_ast → _priority_sort →
+  _verify_with_llm
+    - _verify_with_llm 分批（batch=20）串行调用
+  llm_verifier.verify_with_context()
+    - 最终又落到 client.chat() 同步阻塞
+
+  3.5 请求验证并发（request_executor.py）
+
+  async def single_request(record):
+      loop = asyncio.get_event_loop()
+      result = await loop.run_in_executor(
+          None,  # 默认线程池
+          execute_api_request,     # ← 同步 httpx 函数
+          ...
+      )
+      return result
+
+  results = await asyncio.gather(*tasks, return_exceptions=True)
+
+  - 使用 run_in_executor 将同步操作推到线程池中执行
+  - asyncio.gather(return_exceptions=True) 并行发起，异常不中断整体
+
+  3.6 模型故障转移并发（ai_client.py）
+
+  class ConfigWatcher(threading.Thread):     # daemon 线程
+      def run(self):
+          while self.running:
+              time.sleep(30)                  # 每 30s 检查一次
+              # 若文件变化 → client_ref._lock 保护下更新模型列表
+
+  class AIHubClient:
+      def _get_available_model(self):
+          with self._lock:
+              for status in self._model_statuses:
+                  if status.is_available:
+                      return status
+
+      def chat(self, messages, ...):          # 同步阻塞！
+          for attempt in range(max_attempts):
+              model_status = self._get_available_model()
+              response = self._client.chat.completions.create(...)  # 同步
+
+  - ConfigWatcher 是唯一的常驻后台线程（daemon=True）
+  - threading.Lock 保护模型状态列表的线程安全
+  - 但 AI 调用本身是全同步的：chat() 中的 self._client.chat.completions.create()
+  阻塞事件循环
+
+  ---
+  四、共享状态与线程安全分析
+
+  ┌────────────┬────────────────┬──────────────┬───────────────────────────┐
+  │    状态    │      位置      │   保护机制   │           风险            │
+  ├────────────┼────────────────┼──────────────┼───────────────────────────┤
+  │ 布隆过滤器 │ infra/bloom.py │ 无锁         │ 低 — 位操作是原子的，允许 │
+  │  mmap 文件 │                │              │ 并发读写                  │
+  ├────────────┼────────────────┼──────────────┼───────────────────────────┤
+  │ 模型状态列 │ ai_client.py:1 │ threading.Lo │ 安全                      │
+  │ 表         │ 94             │ ck           │                           │
+  ├────────────┼────────────────┼──────────────┼───────────────────────────┤
+  │ 标题去重缓 │                │ threading.Lo │ 安全（纯异步 + 单线程事件 │
+  │ 存         │ dedup.py:43-44 │ ck +         │ 循环场景下冗余）          │
+  │            │                │ 容量限制     │                           │
+  ├────────────┼────────────────┼──────────────┼───────────────────────────┤
+  │ SQLite     │                │ 依赖 sqlite3 │ 有风险 —                  │
+  │ 数据库     │ storage/db.py  │  内部锁      │ 多个协程并发写入可能导致  │
+  │            │                │              │ database is locked        │
+  ├────────────┼────────────────┼──────────────┼───────────────────────────┤
+  │ visited_ur │ dedup.py:35    │ 无锁         │ 低风险 — mmap             │
+  │ ls Bloom   │                │              │ 位操作原子性              │
+  └────────────┴────────────────┴──────────────┴───────────────────────────┘
+
+  ---
+  五、并发瓶颈（排名由重到轻）
+
+  🔴 瓶颈 1：LLM 调用阻塞事件循环（最严重）
+
+  位置：ai_client.py:278 → client.chat() →
+  self._client.chat.completions.create()
+
+  问题：使用 OpenAI()（同步客户端）而非 AsyncOpenAI()，每次 LLM 调用耗时 3-30
+  秒，这期间事件循环完全阻塞。所有在 asyncio.gather
+  中等待的爬虫任务、数据库操作全部排队。
+
+  影响链：
+  client.chat() 阻塞 10s
+    └→ 事件循环卡死 10s
+         └→ 所有其他 asyncio 任务（爬虫、DB 写入）停滞 10s
+
+  🟠 瓶颈 2：AI 分析阶段串行处理 API
+
+  位置：params_scan.py:287 Level 2 循环、params_scan.py:458 Level 3 循环
+
+  问题：即使解决了瓶颈 1，Level 2/3 对多个 API 的分析是顺序执行的。20 个 API
+  需要 20 次独立的 LLM 调用，无法并发。
+
+  🟡 瓶颈 3：单浏览器实例瓶颈
+
+  位置：browser_crawler.py:198-221
+
+  问题：所有并发页面共享一个 BrowserContext。单个 Chromium 进程的内存/CPU
+  限制了并发上限。如果 thread_num 设置过高，浏览器会成为瓶颈。
+
+  🟢 瓶颈 4：SQLite 写入竞争
+
+  位置：隐式，在 storage/db.py （未完整分析）
+
+  风险：每个批次的 append_data_batch、save_ai_result_with_id、batch_update_ai_vu
+  ln_request_results 等调用分布在不同协程中，可能触发 SQLite 的 database is 
+  locked 错误。
+
+  ---
+  六、并发安全评价
+
+  ┌───────────┬─────────┬──────────────────────────────────────────────────┐
+  │   维度    │  评价   │                       说明                       │
+  ├───────────┼─────────┼──────────────────────────────────────────────────┤
+  │ 数据竞争  │ ✅ 安全 │ 核心共享状态（Bloom                              │
+  │           │         │ filter、模型列表、去重缓存）均有保护             │
+  ├───────────┼─────────┼──────────────────────────────────────────────────┤
+  │ 死锁      │ ✅      │ 锁的获取路径简单（单一                           │
+  │           │ 低风险  │ threading.Lock，无嵌套锁）                       │
+  ├───────────┼─────────┼──────────────────────────────────────────────────┤
+  │ 协程安全  │ ⚠️      │ client.chat() 同步阻塞会"饿死"其他协程           │
+  │           │ 有隐患  │                                                  │
+  ├───────────┼─────────┼──────────────────────────────────────────────────┤
+  │ SQLite    │ ⚠️      │ 多协程并发写库可能 database is locked            │
+  │ 并发      │ 有隐患  │                                                  │
+  ├───────────┼─────────┼──────────────────────────────────────────────────┤
+  │ 资源泄露  │ ✅ 安全 │ finally 块、@asynccontextmanager、atexit         │
+  │           │         │ 均有清理                                         │
+  └───────────┴─────────┴──────────────────────────────────────────────────┘
+
+  ---
+  七、并发结构图示
+
+  时间轴 →
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ asyncio.run(event_loop)                                           │
+  │                                                                   │
+  │ Depth 0 ──┬── Batch 1 ──┬── parallel_fetch ──┬── dynamic (gather)│
+  │           │              │                    └── static  (gather)│
+  │           │              └── process / AI ──┬── LLM Level 2 [] ←│ 阻塞!
+  │           │                                 └── LLM Level 3 [] ←│ 阻塞!
+  │           ├── Batch 2 ──┬── parallel_fetch ──┬── dynamic         │
+  │           │             │                    └── static          │
+  │           │             └── process / AI ...                     │
+  │           └── ...                                                │
+  │                                                                   │
+  │ Depth 1 ──┬── Batch 1 ──┬── parallel_fetch ──┬── dynamic         │
+  │           │             │                    └── static          │
+  │           │             └── process / AI ...                     │
+  │           └── ...                                                │
+  │                                                                   │
+  │ ── 后台 ── ConfigWatcher(thread, daemon) ─── sleep 30s ─── ...   │
+  └──────────────────────────────────────────────────────────────────┘
+
+  并发单元：
+    [   ] = 同步阻塞（串行）
+    (   ) = asyncio 并发（gather）
+    <   > = 线程并发（run_in_executor）
+    [-]   = 后台线程
+
+  总结：项目整体是 asyncio 驱动的事件驱动架构，爬虫层并发充分（gather +
+  Semaphore），但 AI 分析层是整个系统最强的串行化瓶颈——LLM 调用用同步 SDK
+  阻塞事件循环，且 API 间串行处理，这两点严重限制了系统的端到端吞吐量。
+
+✻ Cogitated for 47s
+
+❯ 这个并发混乱吗                                                                
+
+  Thought for 5s (ctrl+o to expand)
+
+● 说实话，算不上"混乱"——整体架构是清晰的，但并发纪律上确实比较混乱，是那种"看起
+  来有条理、用起来到处卡"的状态。
+
+  好的方面（不混乱）
+
+  1. Scanner 主流程的 pipeline 结构清晰：_scan_recursive → 分批 → parallel_fetch
+  → 处理 → AI → 下一层，层次分明
+  2. Semaphore 控制并发上限：爬虫层都有 Semaphore 保护，不会无限制地发请求
+  3. 信号量、Lock、容量限制都有：title_map 有 MAX_TITLE_PER_DOMAIN、Bloom filter
+  无锁但位操作原子安全
+  4. 资源清理有保障：finally、@asynccontextmanager、atexit 都在
+
+  混乱的地方（核心问题）
+
+  1. 同步 SDK 塞进异步事件循环（最致命）
+
+  # ai_client.py:278
+  self._client = OpenAI(...)  # ← 同步客户端
+  # 但被大量地放在 asyncio 流程里调用:
+  asyncio.run(scanner.run())
+    → _scan_recursive()
+      → _process_ai_batch()
+        → _run_ai_and_validate()
+          → ai_auditor.scan_multiple_apis()
+            → _analyze_multiple_api_values()
+              → client.chat()  # ← 同步阻塞 10-30秒！
+
+  后果：asyncio.gather 本意是并行，结果一个 LLM
+  调用阻塞事件循环，所有协程排队等。名义上是异步并发，实际上是排队串行。
+
+  2. AI 分析内部 for 循环串行调用 LLM
+
+  # params_scan.py:287
+  for candidate in candidates:              # 一个一个来
+      result = client.chat(...)             # 同步阻塞 × N
+
+  Level 2 和 Level 3 都是这种模式。20 个 API → 20 次 LLM 调用 →
+  全部串行。如果改成 asyncio.gather + AsyncOpenAI，20 个可以同时跑。
+
+  3. run_in_executor 用得很"别扭"
+
+  # request_executor.py:234
+  result = await loop.run_in_executor(None, execute_api_request, ...)
+
+  execute_api_request 是同步 httpx 函数，包一层 run_in_executor
+  扔到线程池——能用但很奇怪。既然 httpx 支持异步，直接 await client.get()
+  就行，何必绕线程池？说明设计时没想清楚。
+
+  4. 配置热更新用 Thread，模型调用却是 Sync
+
+  ConfigWatcher
+  是后台线程挺合理的，但它的存在意义是"热更新模型列表"——结果模型调用的 chat()
+  本身却是同步阻塞的，这和"热更新"的初衷有点矛盾。
+
+  ---
+  一句话总结
+
+  ▎ 架构不乱，但异步纪律乱。
+
+  pipeline 设计是好的，爬虫层的并发也是好的——问题出在"写了异步框架，但核心
+  IO（LLM 调用）用的是同步
+  SDK"，导致整个并发设计在关键的瓶颈环节完全失效。修复一个点就够了：OpenAI() →
+  AsyncOpenAI()，然后 LLM 调用处用 asyncio.gather 并行化。
+
+✻ Brewed for 13s
+
+❯ 可以在拓扑图中将并发的部分使用颜色标记一下                                    
+
+  Thought for 3s (ctrl+o to expand)
+
+● Skill(dataviz)
+  ⎿  Successfully loaded skill
+
+  Thought for 1s (ctrl+o to expand)
+
+● Let me first read the skill's reference files to understand the design system:
+
+  Thought for 3s, read 4 files (ctrl+o to expand)
+
+● This is a flowchart/diagram, not a data chart — so I'll use the skill's design
+  system for the styling (colors, typography, spacing) but the form is a custom
+  topology layout. Let me build it.
+
+● Write(concurrency_topology.html)
+  ⎿  Wrote 394 lines to concurrency_topology.html
+       1 <!DOCTYPE html>
+       2 <html lang="zh-CN" data-theme="dark">
+       4 <meta charset="UTF-8">
+       5 <meta name="viewport" content="width=device-width, initial-scale
+         =1.0">
+       7 <style>
+       8   @import url('https://fonts.googleapis.com/css2?family=JetBrain
+         s+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&displa
+       9 
+      10   :root {
+     … +527 lines (ctrl+o to expand)
+
+  Thought for 1s (ctrl+o to expand)
+
+● Bash(start "" "E:\BaiduNetdiskDownload\JScanner2\concurrency_topology.html")
+  ⎿  (No output)
+
+  Thought for 1s (ctrl+o to expand)
+
+● 已生成并打开 concurrency_topology.html，以下是渲染效果：
+
+  JScanner 并发结构拓扑图 (https://www.jscanner.top/concurrency_topology.svg)
+  （由于无法在聊天中直接渲染 SVG，本地文件已打开）
+
+  颜色语义：
+
+  ┌─────────────────┬───────────────────────────────────────┬──────────┐
+  │      颜色       │                 含义                  │ 标注数量 │
+  ├─────────────────┼───────────────────────────────────────┼──────────┤
+  │ 🟢 绿色 #22c55e │ 真正并发 — asyncio.gather + Semaphore │ 3 处     │
+  ├─────────────────┼───────────────────────────────────────┼──────────┤
+  │ 🟠 橙色 #f59e0b │ 伪并发 — run_in_executor 线程池包装   │ 1 处     │
+  ├─────────────────┼───────────────────────────────────────┼──────────┤
+  │ 🔴 红色 #ef4444 │ 串行阻塞 — 同步 LLM 调用冻结事件循环  │ 4 处     │
+  ├─────────────────┼───────────────────────────────────────┼──────────┤
+  │ 🔵 蓝色 #3b82f6 │ 后台线程 — ConfigWatcher daemon       │ 1 处     │
+  └─────────────────┴───────────────────────────────────────┴──────────┘
+
+  核心结论一目了然：
+
+  整个拓扑图上半截（爬虫层）全是 🟢，下半截（AI 层）全是
+  🔴。最关键的发现是中间那条从 parallel_fetch 向下绵延到 client.chat()
+  的红色瀑布——爬虫并发再好，到了 AI 分析阶段被同步 SDK 一把卡死。
+
+✻ Worked for 1m 10s
+
+❯ Commands are in the form `/command [args]`                                    
