@@ -347,18 +347,15 @@ class Scanner:
             print(f"✅ [Batch] All APIs already processed, skipping AI analysis...")
             return
 
-        # ✅ 第三步：立即标记为已处理（在 AI 分析之前！防止失败后重复）
         mark_data = [(api_path, js_url) for api_path, js_url in apis_to_scan]
         self.checker.mark_api_paths_processed_batch(mark_data)
         print(f"✅ [Dedup] Marked {len(apis_to_scan)} API paths as processed BEFORE analysis")
 
-        # ✅ 第四步：按 JS 文件分组进行 AI 分析
         js_groups = {}  # {js_url: [(api_path, full_url)]}
         for api_path, js_url in apis_to_scan:
             if js_url not in js_groups:
                 js_groups[js_url] = []
 
-            # ✅ 使用智能URL拼接逻辑（支持跨域JS场景）
             from processor.analysis.api.api_scan import data_clean
             # data_clean 返回的是列表，我们只需要第一个结果
             cleaned_urls = data_clean(js_url, [api_path], seed_url=self.args.url)
@@ -374,7 +371,6 @@ class Scanner:
 
             js_groups[js_url].append((api_path, full_url))
 
-        # ✅ 第五步：执行 AI 分析并收集待请求的记录
         vuln_records_for_request = []  # 收集需要发起请求的记录
         
         for js_url, api_data_list in js_groups.items():
