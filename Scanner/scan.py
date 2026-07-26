@@ -16,12 +16,10 @@ from config.config import MEMORY_LIMIT, OVERFLOW_DIR
 from crawler.browser_crawler import get_source_async
 from crawler.httpx_crawler import fetch_urls_with_dedup, fetch_urls_async
 from crawler.response_process import process_scan_result
-from infra.ai_client import client
 
-from processor.analysis import AISecurityAuditor
 from processor.analysis.secret.js_sensitive_rex import find_all_info_by_rex
 from processor.analysis.secret.secret_scanner import (
-    SensitiveInfoScanner, cleanup_bloom_filters, remove_html_tags
+    cleanup_bloom_filters, remove_html_tags
 )
 from processor.analysis.api.request_executor import batch_execute_requests
 
@@ -36,32 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 class Scanner:
-    def __init__(self, args, db_handler, checker=None, initial_urls=None):
+    def __init__(self, args, db_handler, checker=None, initial_urls=None,
+                 ai_auditor=None, sensitive_scanner=None):
         self.args = args
         self.db_handler = db_handler
         self.initial_urls = initial_urls or []
         self.checker = checker
-
-        self.ai_auditor = None
-        if self.args.findparam:
-            try:
-                self.ai_auditor = AISecurityAuditor()
-            except Exception as e:
-                print(f"[AI] AI 安全审计器初始化失败：{e}")
-                self.ai_auditor = None
-
-        self.sensitive_scanner = None
-        if self.args.analyzeSensitiveInfoAI:
-            try:
-                self.sensitive_scanner = SensitiveInfoScanner(
-                    client=client,
-                    db=self.db_handler,
-                    max_ast_analysis=50,
-                    max_llm=80
-                )
-            except Exception as e:
-                print(f"[Scanner] 敏感信息扫描器初始化失败：{e}")
-                self.sensitive_scanner = None
+        self.ai_auditor = ai_auditor
+        self.sensitive_scanner = sensitive_scanner
 
         atexit.register(self._cleanup_resources)
 

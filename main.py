@@ -8,9 +8,11 @@ from traceback import print_exc
 from colorama import init
 
 from config.config import db_filename
+from infra.ai_client import client
 from infra.feishu import send_feishu_notify
 from parse_args import parse_args
-from processor.analysis.secret.secret_scanner import SQLiteStorage
+from processor.analysis import AISecurityAuditor
+from processor.analysis.secret.secret_scanner import SQLiteStorage, SensitiveInfoScanner
 from Scanner import Scanner, load_initial_urls, create_duplicate_checker
 
 warnings.filterwarnings("ignore")
@@ -28,7 +30,30 @@ if __name__ == '__main__':
 
     initial_urls = load_initial_urls(args.url)
     checker = create_duplicate_checker(db_handler, initial_urls)
-    scanner = Scanner(args, db_handler, checker=checker, initial_urls=initial_urls)
+
+    ai_auditor = None
+    if args.findparam:
+        try:
+            ai_auditor = AISecurityAuditor()
+        except Exception as e:
+            print(f"[AI] AI 安全审计器初始化失败：{e}")
+            ai_auditor = None
+
+    sensitive_scanner = None
+    if args.analyzeSensitiveInfoAI:
+        try:
+            sensitive_scanner = SensitiveInfoScanner(
+                client=client,
+                db=db_handler,
+                max_ast_analysis=50,
+                max_llm=80
+            )
+        except Exception as e:
+            print(f"[Scanner] 敏感信息扫描器初始化失败：{e}")
+            sensitive_scanner = None
+
+    scanner = Scanner(args, db_handler, checker=checker, initial_urls=initial_urls,
+                     ai_auditor=ai_auditor, sensitive_scanner=sensitive_scanner)
 
     try:
         asyncio.run(scanner.run())
