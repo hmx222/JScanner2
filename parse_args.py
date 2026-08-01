@@ -26,7 +26,7 @@ def parse_headers(header_str):
     return headers
 
 
-def parse_args():
+def  parse_args():
     parser = argparse.ArgumentParser(description="网站扫描工具 - 支持URL扫描、批量处理及结果导出")
 
     # 核心目标参数（必选其一）
@@ -52,6 +52,7 @@ def parse_args():
 
     parser.add_argument('-asia','--analyzeSensitiveInfoAI', action='store_true', default=False, help="是否使用AI模型分析敏感信息")
 
+    parser.add_argument("-re","--restart",action='store_true',default=False,help="是否重新测试当前网站")
     args = parser.parse_args()
 
     return args

@@ -13,7 +13,7 @@ from infra.dedup import DuplicateChecker
 from crawler.httpx_crawler import fetch_urls_async
 from crawler.response_process import process_scan_result
 from logger import get_logger
-
+import config.config as config
 logger = get_logger(__name__)
 
 @asynccontextmanager
@@ -163,6 +163,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
+            executable_path = config.brows_path,
             headless=not getattr(args, 'visible', False),
             proxy={"server": args.proxy} if getattr(args, 'proxy', None) else None,
             args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"]
