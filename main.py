@@ -24,7 +24,6 @@ if __name__ == '__main__':
     args = parse_args()
     start_time = time.time()
     os.makedirs("Result", exist_ok=True)
-
     print(f"📂 扫描结果将存入数据库：{db_filename}")
     db_handler = SQLiteStorage(db_filename)
 
@@ -51,9 +50,13 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"[Scanner] 敏感信息扫描器初始化失败：{e}")
             sensitive_scanner = None
+    args.initial_urls = initial_urls
 
-    scanner = Scanner(args, db_handler, checker=checker, initial_urls=initial_urls,
-                     ai_auditor=ai_auditor, sensitive_scanner=sensitive_scanner)
+    scanner = Scanner(args, db_handler,
+                      checker=checker,
+                      initial_urls=initial_urls,
+                      ai_auditor=ai_auditor,
+                      sensitive_scanner=sensitive_scanner)
 
     try:
         asyncio.run(scanner.run())

@@ -13,13 +13,17 @@ MAX_CACHE_MARKERS = 4  # 单次请求最多缓存标记数
 DEFAULT_CONFIG_PATH = "config/models_config.json"  # 模型配置文件路径
 
 WHITE_SCOPE_PATH = "config/whiteList.txt"   # 白名单路径（仅扫描指定路径）
-MEMORY_LIMIT = 80                            # 内存占用阈值（%），超限时会进行内存释放
+MEMORY_LIMIT = 100                            # 内存占用阈值（%），超限时会进行内存释放
 
 proxies = {
     "http": "",           # 示例: "http://127.0.0.1:7890"
     "https": "",          # 示例: "http://127.0.0.1:7890"
     "no_proxy": "*"       # 不走代理的域名，* 表示全部走代理
 }
+# deepseeK
+deepseek_baseurl =""
+deepseek_API_KEY = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+brows_path = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 
 # ------------------------------
 # 🔔 飞书告警通知

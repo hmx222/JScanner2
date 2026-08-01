@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 class Scanner:
     def __init__(self, args, db_handler, checker=None, initial_urls=None,
                  ai_auditor=None, sensitive_scanner=None):
-        self.args = args
-        self.db_handler = db_handler
-        self.initial_urls = initial_urls or []
-        self.checker = checker
-        self.ai_auditor = ai_auditor
+        self.args = args # 传入的数据
+        self.db_handler = db_handler # 数据库
+        self.initial_urls = initial_urls or [] # 原始url
+        self.checker = checker # 检测
+        self.ai_auditor = ai_auditor #ai检测
         self.sensitive_scanner = sensitive_scanner
 
         atexit.register(self._cleanup_resources)
@@ -73,17 +73,15 @@ class Scanner:
 
     async def run(self):
         os.makedirs("Result", exist_ok=True)
-        self.args.initial_urls = self.initial_urls
-
-        raw_seed_urls = self.load_url()
-        scan_seed_urls = []
+        raw_seed_urls = self.load_url() # 获取url
+        scan_seed_urls = []  # 准备要扫描的url
         for url in raw_seed_urls:
             url = url.strip()
             if not url:
                 continue
-            if not self.checker.visited_urls.contains(url):
-                self.checker.visited_urls.add(url)
+            if not self.checker.visited_urls.contains(url) or getattr(self.args, 'restart', False): # 当前逻辑-re表示强制测试
                 scan_seed_urls.append(url)
+                self.checker.visited_urls.add(url)
             else:
                 print(f"初始 URL 已在历史记录中，跳过：{url}")
 
@@ -413,7 +411,7 @@ class Scanner:
         raw_urls_list = [url.strip() for url in urls if url.strip()]
         urls_list = []
         if depth > 0:
-            for u in raw_urls_list:
+            for u in raw_urls_list: # 清洗过的url列表
                 if self.checker.should_scan(u):
                     self.checker.visited_urls.add(u)
                     urls_list.append(u)
