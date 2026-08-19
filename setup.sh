@@ -9,7 +9,7 @@ BASE_URL="http://127.0.0.1:3000/v1/"
 # ---------- 🤖 模型列表 (空格分隔) ----------
 MODELS="glm-4.7-flash qwen3.5-flash"
 
-# ---------- 🔔 飞书 Webhook ----------
+# ---------- 🔔 飞书 Webhook（可选，用作项目结束与报错的报告） ----------
 FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/1412ed79xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # ---------- 🌐 代理 (留空表示不用代理) ----------

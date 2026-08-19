@@ -583,10 +583,13 @@ class SQLiteStorage:
             params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
             risk_level = self._calculate_risk_level(path, params_parsed, http_method)
 
+            is_dangerous = advisory_report.get("dangerous", False)
+            initial_status = "dangerous_manual_review" if is_dangerous else None
+
             sql = """
                 INSERT OR REPLACE INTO ai_vulns
-                (js_url, api_endpoint, http_method, risk_level, path, params)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (js_url, api_endpoint, http_method, risk_level, path, params, request_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """
 
             cursor.execute(sql, (
@@ -595,14 +598,18 @@ class SQLiteStorage:
                 http_method,
                 risk_level,
                 path,
-                params_json
+                params_json,
+                initial_status
             ))
 
             self.conn.commit()
 
             record_id = cursor.lastrowid
 
-            if risk_level == "High":
+            if is_dangerous:
+                danger_reason = advisory_report.get("danger_reason", "")
+                logger.warning(f"🚨 [DB] 危险 API 已标记为人工审核：{http_method} {full_url} | {danger_reason}")
+            elif risk_level == "High":
                 logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {full_url}")
                 if params_parsed:
                     logger.info(f"   🔑 关键参数：{params_parsed}")
@@ -615,6 +622,21 @@ class SQLiteStorage:
             self.conn.rollback()
             logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
             return None
+
+    def mark_dangerous_manual_review(self, record_id: int) -> bool:
+        """将危险 API 标记为需人工审核（备用方法，save 时已写入 status 则无需调用）"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE ai_vulns SET request_status = 'dangerous_manual_review' WHERE id = ?",
+                (record_id,)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"❌ [DB] 标记危险 API 失败：{e}")
+            return False
 
     def batch_update_ai_vuln_request_results(self, request_results: List[Dict[str, Any]]) -> int:
         """批量更新 AI 漏洞记录的请求验证结果"""
@@ -637,10 +659,17 @@ class SQLiteStorage:
                 if not record_id:
                     continue
 
+                verdict = result.get("verdict", "")
                 status_code = result.get("status_code", -1)
                 content_summary = result.get("content_summary", "")
-                
-                request_status = "success" if status_code > 0 else "failed"
+
+                if verdict == "dangerous_blocked":
+                    request_status = "dangerous_blocked"
+                elif status_code > 0:
+                    request_status = "success"
+                else:
+                    request_status = "failed"
+
                 response_length = len(content_summary) if content_summary else 0
 
                 cursor.execute(sql, (
