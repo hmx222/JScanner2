@@ -291,9 +291,13 @@ class AISecurityAuditor:
         try:
             parsed = json_repair.loads(cleaned_content)
 
-            # 只补充 path，其他保持 AI 输出原样
             if not parsed.get('path') and api_url:
                 parsed['path'] = api_url
+
+            if 'dangerous' not in parsed:
+                parsed['dangerous'] = False
+            if 'danger_reason' not in parsed:
+                parsed['danger_reason'] = ""
 
             return parsed
 

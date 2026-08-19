@@ -233,7 +233,69 @@ DEFAULT_REQUEST_METHOD = "GET"
 
 # API Path 黑名单关键词（小写）
 # 如果 API path 包含这些关键词，将直接跳过处理
+# 使用子串匹配，覆盖驼峰、短横线、下划线等常见命名风格
 API_PATH_BLACKLIST_KEYWORDS: Set[str] = {
-    'del',
-    'delete',
+    # DELETE 及其变体
+    'delete', 'del', 'delt',
+    'remove', 'rm',
+    'destroy', 'drop',
+    'clear', 'purge', 'erase',
+
+    # UPDATE 及其变体
+    'update', 'modify', 'edit', 'change', 'alter', 'rename',
+
+    # ADD/CREATE 及其变体
+    'add', 'create', 'insert', 'register',
+
+    # SAVE 及其变体
+    'save', 'submit', 'commit', 'persist',
+
+    # 文件/数据操作
+    'upload', 'import', 'write',
+
+    # 批量操作
+    'batch', 'bulk', 'mass',
+}
+
+# =============================================================================
+# 10. 响应解析配置
+# =============================================================================
+
+# 业务层鉴权拒绝的 JSON code 值（HTTP 200 但业务层返回拒绝）
+BUSINESS_AUTH_DENIED_CODES: Set = {
+    401, 403, -1, -2,
+    "401", "403", "-1", "-2",
+    "unauthorized", "forbidden", "no_permission",
+    "not_login", "need_login", "token_expired", "token_invalid",
+}
+
+# 业务层鉴权拒绝的 message 关键词（用于 1.5 层关键词过滤）
+BUSINESS_AUTH_DENIED_MESSAGES: List[str] = [
+    '未登录', '请先登录', '未授权', '身份验证失败', 'token过期',
+    '登录过期', '会话过期', '权限不足', '无权限', '认证失败',
+    'unauthorized', 'not logged in', 'login required',
+    'token expired', 'invalid token', 'access denied',
+    'authentication failed', 'permission denied',
+]
+
+# JSON 响应中用于提取业务状态码的常见字段名
+JSON_CODE_FIELDS: List[str] = ["code", "status", "errcode", "errno", "ret", "errCode", "statusCode"]
+
+# JSON 响应中用于提取业务消息的常见字段名
+JSON_MESSAGE_FIELDS: List[str] = ["msg", "message", "errmsg", "info", "desc", "errMsg", "errorMsg"]
+
+# JSON 响应中用于判断是否有实质业务数据的常见字段名
+JSON_DATA_FIELDS: List[str] = ["data", "result", "rows", "list", "items", "records", "content"]
+
+# =============================================================================
+# 11. 请求重试与熔断配置
+# =============================================================================
+
+# 单个 API 最大重试次数（含 405 切换 + AI 调整），超过后强制停止，输出给人工判断
+MAX_RETRY_PER_API = 3
+
+# 405 方法切换映射（只允许互切一次，防止死循环）
+METHOD_SWITCH_MAP = {
+    "GET": "POST",
+    "POST": "GET",
 }
