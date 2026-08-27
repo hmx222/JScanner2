@@ -130,7 +130,7 @@ async def fetch_page_async(page: Page, url: str, progress: tqdm_asyncio):
 
 
 async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
-                           storage_state: str = None):
+                           storage_state: str = None, effective_seed: str = None):
     """
     Playwright 异步批量请求入口
 
@@ -140,13 +140,13 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
         args: 命令行参数
         checker: 去重检查器
         storage_state: Cookie 存储文件路径 (用于保持登录状态)
+        effective_seed: 已验证的 baseURL（如果有），否则使用 args.url
 
     Returns:
         all_next_urls_with_source: 来源 URL -> 子 URL 关系
         scan_info_list: 扫描详情列表
         all_next_urls: 下一层待爬取的纯 URL 集合
         all_next_paths_with_source: 来源 URL -> 子路径关系
-        redirect_stats: 跳转统计信息
     """
     progress = tqdm_asyncio(total=len(urls), desc="🕷️ Crawling", unit="url", ncols=100)
 
@@ -241,8 +241,7 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
     all_next_urls = set()
     all_next_paths_with_source = []
 
-    # 获取 seed_url（从 args 中）
-    seed_url = getattr(args, 'url', None)
+    seed_url = effective_seed if effective_seed else getattr(args, 'url', None)
 
     for scan_result, url, final_status in results:
         if not scan_result or scan_result.get("type") != "success":
@@ -281,10 +280,9 @@ async def get_source_async(urls, thread_num, args, checker: DuplicateChecker,
             "is_valid": 0,
             "redirect_count": redirect_count,
             "redirect_locations": scan_result.get("redirect_locations", []),
-            "original_url": url  # 记录原始请求 URL
+            "original_url": url
         }
 
-        # 传递 seed_url 给 process_scan_result
         is_valid, next_urls_without_source, next_paths_without_source = \
             await process_scan_result(scan_info, checker, args, seed_url=seed_url)
 

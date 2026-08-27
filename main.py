@@ -11,9 +11,9 @@ from urllib.parse import urlparse
 import psutil
 from user_agent import generate_user_agent
 
-from config.scanner_rules import  UNAUTHORIZED_PAGE_KEYWORDS, API_PATH_BLACKLIST_KEYWORDS, \
+from config.scanner_rules import UNAUTHORIZED_PAGE_KEYWORDS, \
     HTTPX_STATIC_EXTENSIONS, STATIC_RESOURCE_EXTENSIONS
-
+from config.scanner_rules import is_api_path_blacklisted
 from config.config import WHITE_SCOPE_PATH, db_filename, MEMORY_LIMIT, OVERFLOW_DIR
 from crawler.browser_crawler import get_source_async
 from crawler.httpx_crawler import fetch_urls_with_dedup, fetch_urls_async
@@ -33,10 +33,33 @@ from storage.filerw import read
 warnings.filterwarnings("ignore")
 from colorama import init
 
-BATCH_SIZE = 200  # 每批次处理 URL 数量
-BATCH_SLEEP = 0.2  # 批次间休眠时间（秒）
-API_MIN_LENGTH = 4  # API 路径最小长度
+BATCH_SIZE = 200
+BATCH_SLEEP = 0.2
+API_MIN_LENGTH = 4
 HTML_EXTS = {'.html', '.htm', '.xhtml'}
+
+
+def _is_more_specific(new_url: str, old_url: str) -> bool:
+    """新 baseURL 的路径前缀比旧的更长，说明更精确"""
+    from urllib.parse import urlparse
+    new_path = urlparse(new_url).path.rstrip('/')
+    old_path = urlparse(old_url).path.rstrip('/')
+    return len(new_path) > len(old_path)
+
+
+def _is_already_base_url(url: str) -> bool:
+    """判断 URL 是否已经是一个验证过的 baseURL（含路径前缀）"""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    path = parsed.path.rstrip('/')
+    return bool(path) and path != '/'
+
+
+def _get_first_level_prefix(api_path):
+    path = api_path.strip().lstrip('/')
+    parts = path.split('/')
+    return parts[0] if parts else ""
 
 
 # 初始化日志
@@ -88,6 +111,7 @@ class Scanner:
         self.initial_urls = []
         self.checker = None
         self.whiteList = read(WHITE_SCOPE_PATH)
+        self.domain_base_urls = {}
 
         self.ai_auditor = None
         if self.args.findparam:
@@ -126,33 +150,15 @@ class Scanner:
     @staticmethod
     def _is_api_path_blacklisted(api_path: str) -> bool:
         """
-        检查 API path 是否包含黑名单关键词
-        
+        检查 API path 是否匹配黑名单正则
+
         Args:
             api_path: API 路径
-            
+
         Returns:
-            bool: 如果包含黑名单关键词返回 True，否则返回 False
+            bool: 如果匹配黑名单返回 True，否则返回 False
         """
-        if not api_path or not isinstance(api_path, str):
-            return True
-        
-        path_lower = api_path.lower()
-        
-        # 检查路径中是否包含黑名单关键词（作为完整单词或路径段）
-        for keyword in API_PATH_BLACKLIST_KEYWORDS:
-            # 使用 '/' 分割路径，检查每个路径段
-            path_segments = path_lower.split('/')
-            for segment in path_segments:
-                # 移除查询参数部分
-                segment_clean = segment.split('?')[0]
-                if keyword == segment_clean:
-                    return True
-                # 也检查是否以该关键词开头或结尾（如 delete_user, user_del）
-                if segment_clean.startswith(keyword + '_') or segment_clean.endswith('_' + keyword):
-                    return True
-        
-        return False
+        return is_api_path_blacklisted(api_path)
 
     async def _quick_scan_filter(self, url, status_code, snippet):
         """快速扫描过滤器"""
@@ -215,19 +221,60 @@ class Scanner:
     async def _process_ai_batch(self, batch_all_next_paths_with_source, batch_scan_info_list, batch_next_urls):
         if not self.ai_auditor:
             return
-        
+
         if not getattr(self.args, 'findparam', False):
             return
+
+        effective_seed = self._get_effective_seed()
+        base_prefix = effective_seed.rstrip('/') if effective_seed else None
+        origin_url = self.args.url
+
+        all_raw_paths = []
+        for item in batch_all_next_paths_with_source:
+            for p in item.get("next_paths", []):
+                p = p.strip()
+                if p and len(p) >= API_MIN_LENGTH:
+                    all_raw_paths.append(p)
+
+        verified_clusters = {}
+        if base_prefix and _is_already_base_url(base_prefix) and all_raw_paths:
+            verified_clusters = self._verify_prefix_clusters(all_raw_paths, origin_url)
 
         qualified_api_paths = set()
         if getattr(self.args, 'fastscan', False) and batch_next_urls:
             print("⚡ [FastScan] 快速扫描模式已启用")
+
             urls_to_scan = []
-            for url in batch_next_urls:
-                url = url.strip()
-                if not url or _is_skip_ext(url):
+            path_to_url_map = {}
+            for item in batch_all_next_paths_with_source:
+                source_url = item.get("sourceURL", "").strip()
+                next_paths = item.get("next_paths", [])
+                if not source_url or not next_paths:
                     continue
-                urls_to_scan.append(url)
+
+                for api_path in next_paths:
+                    api_path = api_path.strip()
+                    if not api_path or len(api_path) < API_MIN_LENGTH:
+                        continue
+                    if self._is_api_path_blacklisted(api_path):
+                        continue
+
+                    cluster = _get_first_level_prefix(api_path)
+                    use_prefix = verified_clusters.get(cluster, True)
+
+                    if use_prefix and base_prefix and _is_already_base_url(base_prefix):
+                        full_url = f"{base_prefix}/{api_path.lstrip('/')}"
+                    else:
+                        parsed = urlparse(source_url)
+                        domain_prefix = f"{parsed.scheme}://{parsed.netloc}"
+                        full_url = api_path if api_path.startswith("http") else f"{domain_prefix}{api_path}"
+
+                    full_url = full_url.strip()
+                    if full_url and full_url not in path_to_url_map:
+                        path_to_url_map[full_url] = api_path
+                        if not _is_skip_ext(full_url):
+                            urls_to_scan.append(full_url)
+
             if urls_to_scan:
                 unique_results, dup_count, stats = await fetch_urls_with_dedup(
                     urls=urls_to_scan, thread_num=50,
@@ -240,45 +287,16 @@ class Scanner:
                         "response_content": result["response_content"], "fingerprint": result.get("fingerprint"),
                     }
                 filter_count = 0
-                for item in batch_all_next_paths_with_source:
-                    source_url = item.get("sourceURL", "").strip()
-                    next_paths = item.get("next_paths", [])
-                    if not source_url or not next_paths:
-                        continue
-
-                    from processor.analysis.api.api_scan import data_clean
-
-                    for api_path in next_paths:
-                        api_path = api_path.strip()
-                        if not api_path or len(api_path) < API_MIN_LENGTH:
-                            continue
-                        
-                        # ✅ 黑名单过滤
-                        if self._is_api_path_blacklisted(api_path):
-                            filter_count += 1
-                            continue
-
-                        # 使用 data_clean 进行智能拼接
-                        cleaned_urls = data_clean(source_url, [api_path], seed_url=self.args.url)
-
-                        if cleaned_urls and len(cleaned_urls) > 0:
-                            full_url = cleaned_urls[0]
+                for full_url, api_path in path_to_url_map.items():
+                    if full_url in url_scan_results:
+                        scan_result = url_scan_results[full_url]
+                        should_test = await self._quick_scan_filter(
+                            url=full_url, status_code=scan_result["status_code"],
+                            snippet=scan_result["response_content"][:600])
+                        if should_test == "1":
+                            qualified_api_paths.add(api_path)
                         else:
-                            # 降级方案
-                            parsed = urlparse(source_url)
-                            domain_prefix = f"{parsed.scheme}://{parsed.netloc}"
-                            full_url = api_path if api_path.startswith("http") else f"{domain_prefix}{api_path}"
-
-                        full_url = full_url.strip()
-                        if full_url in url_scan_results:
-                            scan_result = url_scan_results[full_url]
-                            should_test = await self._quick_scan_filter(
-                                url=full_url, status_code=scan_result["status_code"],
-                                snippet=scan_result["response_content"][:600])
-                            if should_test == "1":
-                                qualified_api_paths.add(api_path)
-                            else:
-                                filter_count += 1
+                            filter_count += 1
 
                 print(
                     f"🌐 [Quick Scan] {len(urls_to_scan)} URLs → {dup_count} duplicates → {len(qualified_api_paths)} qualified")
@@ -297,99 +315,85 @@ class Scanner:
 
         processed_count = 0
         skipped_dup_count = 0
-        
-        # ✅ 第一步：收集当前批次所有唯一的 API paths（跨 JS 文件去重）
-        all_unique_apis = {}  # {api_path: js_url}
-        
+
+        all_unique_apis = {}
+
         for item in batch_all_next_paths_with_source:
             js_url = item.get("sourceURL")
             found_apis = item.get("next_paths", [])
-            
+
             if not js_url or js_url not in source_map:
                 continue
-            
+
             for api_path in found_apis:
                 api_path = api_path.strip()
-                
-                # 基础过滤
+
                 if len(api_path) < API_MIN_LENGTH:
                     continue
                 if api_path.startswith("http") or api_path.startswith("//"):
                     continue
                 if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
                     continue
-                
-                # ✅ 黑名单过滤
                 if self._is_api_path_blacklisted(api_path):
                     continue
-                
-                # FastScan 模式过滤
-                if getattr(self.args, 'fastscan', False):
-                    if qualified_api_paths and api_path not in qualified_api_paths:
-                        continue
-                
-                # ✅ 关键：只保留第一个遇到的 JS 来源（避免同批次内重复）
+
                 if api_path not in all_unique_apis:
                     all_unique_apis[api_path] = js_url
 
-        # ✅ 第二步：批量检查去重（三层缓存，全局去重）
         apis_to_scan = []
         for api_path, js_url in all_unique_apis.items():
             if self.checker.is_api_path_processed(api_path):
                 skipped_dup_count += 1
             else:
                 apis_to_scan.append((api_path, js_url))
-        
+
         if skipped_dup_count > 0:
             print(f"⏭️ [Path Dedup] Skipped {skipped_dup_count} duplicate API paths in this batch")
-        
+
         if not apis_to_scan:
             print(f"✅ [Batch] All APIs already processed, skipping AI analysis...")
             return
 
-        # ✅ 第三步：立即标记为已处理（在 AI 分析之前！防止失败后重复）
         mark_data = [(api_path, js_url) for api_path, js_url in apis_to_scan]
         self.checker.mark_api_paths_processed_batch(mark_data)
         print(f"✅ [Dedup] Marked {len(apis_to_scan)} API paths as processed BEFORE analysis")
 
-        # ✅ 第四步：按 JS 文件分组进行 AI 分析
-        js_groups = {}  # {js_url: [(api_path, full_url)]}
+        js_groups = {}
         for api_path, js_url in apis_to_scan:
             if js_url not in js_groups:
                 js_groups[js_url] = []
 
-            # ✅ 使用智能URL拼接逻辑（支持跨域JS场景）
-            from processor.analysis.api.api_scan import data_clean
-            # data_clean 返回的是列表，我们只需要第一个结果
-            cleaned_urls = data_clean(js_url, [api_path], seed_url=self.args.url)
+            cluster = _get_first_level_prefix(api_path)
+            use_prefix = verified_clusters.get(cluster, True)
 
-            # 如果拼接成功，使用拼接后的URL；否则使用原始api_path
-            if cleaned_urls and len(cleaned_urls) > 0:
-                full_url = cleaned_urls[0]
+            if use_prefix and base_prefix and _is_already_base_url(base_prefix):
+                full_url = f"{base_prefix}/{api_path.lstrip('/')}"
             else:
-                # 降级方案：机械拼接
-                parsed = urlparse(js_url)
-                domain_prefix = f"{parsed.scheme}://{parsed.netloc}"
-                full_url = api_path if api_path.startswith("http") else f"{domain_prefix}{api_path}"
+                from processor.analysis.api.api_scan import data_clean
+                cleaned_urls = data_clean(js_url, [api_path], seed_url=effective_seed)
+                if cleaned_urls and len(cleaned_urls) > 0:
+                    full_url = cleaned_urls[0]
+                else:
+                    parsed = urlparse(js_url)
+                    domain_prefix = f"{parsed.scheme}://{parsed.netloc}"
+                    full_url = api_path if api_path.startswith("http") else f"{domain_prefix}{api_path}"
 
             js_groups[js_url].append((api_path, full_url))
 
-        # ✅ 第五步：执行 AI 分析并收集待请求的记录
-        vuln_records_for_request = []  # 收集需要发起请求的记录
-        
+        vuln_records_for_request = []
+
         for js_url, api_data_list in js_groups.items():
             js_source = source_map.get(js_url, "")
             if not js_source:
                 continue
 
-            # 提取 api_paths 用于 AI 分析
             api_paths = [item[0] for item in api_data_list]
 
             try:
                 batch_ai_advisories = self.ai_auditor.scan_multiple_apis(
                     js_code=js_source,
                     api_paths=api_paths,
-                    target_url=self.args.url.strip()
+                    target_url=effective_seed.strip() if effective_seed else self.args.url.strip()
                 )
 
                 for api_path, advisory_report in batch_ai_advisories.items():
@@ -400,57 +404,77 @@ class Scanner:
                     print(advisory_report)
                     processed_count += 1
 
-                    # 找到对应的 full_url
                     full_url = next((item[1] for item in api_data_list if item[0] == api_path), "")
 
-                    # 先保存到数据库，获取记录 ID
                     record_id = self.db_handler.save_ai_result_with_id(
                         js_url=js_url,
                         full_url=full_url,
                         advisory_report=advisory_report
                     )
-                    
-                    # 如果保存成功，添加到待请求队列
+
                     if record_id:
                         vuln_records_for_request.append({
                             "id": record_id,
                             "full_url": full_url,
                             "http_method": advisory_report.get("method", ""),
-                            "params": advisory_report.get("params", "")
+                            "params": advisory_report.get("params", ""),
+                            "path": advisory_report.get("path", "")
                         })
-
             except Exception as e:
                 print_exc()
                 logger.error(f"❌ [AI] Failed to analyze APIs from {js_url}: {e}")
-                # ⚠️ 注意：即使失败，path 已经被标记，不会重复处理
 
         if processed_count > 0:
             print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
-        
-        # ✅ 第六步：批量执行 HTTP 请求验证（在 AI 分析完成后立即执行）
+
         if vuln_records_for_request:
-            print(f"🚀 [Request Validation] Starting {len(vuln_records_for_request)} requests...")
-            try:
-                request_results = await batch_execute_requests(vuln_records_for_request)
-                
-                # 批量更新数据库
-                updated_count = self.db_handler.batch_update_ai_vuln_request_results(request_results)
-                print(f"✅ [Request Validation] Completed. Updated {updated_count} records.")
-                
-            except Exception as e:
-                print_exc()
-                logger.error(f"❌ [Request Validation] Batch request failed: {e}")
-                print(f"❌ [Request Validation] 批量请求失败: {e}")
+            print(f"🏷️ [Classifier] Starting operation type classification for {len(vuln_records_for_request)} records...")
+
+            read_records = []
+            write_records = []
+
+            for record in vuln_records_for_request:
+                op_type = self.ai_auditor.classify_operation_type(
+                    path=record.get("path", ""),
+                    method=record.get("http_method", ""),
+                    params=record.get("params", "")
+                )
+
+                if op_type == "READ":
+                    read_records.append(record)
+                else:
+                    write_records.append(record)
+                    print(f"🚫 [{record.get('path', '')}] 分类: {op_type} → 需人工确认")
+
+            if write_records:
+                self.db_handler.batch_mark_needs_manual_review([r["id"] for r in write_records])
+                print(f"📋 [Classifier] {len(write_records)} records marked as needs_manual_review")
+
+            if read_records:
+                print(f"🚀 [Request Validation] Starting {len(read_records)} READ requests...")
+                try:
+                    request_results = await batch_execute_requests(read_records)
+
+                    updated_count = self.db_handler.batch_update_ai_vuln_request_results(request_results)
+                    print(f"✅ [Request Validation] Completed. Updated {updated_count} records.")
+
+                except Exception as e:
+                    print_exc()
+                    logger.error(f"❌ [Request Validation] Batch request failed: {e}")
+                    print(f"❌ [Request Validation] 批量请求失败: {e}")
+            else:
+                print(f"ℹ️  [Request Validation] No READ records to validate.")
         else:
             print(f"ℹ️  [Request Validation] No records to validate.")
 
-    async def parallel_fetch(self, batch_dynamic, batch_static):
+    async def parallel_fetch(self, batch_dynamic, batch_static, effective_seed=None):
         """异步并行请求：静态 + 动态"""
         tasks = []
         task_order = []
+        seed = effective_seed if effective_seed else self.args.url
         if batch_dynamic:
             dynamic_task = get_source_async(urls=batch_dynamic, thread_num=self.args.thread_num, args=self.args,
-                                            checker=self.checker)
+                                            checker=self.checker, effective_seed=seed)
             tasks.append(dynamic_task)
             task_order.append('dynamic')
         if batch_static:
@@ -470,14 +494,70 @@ class Scanner:
                 static_result = results[i]
         return dynamic_result, static_result
 
+    def _get_effective_seed(self) -> str:
+        """获取当前域名已缓存的 baseURL，如果没有则返回原始 seed_url"""
+        if not self.args.url:
+            return self.args.url
+        root_domain = get_root_domain(self.args.url)
+        return self.domain_base_urls.get(root_domain, self.args.url)
+
+    def _collect_base_urls_from_batch(self, scan_info_list):
+        """从本批次的 scan_info 中收集已验证的 baseURL，存入域名级缓存"""
+        root_domain = get_root_domain(self.args.url) if self.args.url else None
+        if not root_domain:
+            return
+        for info in scan_info_list:
+            detected = info.get("detected_base_url")
+            if detected:
+                existing = self.domain_base_urls.get(root_domain)
+                if not existing or _is_more_specific(detected, existing):
+                    self.domain_base_urls[root_domain] = detected
+                    print(f"🎯 [BaseURL] 域名 {root_domain} → {detected}")
+
+    def _verify_prefix_clusters(self, api_paths, origin_url):
+        """
+        对 API paths 按第一级前缀聚类，对大类别进行 prefix 验证。
+
+        Returns:
+            verified_clusters: {prefix: bool} — 每个类别是否使用 prefix
+            未在 dict 中的类别默认使用 prefix
+        """
+        base_prefix = self._get_effective_seed().rstrip('/')
+        if not base_prefix or not _is_already_base_url(base_prefix):
+            return {}
+
+        from processor.analysis.api.prefix_agent import (
+            _cluster_paths_by_prefix,
+            _get_large_clusters,
+            verify_prefix_for_clusters,
+        )
+
+        all_paths = list(set(p.strip() for p in api_paths if p and len(p) >= 4))
+        clusters = _cluster_paths_by_prefix(all_paths)
+        large = _get_large_clusters(clusters)
+
+        if not large:
+            return {}
+
+        print(f"📊 [Prefix] 发现 {len(large)} 个大类别需验证: {', '.join(f'{k}({len(v)})' for k, v in large.items())}")
+
+        verified = verify_prefix_for_clusters(
+            base_prefix=base_prefix,
+            seed_url=origin_url,
+            api_paths_by_cluster=large,
+        )
+
+        return verified
 
     async def _process_single_batch(self, batch_urls: list, depth: int) -> dict:
         """处理单个批次（提取自 _scan_recursive）"""
         batch_dynamic = [u for u in batch_urls if classify_url(u, is_seed=(depth == 0)) == 'dynamic']
         batch_static = [u for u in batch_urls if classify_url(u, is_seed=(depth == 0)) == 'static']
 
+        effective_seed = self._get_effective_seed()
         dynamic_result, static_result = await self.parallel_fetch(batch_dynamic=batch_dynamic,
-                                                                  batch_static=batch_static)
+                                                                  batch_static=batch_static,
+                                                                  effective_seed=effective_seed)
 
         batch_all_next_urls_with_source = []
         batch_scan_info_list = []
@@ -502,7 +582,7 @@ class Scanner:
                     try:
                         is_valid, next_urls, next_paths = await process_scan_result(static_info, self.checker,
                                                                                     self.args,
-                                                                                    seed_url=self.args.url)
+                                                                                    seed_url=effective_seed)
                         if is_valid:
                             static_info["is_valid"] = 1
                             batch_scan_info_list.append(static_info)
@@ -592,6 +672,9 @@ class Scanner:
                 )
 
                 all_scan_info_list.extend(batch_result["scan_info_list"])
+
+                self._collect_base_urls_from_batch(batch_result["scan_info_list"])
+
                 for n_url in batch_result["next_urls"]:
                     if self.checker.should_scan(n_url):
                         all_next_urls.add(n_url)

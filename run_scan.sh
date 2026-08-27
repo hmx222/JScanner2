@@ -185,7 +185,6 @@ echo -e "\033[32m📊 统计：主任务URL=${TOTAL_URL} | 成功=$(wc -l < "${D
 echo -e "\033[32m📝 日志归档: ${LOG_DIR}\033[0m"
 echo -e "===== 扫描结束时间: $(date '+%Y-%m-%d %H:%M:%S') =====" >> "${LOG_FILE}"
 
-# ✅ [新增] Shell端发送最终飞书通知
 # 请替换下面的 YOUR_WEBHOOK_URL
 FEISHU_URL="https://open.feishu.cn/open-apis/bot/v2/hook/92159458-e2b8-4722-bb2123132132113213"
 TOTAL_SUCCESS=$(wc -l < "${DONE_URL_FILE}")
