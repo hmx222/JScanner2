@@ -328,8 +328,7 @@ class AISecurityAuditor:
         try:
             parsed = json_repair.loads(cleaned_content)
 
-            if not parsed.get('path') and api_url:
-                parsed['path'] = api_url
+            parsed['path'] = api_url
 
             if 'dangerous' not in parsed:
                 parsed['dangerous'] = False
