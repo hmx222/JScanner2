@@ -3,217 +3,146 @@
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0-brightgreen)
 ![AI-Powered](https://img.shields.io/badge/AI-Powered-orange)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
----
-[中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md)
-[English](https://github.com/hmx222/JScanner2/blob/master/README.md)
-
-## 🎬 Demo
-
-![B0CIOkQJ_converted](https://github.com/user-attachments/assets/d9034311-8343-4c08-b298-6403b09b012f)
-
-
-* Input: [https://example.com](https://example.com)
-* Output:
-
-  * Sensitive API detected
-  * Parameters auto-identified
-  * AI risk analysis (e.g. HARD-CODED TOKEN → exploitable)
+[中文版](https://github.com/hmx222/JScanner2/blob/master/README_ZH.md) | [English](https://github.com/hmx222/JScanner2/blob/master/README.md)
 
 ---
 
-## 🚀 Why JScanner2
+## 🚀 Quick Start
 
-Traditional JavaScript security scanning tools have clear limitations:
+### Prerequisites
 
-* ❌ Only extract API paths (no parameter awareness)
-* ❌ Require manual fuzzing to find vulnerabilities
-* ❌ Cannot understand business logic
-* ❌ Hardcoded secrets lack exploit context
+- Docker & Docker Compose
+- AI Model API access (Recommended: **Qwen 3.5-flash**)
+- Recommended specs: **4 CPU cores + 4GB RAM**
 
-### ✅ What JScanner2 Solves
-
-JScanner2 combines **AST parsing + AI analysis** to enable real-world vulnerability discovery:
-
-#### 1️⃣ Intelligent Parameter Discovery
-
-* Parse JS using AST
-* Extract API endpoints AND parameters
-* AI infers parameter structure and meaning
-
-👉 No more blind fuzzing
-
-#### 2️⃣ AI-Based Hardcoded Secret Analysis
-
-* Detect tokens, keys, credentials
-* AI explains **how to exploit them**
-
-👉 Not just detection, but exploitation guidance
-
-#### 3️⃣ Real Attack Scenarios
-
-In real-world SRC testing:
-
-* APIs alone may seem safe
-* BUT become vulnerable when combined with valid parameters
-
-👉 JScanner2 bridges this gap
-
----
-
-# ⚡ Usage Overview
-
-> 🎯 Three usage levels depending on your needs:
-
-* **Quick Scan** → No config, fast results
-* **AI Scan (Recommended)** → Full capability
-* **Automation Mode** → Batch + notification
-
----
-
-## ⚡ Quick Start (No Configuration)
-
-Run a basic scan without any configuration:
+### Installation & Usage
 
 ```bash
-python main.py -u https://example.com -H 6
-```
+# 1. Clone the repository
+git clone https://github.com/hmx222/JScanner2.git
+cd JScanner2
 
-### Features:
+# 2. Configure and initialize
+vim setup.sh  # Configure your AI API keys etc
+docker compose run --rm scanner /app/setup.sh
 
-* ✅ No API key required
-* ✅ Fast execution
+# 3. Prepare target URLs
+# Required: Add URLs to scan in urls.txt
 
-> 💡 Uses regex-based detection only (no AI)
+# 4. Add WhiteList
+# Optional: Add whitelist domains in config/whiteList.txt
 
----
-
-## 🚀 AI-Powered Scan (Recommended)
-
-Enable full functionality:
-
-```bash
-# install dependencies
-pip install -r requirements.txt
-playwright install
-playwright install-deps
-npm install prettier
-
-# configure
-vim config/config.py
-# set: BASE_URL, API_KEY
-
-# run(Recommended)
-python main.py -u https://example.com -asia -fp -H 6
-```
-
-### Features:
-
-* Intelligent parameter identification
-* AI-based sensitive info detection
-* Exploit suggestions
-
-> 🔥 Recommended for real vulnerability discovery
-
----
-
-## 🤖 Automation Mode (Batch + Notification)
-
-Run large-scale scans with notification:
-
-```bash
-vim run_scan.sh
-# configure FEISHU_WEBHOOK
-
-echo urls.txt | ./run_scan.sh
-```
-
-### Features:
-
-* Batch scanning
-* Background execution (server)
-* Feishu notification
-
-> 💡 Ideal for VPS / long-running tasks
-
----
-
-## 🛠️ Installation
-
-### Requirements
-
-* Python 3.9+
-
-### Full Installation
-
-```bash
-pip install -r requirements.txt
-playwright install-deps
-playwright install
-npm install prettier
+# 5. Start scanning
+docker compose run --rm scanner /app/run_scan.sh urls.txt
 ```
 
 ---
 
-## ⚙️ Configuration
+## 📖 Overview
 
-Edit:
+**JScanner2** is an intelligent JavaScript security scanning tool that combines **AST (Abstract Syntax Tree) parsing** with **AI large language models** to discover sensitive information and unauthorized access vulnerabilities in JavaScript files.
+
+Unlike traditional regex-based tools, JScanner2 understands code semantics, extracts API parameters automatically, and provides AI-powered exploit guidance.
+
+### ✨ Key Features
+
+- 🔍 **Intelligent Parameter Discovery** - AST-based extraction of API endpoints AND parameters
+- 🤖 **AI-Driven Analysis** - Context-aware hardcoded secret detection with exploit suggestions  
+- 🔄 **Resumable Scanning** - Support for pause/resume operations
+
+---
+
+## 💡 Why JScanner2
+
+### ❌ Limitations of Traditional Tools
+
+Traditional JavaScript scanning tools (findsomething, JSFinder, etc.) rely on **regex matching** and suffer from:
+
+1. **API Paths Only** - Cannot extract parameters needed to trigger vulnerabilities
+2. **High False Positives** - Regex cannot understand context (e.g., `s=qcfvg28@4a`)
+3. **Manual Analysis Required** - Every finding needs human verification
+4. **No Business Logic** - Cannot distinguish between safe and exploitable secrets
+
+---
+
+## 📊 Results Analysis
+
+Scan results are stored as SQLite databases in the `Result/` directory.
+
+## 📈 Real-World Results
+
+Tested against **29 domestic SRCs** (Security Response Centers) with the following findings:
+
+| Severity     | Count |
+| ------------ | ----- |
+| 🔴 **High**   | 10    |
+| 🟡 **Medium** | 4     |
+| 🟢 **Low**    | 1     |
+
+**Notes:**
+- ✅ Deduplicated (no repeated vulnerabilities)
+- ✅ Low WAF detection rate (no attack payloads)
+- ✅ Suitable for red team/blue team exercises
+- ✅ Includes only independent SRCs (not public bug bounty platforms)
+
+---
+
+## 💰 Cost & Performance
+
+### Token Consumption
+
+- **~100 million tokens** for scanning 1,600-2,000 websites (URLs in urls.txt only)
+- Recursive JS file discovery included in count
+
+### Scan Duration
+
+- 2,000 websites: Several hours (depends on JS file count)
+- Recommended: Run on server with screen/tmux
+
+### Recommended Configuration
+
+| Resource    | Minimum           | Recommended        |
+| ----------- | ----------------- | ------------------ |
+| **CPU**     | 2 cores           | 4+ cores           |
+| **RAM**     | 2GB               | 4GB+               |
+| **Network** | Stable connection | High bandwidth     |
+| **Storage** | 1GB               | 5GB+ (for results) |
+
+---
+
+## 🔧 Advanced Usage
+
+### Whitelist Configuration
+
+Prevent scanning of specific domains:
 
 ```bash
-config/config.py
+# config/whiteList.txt
+google.com
+facebook.com
+analytics.example.com
 ```
 
-Modify:
+---
 
-* BASE_URL
-* API_KEY
-* Proxy (optional)
-* FEISHU_WEBHOOK (optional)
+## 🤝 Acknowledgments
+
+Built with:
+- [Playwright](https://playwright.dev/) - Browser automation
+- [httpx](https://github.com/projectdiscovery/httpx) - HTTP probing
+- [NLTK](https://www.nltk.org/) - Natural language processing
+- [阿里云](https://www.aliyun.com/) - AI model services
 
 ---
 
-## 🧠 Core Parameters
+## 📧 Support & Feedback
 
-| Parameter | Description           |
-| --------- | --------------------- |
-| -asia     | AI-based analysis     |
-| -asir     | Regex-based detection |
-| -fp       | Parameter discovery   |
-| -fs       | Fast scan             |
-| -H        | Scan depth            |
+- **Issues**: [GitHub Issues](https://github.com/hmx222/JScanner2/issues)
+- **Technical Details**: [Article (Chinese)](https://xz.aliyun.com/news/91962)
+- **Discussions**: [GitHub Discussions](https://github.com/hmx222/JScanner2/discussions)
 
 ---
 
-## 📊 Output
-
-* API endpoints
-* Parameters (auto-generated)
-* Sensitive data findings
-* Exploit suggestions (AI)
-
-👉 Results are stored for analysis
-
----
-
-## ⚠️ Disclaimer
-
-For authorized security testing only.
-
-* Obtain permission
-* Follow laws
-* No illegal usage
-
----
-
-## 🤝 Acknowledgements
-
-* Playwright
-* LinkFinder
-* NLTK
-* 讯飞星辰
-
----
-
-## 📧 Feedback
-
-[https://github.com/hmx222/JScanner2/issues](https://github.com/hmx222/JScanner2/issues)
+**Made with ❤️ for the security community**

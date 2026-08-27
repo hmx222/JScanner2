@@ -330,6 +330,11 @@ class AISecurityAuditor:
 
             parsed['path'] = api_url
 
+            if 'dangerous' not in parsed:
+                parsed['dangerous'] = False
+            if 'danger_reason' not in parsed:
+                parsed['danger_reason'] = ""
+
             return parsed
 
         except Exception as e:
