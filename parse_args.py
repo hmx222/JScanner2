@@ -52,6 +52,12 @@ def parse_args():
 
     parser.add_argument('-asia','--analyzeSensitiveInfoAI', action='store_true', default=False, help="是否使用AI模型分析敏感信息")
 
+    parser.add_argument('-nr', '--no-request', action='store_true', default=False,
+                        help="禁止自动发起验证请求，仅保存AI分析结果到数据库")
+
+    parser.add_argument('-rv', '--request-validation', action='store_true', default=False,
+                        help="AI分析完成后，自动发起请求验证结果")
+
     args = parser.parse_args()
 
     return args
