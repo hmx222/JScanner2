@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import httpx
 
 from infra.ai_client import client
-from config.scanner_rules import API_PATH_BLACKLIST_KEYWORDS
+from config.scanner_rules import is_api_path_blacklisted
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,12 +68,8 @@ def _normalize_base_url(base_url: str, seed_url: str) -> str:
 
 
 def _is_path_dangerous(path: str) -> bool:
-    """检查路径是否包含黑名单关键词（子串匹配）"""
-    path_lower = path.lower().split('?')[0]
-    for kw in API_PATH_BLACKLIST_KEYWORDS:
-        if kw in path_lower:
-            return True
-    return False
+    """检查路径是否匹配黑名单正则"""
+    return is_api_path_blacklisted(path)
 
 
 def _pick_safe_paths(api_paths: List[str], count: int = 3) -> List[str]:

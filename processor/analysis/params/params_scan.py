@@ -1,13 +1,16 @@
+import hashlib
 import re
 import traceback
-from traceback import print_exc
 from typing import Any, Dict, Optional, List
 
 import json_repair
 
+from config.scanner_rules import is_api_path_blacklisted
 from infra.ai_client import client
+from infra.bloom import DiskBloomFilter
 from logger import get_logger
-from processor.analysis.prompts import SYSTEM_PROMPT_ADVISORY, SYSTEM_PROMPT_JUDGE
+from processor.analysis.params.param_pre_filter import pre_filter_has_params
+from processor.analysis.prompts import SYSTEM_PROMPT_ADVISORY, SYSTEM_PROMPT_JUDGE, SYSTEM_PROMPT_OPERATION_CLASSIFY
 from processor.js.context.context_extractor import extract_multiple_apis_from_raw_code
 
 try:
@@ -23,7 +26,9 @@ class AISecurityAuditor:
     CODE_MAX_LENGTH = 12000
 
     def __init__(self):
-        pass
+        self._no_param_bloom = DiskBloomFilter(
+            "Result/no_param_cache.bloom", capacity=500000, error_rate=0.001
+        )
 
     def _clean_json_response(self, content: str) -> str:
         """强壮的 JSON 剥壳器（用于 Level 2 和 Level 3）"""
@@ -194,15 +199,44 @@ class AISecurityAuditor:
     def _analyze_multiple_api_values(self, candidates: List[Dict[str, Any]]) -> Dict[str, Dict]:
         """
         Level 2: 逐个判断多个 API 是否有参数值
+        三层过滤漏斗：AST评分 → Bloom缓存 → 正则兜底
         """
         strategy_results = {}
-        
+
         for candidate in candidates:
             api_path = candidate['api_path']
             context_data = candidate['context_data']
 
             raw_wrapper = context_data.get('wrapper_code', '')
             caller_codes = context_data.get('caller_codes', [])
+
+            # ---- Layer 1: AST 结构评分（最精准，在完整 AST 上已预先计算） ----
+            ast_score = context_data.get('param_score', 0)
+
+            # ---- Layer 2: Bloom Filter 缓存命中检查 ----
+            wrapper_hash = hashlib.md5(raw_wrapper.encode('utf-8')).hexdigest()
+            if raw_wrapper and self._no_param_bloom.contains(wrapper_hash):
+                strategy_results[api_path] = {"decision": 0, "param_keys": []}
+                logger.info(f"[{api_path}] ⚡ Bloom 缓存命中 (no-param)，跳过 AI")
+                continue
+
+            # ---- Layer 3: AST 评分 + 正则 双重过滤 ----
+            # 逻辑：AST 评分 ≥ 1 或 正则命中 → 放行送 AI
+            #       两者都未命中 → 跳过
+            regex_hit = pre_filter_has_params(raw_wrapper, caller_codes, api_path)
+
+            if ast_score <= 0 and not regex_hit:
+                strategy_results[api_path] = {"decision": 0, "param_keys": []}
+                if ast_score == -1:
+                    logger.info(f"[{api_path}] ⏭️ 无 enclosing function 且正则无信号，保守跳过")
+                else:
+                    logger.info(f"[{api_path}] 🔇 AST评分=0 + 正则无信号，跳过 AI")
+                continue
+
+            if ast_score >= 1:
+                logger.info(f"[{api_path}] 🌳 AST评分={ast_score}，送 AI")
+            else:
+                logger.info(f"[{api_path}] 📝 正则命中(AST=0)，送 AI")
 
             wrapper_code = self._compress_code_loop(raw_wrapper, self.CODE_MAX_LENGTH // 2)
             processed_callers = [self._compress_code_loop(c, self.CODE_MAX_LENGTH // 6) for c in caller_codes[:3]]
@@ -220,6 +254,7 @@ class AISecurityAuditor:
                 max_tokens=1000,
                 require_json=True
             )
+
             try:
                 level2_result = self._parse_level2_result(result)
 
@@ -228,7 +263,9 @@ class AISecurityAuditor:
                     "param_keys": level2_result["param_keys"]
                 }
 
-                logger.debug(f"[{api_path}] Has value: {level2_result['has_value']}, Keys: {level2_result['param_keys']}")
+                # ---- AI 返回无参数，写入 Bloom 缓存 ----
+                if level2_result["has_value"] == 0 and raw_wrapper:
+                    self._no_param_bloom.add(wrapper_hash)
 
             except Exception as e:
                 exc = traceback.format_exc()
@@ -247,6 +284,8 @@ class AISecurityAuditor:
         if not context_data or not context_data.get("found"):
             return None
 
+        api_url = context_data.get('api_url', '')
+
         try:
             raw_wrapper = context_data.get('wrapper_code', '')
             caller_codes = context_data.get('caller_codes', [])
@@ -260,8 +299,6 @@ class AISecurityAuditor:
         except Exception as e:
             logger.error(f"[-] 构建上下文数据失败：{e}")
             return None
-
-        api_url = context_data.get('api_url', '')
 
         # 构建 Level 2 参数名线索提示
         param_keys_hint = ""
@@ -305,11 +342,41 @@ class AISecurityAuditor:
             logger.error(f"[-] AI JSON 解析失败：{e}")
             return None
 
+    @staticmethod
+    def _is_blacklisted(api_path: str) -> bool:
+        return is_api_path_blacklisted(api_path)
+
+    def classify_operation_type(self, path: str, method: str, params: str) -> str:
+        if not path:
+            return "UNKNOWN"
+        user_prompt = f"API Path: {path}\nHTTP Method: {method or '未知'}\nParams: {params or '无'}"
+        try:
+            result = client.chat(
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT_OPERATION_CLASSIFY},
+                    {"role": "user", "content": user_prompt}
+                ],
+                require_json=True,
+                temperature=0.1
+            )
+            if isinstance(result, dict):
+                op_type = result.get("operation", "UNKNOWN").upper()
+                confidence = result.get("confidence", 0.0)
+                if op_type in ("READ", "WRITE", "UNKNOWN"):
+                    logger.info(f"🏷️ [{path}] 操作分类: {op_type} (confidence: {confidence})")
+                    return op_type
+                logger.warning(f"⚠️ [{path}] 未知操作类型: {op_type}，默认为 UNKNOWN")
+        except Exception as e:
+            logger.warning(f"⚠️ [{path}] 操作分类失败: {e}")
+        return "UNKNOWN"
+
     def scan_multiple_apis(self, js_code: str, api_paths: list, target_url: str) -> Dict[str, Optional[Dict[str, Any]]]:
         """
         主流程漏斗：API 提取 → Level 2 过滤 → Level 3 分析
         """
         results = {}
+
+        api_paths = [p for p in api_paths if not self._is_blacklisted(p)]
 
         try:
             all_contexts = extract_multiple_apis_from_raw_code(js_code, api_paths)

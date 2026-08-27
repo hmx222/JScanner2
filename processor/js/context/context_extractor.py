@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional, List, Set, Tuple
 from tree_sitter import Node
 
 from processor.js.context.parse import get_parser, get_logger
+from processor.js.context.param_scoring import get_param_score
 
 # 上下文大小限制常量
 MAX_CONTEXT_BYTES = 5000  # 约5KB
@@ -348,6 +349,121 @@ def _propagate_variables(stmt_node: Node, target_node: Node, code_bytes: bytes) 
 # ==================== 变量传播法 END ====================
 
 
+def _is_declared_in_function(func_node: Node, var_name: str, usage_node: Node, code_bytes: bytes) -> bool:
+    """检查变量是否在当前函数作用域内局部声明"""
+    target = var_name.encode('utf-8')
+    scopes = _build_scope_chain(usage_node, code_bytes)
+    for decls in scopes:
+        for decl in decls:
+            if decl.start_byte < func_node.start_byte or decl.end_byte > func_node.end_byte:
+                continue
+            if decl.type == 'assignment_expression':
+                left = decl.child_by_field_name('left')
+                if left and left.type == 'identifier':
+                    if code_bytes[left.start_byte:left.end_byte] == target:
+                        return True
+                continue
+            for child in decl.children:
+                if child.type != 'variable_declarator':
+                    continue
+                name_node = child.child_by_field_name('name')
+                if name_node and code_bytes[name_node.start_byte:name_node.end_byte] == target:
+                    return True
+    return False
+
+
+def _collect_free_var_declarations(func_node: Node, api_node: Node, code_bytes: bytes, max_decl_bytes: int = 1500) -> str:
+    """
+    收集函数内引用的自由变量（在外层作用域定义），将其声明代码提取出来。
+
+    目的：让 AI 看到 data: t 时，不仅看到 t 怎么来的，还能看到 t 所依赖的 r 到底是什么。
+
+    只收集"有实质内容"的定义（object / array / string），跳过函数调用结果（如 webpack import）。
+    """
+    free_vars = set()
+    func_start = func_node.start_byte
+    func_end = func_node.end_byte
+
+    param_names = set()
+    params_node = func_node.child_by_field_name('parameters')
+    if params_node:
+        def _walk_params(node):
+            if node.type == 'identifier':
+                param_names.add(code_bytes[node.start_byte:node.end_byte].decode('utf-8'))
+            for child in node.children:
+                _walk_params(child)
+        _walk_params(params_node)
+
+    def _collect(node):
+        if node.type == 'identifier':
+            name = code_bytes[node.start_byte:node.end_byte].decode('utf-8')
+            if name in param_names or name in free_vars:
+                return
+
+            if _is_declared_in_function(func_node, name, node, code_bytes):
+                return
+
+            value_node = _find_var_value_node(name, node, code_bytes)
+            if value_node and value_node.type in ('object', 'array', 'string'):
+                free_vars.add(name)
+
+        for child in node.children:
+            _collect(child)
+
+    _collect(func_node)
+
+    if not free_vars:
+        return ""
+
+    dependencies = []
+    seen_ranges = set()
+
+    for var_name in free_vars:
+        value_node = _find_var_value_node(var_name, api_node, code_bytes)
+        if not value_node:
+            continue
+        if value_node.type not in ('object', 'array', 'string'):
+            continue
+
+        decl_size = value_node.end_byte - value_node.start_byte
+        if decl_size > max_decl_bytes:
+            continue
+
+        # 找到 variable_declarator 层级（只取 r = {...} 这一个，不取整个 const r=..., o=...）
+        declarator_node = value_node.parent
+        while declarator_node and declarator_node.type != 'variable_declarator':
+            declarator_node = declarator_node.parent
+
+        if not declarator_node:
+            continue
+
+        if func_start <= declarator_node.start_byte < func_end:
+            continue
+
+        range_key = (declarator_node.start_byte, declarator_node.end_byte)
+        if range_key in seen_ranges:
+            continue
+        seen_ranges.add(range_key)
+
+        # 从父级 lexical_declaration/variable_declaration 提取声明关键字 (var/let/const)
+        decl_parent = declarator_node.parent
+        keyword = "var"
+        if decl_parent and decl_parent.type in ('variable_declaration', 'lexical_declaration'):
+            if decl_parent.children:
+                first_child = decl_parent.children[0]
+                kw_text = code_bytes[first_child.start_byte:first_child.end_byte].decode('utf-8')
+                if kw_text in ('var', 'let', 'const'):
+                    keyword = kw_text
+
+        decl_code = code_bytes[declarator_node.start_byte:declarator_node.end_byte].decode('utf-8')
+        dependencies.append(f"{keyword} {decl_code};")
+
+    if not dependencies:
+        return ""
+
+    return "\n".join(dependencies) + "\n"
+
+
 def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
 
     # 策略1：尝试提取语义边界
@@ -358,13 +474,19 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
         # 检查大小是否在合理范围内
         if len(boundary_code.encode('utf-8')) <= MAX_CONTEXT_BYTES:
             propagated = _propagate_variables(semantic_boundary, api_node, code_bytes)
+
+            # 收集自由变量声明
+            if semantic_boundary.type in _FUNCTION_TYPES:
+                free_var_deps = _collect_free_var_declarations(semantic_boundary, api_node, code_bytes)
+                if free_var_deps:
+                    propagated = free_var_deps + propagated
+
             if len(propagated.encode('utf-8')) <= MAX_CONTEXT_BYTES:
                 return propagated
             return boundary_code
 
-    # 策略2：降级到原有的语句级别提取
+    # 策略2：降级到语句级别提取
     stmt_node = api_node
-    # 往上找，停在变量声明(Declarator)或独立语句(Statement/Property)
     while stmt_node and not (stmt_node.type.endswith(
             'statement') or stmt_node.type == 'variable_declarator' or stmt_node.type == 'property'):
         stmt_node = stmt_node.parent
@@ -372,65 +494,17 @@ def _extract_heuristic_slice(api_node: Node, code_bytes: bytes) -> str:
     if not stmt_node:
         return code_bytes[api_node.start_byte:api_node.end_byte].decode('utf-8')
 
-    # 变量传播：在核心代码中解析字符串变量
     core_line = _propagate_variables(stmt_node, api_node, code_bytes)
 
-    # 获取靶心代码使用的变量
-    used_vars = _find_identifiers_in_node(stmt_node, code_bytes)
-    ignore_list = {'concat', 'return', 'require', 'window', 'document', 'console', 'JSON', 'Object'}
-    used_vars = {v for v in used_vars if v not in ignore_list}
+    # 用统一的自由变量回溯收集依赖
+    enclosing_func = _find_enclosing_function(api_node)
+    dependencies = ""
+    if enclosing_func:
+        dependencies = _collect_free_var_declarations(enclosing_func, api_node, code_bytes)
 
-    dependencies = []
+    final_slice = dependencies + core_line
 
-    if stmt_node.type == 'variable_declarator':
-        parent_decl = stmt_node.parent
-        if parent_decl and parent_decl.type == 'variable_declaration':
-            # 遍历同一个 var/let 家族里的哥哥姐姐们
-            for sibling_decl in parent_decl.children:
-                if sibling_decl.type != 'variable_declarator':
-                    continue
-                # 只找排在咱们目标代码前面的
-                if sibling_decl.start_byte >= stmt_node.start_byte:
-                    break
-
-                sibling_code = code_bytes[sibling_decl.start_byte:sibling_decl.end_byte].decode('utf-8')
-                # 提取那个哥哥声明的变量名，看看是不是我们依赖的
-                name_node = sibling_decl.child_by_field_name('name')
-                if name_node:
-                    var_name = code_bytes[name_node.start_byte:name_node.end_byte].decode('utf-8')
-                    if var_name in used_vars:
-                        # 找到了！强行给它拼上个 var/let/const 关键字，保证语法独立完整
-                        decl_kind = code_bytes[parent_decl.start_byte:parent_decl.children[0].end_byte].decode(
-                            'utf-8')  # 提取 var/let/const
-                        dependencies.append(f"{decl_kind} {sibling_code};")
-
-    parent_scope = stmt_node.parent
-    # 如果上面进了同宗家族逻辑，作用域还要再往上跳一层
-    if stmt_node.type == 'variable_declarator' and parent_scope:
-        parent_scope = parent_scope.parent
-
-    max_lookback = 500
-    if parent_scope and used_vars:
-        for sibling in parent_scope.children:
-            max_lookback -= 1
-            if max_lookback < 0: break
-
-            # 只找排在整句代码前面的
-            target_start = stmt_node.parent.start_byte if stmt_node.type == 'variable_declarator' else stmt_node.start_byte
-            if sibling.start_byte >= target_start:
-                break
-
-            if sibling.type in ['variable_declaration', 'lexical_declaration']:
-                sibling_code = code_bytes[sibling.start_byte:sibling.end_byte].decode('utf-8')
-                if any(f" {var} " in sibling_code or f"{var}=" in sibling_code.replace(" ", "") for var in used_vars):
-                    dependencies.append(sibling_code)
-
-    # 完美缝合
-    final_slice = "\n".join(dependencies) + "\n" + core_line
-
-    # 最终大小检查
     if len(final_slice.encode('utf-8')) > MAX_CONTEXT_BYTES:
-        # 如果加上依赖后超限，只返回传播后的核心代码
         return core_line
 
     return final_slice
@@ -498,7 +572,8 @@ def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> D
             "found": False,
             "api_url": api,
             "wrapper_code": "",
-            "caller_codes": []
+            "caller_codes": [],
+            "param_score": 0
         } for api in target_apis
     }
 
@@ -555,6 +630,10 @@ def _extract_multiple_apis_from_bytes(code_bytes: bytes, target_apis: list) -> D
 
         # 2. 寻找调用链 (享受刚才建立的索引带来的极速快感)
         wrapper_func_node = _find_enclosing_function(api_node)
+
+        # 3. AST 参数信号评分（在完整函数节点上操作，非截取文本）
+        result_data["param_score"] = get_param_score(wrapper_func_node, api_node, code_bytes)
+
         if wrapper_func_node:
             func_name = _get_function_name(wrapper_func_node, code_bytes)
             if func_name:

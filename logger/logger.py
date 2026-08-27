@@ -133,6 +133,11 @@ def _init_global_logging():
     root_logger.addHandler(_create_file_handler(LOG_ERROR_FILENAME, logging.ERROR))
     root_logger.addHandler(FeishuAlertHandler())
 
+    # 压制第三方库的 DEBUG 日志
+    for noisy_logger in ("httpcore", "httpx", "chardet", "filelock", "asyncio", "urllib3", "hpack",
+                         "openai", "dashscope", "litellm", "aiosqlite"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
     _initialized = True
 
 
