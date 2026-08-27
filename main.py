@@ -11,9 +11,9 @@ from urllib.parse import urlparse
 import psutil
 from user_agent import generate_user_agent
 
-from config.scanner_rules import  UNAUTHORIZED_PAGE_KEYWORDS, API_PATH_BLACKLIST_KEYWORDS, \
+from config.scanner_rules import UNAUTHORIZED_PAGE_KEYWORDS, \
     HTTPX_STATIC_EXTENSIONS, STATIC_RESOURCE_EXTENSIONS
-
+from config.scanner_rules import is_api_path_blacklisted
 from config.config import WHITE_SCOPE_PATH, db_filename, MEMORY_LIMIT, OVERFLOW_DIR
 from crawler.browser_crawler import get_source_async
 from crawler.httpx_crawler import fetch_urls_with_dedup, fetch_urls_async
@@ -150,26 +150,15 @@ class Scanner:
     @staticmethod
     def _is_api_path_blacklisted(api_path: str) -> bool:
         """
-        检查 API path 是否包含黑名单关键词
-
-        使用子串匹配，覆盖 delete、deleteUser、batch-delete、user_del 等所有变体。
+        检查 API path 是否匹配黑名单正则
 
         Args:
             api_path: API 路径
 
         Returns:
-            bool: 如果包含黑名单关键词返回 True，否则返回 False
+            bool: 如果匹配黑名单返回 True，否则返回 False
         """
-        if not api_path or not isinstance(api_path, str):
-            return True
-
-        path_lower = api_path.lower().split('?')[0]
-
-        for keyword in API_PATH_BLACKLIST_KEYWORDS:
-            if keyword in path_lower:
-                return True
-
-        return False
+        return is_api_path_blacklisted(api_path)
 
     async def _quick_scan_filter(self, url, status_code, snippet):
         """快速扫描过滤器"""
@@ -345,6 +334,8 @@ class Scanner:
                     continue
                 if any(api_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.css', '.woff', '.ico']):
                     continue
+                if self._is_api_path_blacklisted(api_path):
+                    continue
 
                 if api_path not in all_unique_apis:
                     all_unique_apis[api_path] = js_url
@@ -426,9 +417,9 @@ class Scanner:
                             "id": record_id,
                             "full_url": full_url,
                             "http_method": advisory_report.get("method", ""),
-                            "params": advisory_report.get("params", "")
+                            "params": advisory_report.get("params", ""),
+                            "path": advisory_report.get("path", "")
                         })
-
             except Exception as e:
                 print_exc()
                 logger.error(f"❌ [AI] Failed to analyze APIs from {js_url}: {e}")
@@ -437,17 +428,42 @@ class Scanner:
             print(f"🤖 [AI Advisor] Batch completed. Generated {processed_count} Advisories.")
 
         if vuln_records_for_request:
-            print(f"🚀 [Request Validation] Starting {len(vuln_records_for_request)} requests...")
-            try:
-                request_results = await batch_execute_requests(vuln_records_for_request)
+            print(f"🏷️ [Classifier] Starting operation type classification for {len(vuln_records_for_request)} records...")
 
-                updated_count = self.db_handler.batch_update_ai_vuln_request_results(request_results)
-                print(f"✅ [Request Validation] Completed. Updated {updated_count} records.")
+            read_records = []
+            write_records = []
 
-            except Exception as e:
-                print_exc()
-                logger.error(f"❌ [Request Validation] Batch request failed: {e}")
-                print(f"❌ [Request Validation] 批量请求失败: {e}")
+            for record in vuln_records_for_request:
+                op_type = self.ai_auditor.classify_operation_type(
+                    path=record.get("path", ""),
+                    method=record.get("http_method", ""),
+                    params=record.get("params", "")
+                )
+
+                if op_type == "READ":
+                    read_records.append(record)
+                else:
+                    write_records.append(record)
+                    print(f"🚫 [{record.get('path', '')}] 分类: {op_type} → 需人工确认")
+
+            if write_records:
+                self.db_handler.batch_mark_needs_manual_review([r["id"] for r in write_records])
+                print(f"📋 [Classifier] {len(write_records)} records marked as needs_manual_review")
+
+            if read_records:
+                print(f"🚀 [Request Validation] Starting {len(read_records)} READ requests...")
+                try:
+                    request_results = await batch_execute_requests(read_records)
+
+                    updated_count = self.db_handler.batch_update_ai_vuln_request_results(request_results)
+                    print(f"✅ [Request Validation] Completed. Updated {updated_count} records.")
+
+                except Exception as e:
+                    print_exc()
+                    logger.error(f"❌ [Request Validation] Batch request failed: {e}")
+                    print(f"❌ [Request Validation] 批量请求失败: {e}")
+            else:
+                print(f"ℹ️  [Request Validation] No READ records to validate.")
         else:
             print(f"ℹ️  [Request Validation] No records to validate.")
 

@@ -8,7 +8,7 @@ from processor.js.context.context_extractor import (
     _propagate_variables,
 )
 from infra.dedup import DuplicateChecker
-from config.scanner_rules import API_PATH_BLACKLIST_KEYWORDS
+from config.scanner_rules import is_api_path_blacklisted
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,15 +20,11 @@ def _is_path_blacklisted(path: str) -> bool:
 
     try:
         from urllib.parse import urlparse
-        path_lower = urlparse(path).path.lower()
+        path_clean = urlparse(path).path.lower()
     except Exception:
-        path_lower = path.lower()
+        path_clean = path.lower()
 
-    for keyword in API_PATH_BLACKLIST_KEYWORDS:
-        if keyword in path_lower:
-            return True
-
-    return False
+    return is_api_path_blacklisted(path_clean)
 
 
 async def process_scan_result(scan_info, checker: DuplicateChecker, args, seed_url: str = None):

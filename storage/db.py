@@ -4,7 +4,7 @@ import sqlite3
 from typing import Optional, List, Dict, Any
 from urllib.parse import urlparse
 
-from config.scanner_rules import VALID_HTTP_METHODS, HIGH_RISK_API_KEYWORDS, MEDIUM_RISK_API_KEYWORDS
+from config.scanner_rules import VALID_HTTP_METHODS
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,9 +55,9 @@ class SQLiteStorage:
                 js_url TEXT NOT NULL,
                 api_endpoint TEXT NOT NULL,
                 http_method TEXT DEFAULT 'UNKNOWN',
-                risk_level TEXT NOT NULL DEFAULT 'Low',
                 path TEXT,
                 params JSON,
+                operation_type TEXT,
                 request_status TEXT,
                 response_code INTEGER,
                 response_length INTEGER,
@@ -67,7 +67,6 @@ class SQLiteStorage:
             );
             """
             cursor.execute(create_ai_table_sql)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_risk ON ai_vulns(risk_level);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_endpoint ON ai_vulns(api_endpoint);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_js_url ON ai_vulns(js_url);")
 
@@ -143,6 +142,20 @@ class SQLiteStorage:
                 cursor.execute("ALTER TABLE ai_vulns ADD COLUMN response_body_preview TEXT")
             except Exception:
                 pass
+            try:
+                cursor.execute("ALTER TABLE ai_vulns ADD COLUMN operation_type TEXT")
+                self.conn.commit()
+                logger.info("🔄 [DB] 迁移完成：已添加 ai_vulns.operation_type 列")
+            except Exception:
+                pass
+
+            # 迁移：移除 ai_vulns 表的 risk_level 列（SQLite 3.35+ 支持 DROP COLUMN）
+            try:
+                cursor.execute("ALTER TABLE ai_vulns DROP COLUMN risk_level")
+                self.conn.commit()
+                logger.info("🔄 [DB] 迁移完成：已移除 ai_vulns.risk_level 列")
+            except Exception:
+                pass
 
             self.conn.commit()
             logger.info(f"✅ [DB] 数据库初始化成功：{self.db_path}")
@@ -215,23 +228,6 @@ class SQLiteStorage:
         except Exception as e:
             logger.warning(f"⚠️ [DB] params 解析失败：{e}")
             return {}
-
-    def _calculate_risk_level(self, path: str, params: Dict[str, str], method: str) -> str:
-        all_text = f"{path} {method} "
-        for k, v in params.items():
-            all_text += f"{k}={v} "
-
-        all_text_lower = all_text.lower()
-
-        for keyword in HIGH_RISK_API_KEYWORDS:
-            if keyword.lower() in all_text_lower:
-                return "High"
-
-        for keyword in MEDIUM_RISK_API_KEYWORDS:
-            if keyword.lower() in all_text_lower:
-                return "Med"
-
-        return "Low"
 
     def get_all_visited_urls(self) -> List[str]:
         """
@@ -514,6 +510,7 @@ class SQLiteStorage:
         return False
 
     def save_ai_result(self, js_url: str, api_endpoint: str, advisory_report: Dict[str, Any]):
+        """保存 AI 渗透建议（不返回 ID，用于不需要后续请求验证的场景）"""
         if not advisory_report or not isinstance(advisory_report, dict):
             logger.warning("⚠️ [DB] advisory_report 为空或格式错误")
             return
@@ -531,31 +528,24 @@ class SQLiteStorage:
             params_raw = advisory_report.get("params", "")
             params_parsed = self._parse_params(params_raw)
             params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
-            risk_level = self._calculate_risk_level(path, params_parsed, http_method)
 
             sql = """
                 INSERT OR REPLACE INTO ai_vulns
-                (js_url, api_endpoint, http_method, risk_level, path, params)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (js_url, api_endpoint, http_method, path, params)
+                VALUES (?, ?, ?, ?, ?)
             """
 
             cursor.execute(sql, (
                 js_url,
                 api_endpoint,
                 http_method,
-                risk_level,
                 path,
                 params_json
             ))
 
             self.conn.commit()
 
-            if risk_level == "High":
-                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {api_endpoint}")
-                if params_parsed:
-                    logger.info(f"   🔑 关键参数：{params_parsed}")
-            else:
-                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {api_endpoint} [{risk_level}]")
+            logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {api_endpoint}")
 
         except Exception as e:
             self.conn.rollback()
@@ -581,40 +571,26 @@ class SQLiteStorage:
             params_raw = advisory_report.get("params", "")
             params_parsed = self._parse_params(params_raw)
             params_json = json.dumps(params_parsed, ensure_ascii=False) if params_parsed else None
-            risk_level = self._calculate_risk_level(path, params_parsed, http_method)
-
-            is_dangerous = advisory_report.get("dangerous", False)
-            initial_status = "dangerous_manual_review" if is_dangerous else None
 
             sql = """
                 INSERT OR REPLACE INTO ai_vulns
-                (js_url, api_endpoint, http_method, risk_level, path, params, request_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (js_url, api_endpoint, http_method, path, params)
+                VALUES (?, ?, ?, ?, ?)
             """
 
             cursor.execute(sql, (
                 js_url,
                 full_url,
                 http_method,
-                risk_level,
                 path,
-                params_json,
-                initial_status
+                params_json
             ))
 
             self.conn.commit()
 
             record_id = cursor.lastrowid
 
-            if is_dangerous:
-                danger_reason = advisory_report.get("danger_reason", "")
-                logger.warning(f"🚨 [DB] 危险 API 已标记为人工审核：{http_method} {full_url} | {danger_reason}")
-            elif risk_level == "High":
-                logger.info(f"🔥 [DB] 发现高价值攻击目标：{http_method} {full_url}")
-                if params_parsed:
-                    logger.info(f"   🔑 关键参数：{params_parsed}")
-            else:
-                logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {full_url} [{risk_level}]")
+            logger.info(f"💾 [DB] 渗透建议已存档：{http_method} {full_url}")
 
             return record_id
 
@@ -623,20 +599,25 @@ class SQLiteStorage:
             logger.error(f"❌ [DB] AI 渗透建议写入失败：{e}")
             return None
 
-    def mark_dangerous_manual_review(self, record_id: int) -> bool:
-        """将危险 API 标记为需人工审核（备用方法，save 时已写入 status 则无需调用）"""
+    def batch_mark_needs_manual_review(self, record_ids: List[int]) -> int:
+        """批量标记需要人工审核的记录（create/update/delete 操作类型）"""
+        if not record_ids:
+            return 0
         try:
             cursor = self.conn.cursor()
-            cursor.execute(
-                "UPDATE ai_vulns SET request_status = 'dangerous_manual_review' WHERE id = ?",
-                (record_id,)
+            cursor.execute("BEGIN TRANSACTION;")
+            cursor.executemany(
+                "UPDATE ai_vulns SET request_status = 'needs_manual_review' WHERE id = ?",
+                [(rid,) for rid in record_ids]
             )
             self.conn.commit()
-            return True
+            count = cursor.rowcount
+            logger.info(f"📋 [DB] 批量标记 {count} 条记录为需人工审核")
+            return count
         except Exception as e:
             self.conn.rollback()
-            logger.error(f"❌ [DB] 标记危险 API 失败：{e}")
-            return False
+            logger.error(f"❌ [DB] 批量标记人工审核失败：{e}")
+            return 0
 
     def batch_update_ai_vuln_request_results(self, request_results: List[Dict[str, Any]]) -> int:
         """批量更新 AI 漏洞记录的请求验证结果"""

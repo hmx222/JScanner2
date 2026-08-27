@@ -18,7 +18,7 @@ from config.scanner_rules import (
     JSON_DATA_FIELDS,
     MAX_RETRY_PER_API,
     METHOD_SWITCH_MAP,
-    API_PATH_BLACKLIST_KEYWORDS
+    is_api_path_blacklisted
 )
 from logger import get_logger
 
@@ -331,13 +331,13 @@ def _build_result(status_code=-1, verdict="unknown", action="", content_type="un
 
 def _is_dangerous_write_url(full_url: str) -> bool:
     """
-    检查 URL 路径是否包含危险写操作关键词（子串匹配）
+    检查 URL 路径是否匹配黑名单正则（子串匹配）
 
     Args:
         full_url: 完整 URL
 
     Returns:
-        True 表示该 URL 包含危险写操作关键词，应拦截请求
+        True 表示该 URL 匹配黑名单，应拦截请求
     """
     if not full_url:
         return False
@@ -346,10 +346,7 @@ def _is_dangerous_write_url(full_url: str) -> bool:
     except Exception:
         return False
 
-    for keyword in API_PATH_BLACKLIST_KEYWORDS:
-        if keyword in path:
-            return True
-    return False
+    return is_api_path_blacklisted(path)
 
 
 # ==================== 三层漏斗主入口 ====================
@@ -363,7 +360,6 @@ def execute_api_request(
     执行 API 请求，经过三层漏斗判定
 
     三层漏斗：
-      Layer 0   - 危险写操作拦截（URL path 关键词匹配）
       Layer 1   - 状态码机械初筛（401/403/404/405/500+/超时/网络错误）
       Layer 1.5 - 关键词过滤（仅 2xx，检测假 200）
       Layer 2   - AI 深度分析（2xx 通过关键词过滤 + 500+）
@@ -388,17 +384,6 @@ def execute_api_request(
             "all_responses": list,
         }
     """
-    # ===== Layer 0: 危险写操作拦截 =====
-    if _is_dangerous_write_url(full_url):
-        logger.warning(f"🛡️ [Guard] 拦截危险写操作 API: {full_url}")
-        return _build_result(
-            status_code=0,
-            verdict="dangerous_blocked",
-            action=method,
-            content_summary="Blocked by dangerous API guard",
-            retry_count=0,
-        )
-
     retry_count = 0
     current_method = method
     current_params_json = params_json
@@ -509,9 +494,6 @@ async def batch_execute_requests(
     """
     批量执行请求（异步版本，提高并发效率）
 
-    在发起请求前会自动拦截危险写操作 API（Layer 0 Guard），
-    被拦截的 API 不会发起实际请求，直接返回 dangerous_blocked 结果。
-
     Args:
         vuln_records: AI 漏洞记录列表，每个记录包含:
             - id: 数据库记录 ID
@@ -528,26 +510,10 @@ async def batch_execute_requests(
     """
     import asyncio
 
-    blocked_results = []
-    safe_records = []
-
-    for record in vuln_records:
-        if _is_dangerous_write_url(record.get("full_url", "")):
-            logger.warning(f"🛡️ [Guard] 批量拦截危险 API: {record.get('full_url', '')}")
-            blocked_results.append({
-                "id": record["id"],
-                "status_code": 0,
-                "verdict": "dangerous_blocked",
-                "content_summary": "Blocked by dangerous API guard",
-            })
-        else:
-            safe_records.append(record)
-
-    if blocked_results:
-        logger.info(f"🛡️ [Guard] 批量拦截 {len(blocked_results)} 个危险 API，放行 {len(safe_records)} 个")
+    safe_records = [r for r in vuln_records if r.get("id")]
 
     if not safe_records:
-        return blocked_results
+        return []
 
     async def single_request(record: Dict[str, Any]) -> Dict[str, Any]:
         """单个请求的异步包装"""
@@ -565,7 +531,7 @@ async def batch_execute_requests(
     tasks = [single_request(record) for record in safe_records]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    final_results = list(blocked_results)
+    final_results = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             logger.error(f"❌ [Batch Request] 任务 {i} 执行失败: {result}")

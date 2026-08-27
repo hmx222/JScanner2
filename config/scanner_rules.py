@@ -84,42 +84,6 @@ SENSITIVE_KEYWORD_SET: Set[str] = {
     'config', 'setting', 'env', 'environment',
 }
 
-# =============================================================================
-# 4. API 风险分级关键词
-# =============================================================================
-
-# 高风险 API 路径关键词
-# 包含这些关键词的 API 通常涉及敏感操作（增删改、权限管理等）
-HIGH_RISK_API_KEYWORDS: List[str] = [
-    # 用户管理
-    "admin", "user", "role", "permission",
-
-    # 数据修改操作
-    "update", "delete", "remove", "create",
-
-    # 敏感信息
-    "password", "email", "auth", "token",
-
-    # 文件操作
-    "upload", "import", "export", "backup", "restore",
-
-    # 金融相关
-    "payment", "order", "refund", "transfer", "withdraw"
-]
-
-# 中风险 API 路径关键词
-# 包含这些关键词的 API 通常涉及查询操作，风险相对较低
-MEDIUM_RISK_API_KEYWORDS: List[str] = [
-    # 查询操作
-    "search", "query", "list", "get",
-
-    # 信息展示
-    "info", "detail", "profile", "account",
-
-    # 配置读取
-    "config", "setting",
-]
-
 # 有效的 HTTP 请求方法列表
 VALID_HTTP_METHODS: List[str] = [
     "GET", "POST", "PUT", "DELETE",
@@ -221,41 +185,507 @@ REQUEST_TIMEOUT = 5
 CONTENT_SUMMARY_MAX_LENGTH = 500
 
 # 支持的 HTTP 方法列表（用于请求执行）
-SUPPORTED_REQUEST_METHODS = {"GET", "POST", "PUT"}
+SUPPORTED_REQUEST_METHODS = {"GET", "POST"}
 
 # 默认降级方法（当 method 不在支持列表中时使用）
 DEFAULT_REQUEST_METHOD = "GET"
 
 
 # =============================================================================
-# 9. API Path 黑名单关键词
+# 9. API Path 黑名单正则
 # =============================================================================
+import re
 
-# API Path 黑名单关键词（小写）
-# 如果 API path 包含这些关键词，将直接跳过处理
-# 使用子串匹配，覆盖驼峰、短横线、下划线等常见命名风格
-API_PATH_BLACKLIST_KEYWORDS: Set[str] = {
-    # DELETE 及其变体
-    'delete', 'del', 'delt',
-    'remove', 'rm',
-    'destroy', 'drop',
-    'clear', 'purge', 'erase',
 
-    # UPDATE 及其变体
-    'update', 'modify', 'edit', 'change', 'alter', 'rename',
+API_PATH_BLACKLIST_PATTERNS: tuple[re.Pattern, ...] = (
+    # =========================================================================
+    # DELETE / REMOVE / DESTROY
+    # =========================================================================
 
-    # ADD/CREATE 及其变体
-    'add', 'create', 'insert', 'register',
+    re.compile(
+        r'(?:^|[/_.-])(?:delete|remove|destroy|erase|purge|drop)(?:$|[/_.-]|[a-z0-9])'
+    ),
 
-    # SAVE 及其变体
-    'save', 'submit', 'commit', 'persist',
+    # 例如：
+    # deleteUser
+    # delete-user
+    # user-delete
+    # removeAccount
+    # account_remove
+    re.compile(
+        r'(?:^|[/_.-])(?:delete|remove|destroy|erase|purge|drop)[a-z0-9]*$'
+    ),
 
-    # 文件/数据操作
-    'upload', 'import', 'write',
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+(?:delete|remove|destroy|erase|purge|drop)[a-z0-9]*$'
+    ),
 
-    # 批量操作
-    'batch', 'bulk', 'mass',
-}
+
+    # =========================================================================
+    # CREATE / ADD / INSERT / REGISTER
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:create|insert|register|signup|sign-up|enroll)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:create|insert|register|signup|sign-up|enroll)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:create|insert|register|signup|enroll)[a-z0-9]*$'
+    ),
+
+    # add 比较容易误报，因此要求它是独立 segment 或明显 action。
+    re.compile(
+        r'(?:^|[/_.-])add(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])add[a-z0-9]+$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+add[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # UPDATE / MODIFY / EDIT / ALTER / RENAME
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:update|modify|edit|alter|rename)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:update|modify|edit|alter|rename)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:update|modify|edit|alter|rename)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # SAVE / SUBMIT / COMMIT / PERSIST
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:save|submit|commit|persist)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:save|submit|commit|persist)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:save|submit|commit|persist)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # WRITE / OVERWRITE / APPEND
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:write|overwrite|append)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:write|overwrite|append)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # ENABLE / DISABLE / ACTIVATE / DEACTIVATE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:enable|disable|activate|deactivate)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:enable|disable|activate|deactivate)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:enable|disable|activate|deactivate)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # SUSPEND / UNSUSPEND / LOCK / UNLOCK / FREEZE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:suspend|unsuspend|freeze|unfreeze|lock|unlock)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:suspend|unsuspend|freeze|unfreeze|lock|unlock)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:suspend|unsuspend|freeze|unfreeze|lock|unlock)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # RESET / RESTORE / RECOVER
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:reset|restore|recover)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:reset|restore|recover)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # APPROVE / REJECT / DENY / CONFIRM
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:approve|reject|deny|confirm)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:approve|reject|deny|confirm)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:approve|reject|deny|confirm)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # CANCEL / ABORT
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:cancel|abort)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:cancel|abort)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # GRANT / REVOKE / AUTHORIZE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:grant|revoke|authorize|deauthorize)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:grant|revoke|authorize|deauthorize)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:grant|revoke|authorize|deauthorize)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # ASSIGN / UNASSIGN / BIND / UNBIND
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:assign|unassign|bind|unbind)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:assign|unassign|bind|unbind)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # TRANSFER / WITHDRAW / DEPOSIT
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:transfer|withdraw|deposit)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:transfer|withdraw|deposit)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # PAYMENT / REFUND / CHARGE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:payment|pay|refund|charge|checkout)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:payment|pay|refund|charge|checkout)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # PURCHASE / BUY / SELL
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:purchase|buy|sell)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:purchase|buy|sell)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # PUBLISH / UNPUBLISH / RELEASE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:publish|unpublish|release)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:publish|unpublish|release)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # DEPLOY / ROLLBACK
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:deploy|rollback|roll-back)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:deploy|rollback|roll-back)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # EXECUTE / EXEC / TRIGGER / INVOKE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:execute|exec|trigger|invoke)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:execute|exec|trigger|invoke)[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])[a-z0-9]+'
+        r'(?:execute|exec|trigger|invoke)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # ACTION / COMMAND
+    #
+    # 这里比 execute 更宽泛，但对于自动执行器来说风险较高。
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:action|command)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:action|command)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # BATCH / BULK —— 只拦截明确的写操作组合
+    #
+    # 不直接把 /batchQuery 拦掉。
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])'
+        r'(?:batch|bulk)'
+        r'(?:delete|remove|destroy|create|insert|update|modify|edit|save|submit)'
+        r'[a-z0-9]*$'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])'
+        r'(?:delete|remove|destroy|create|insert|update|modify|edit|save|submit)'
+        r'(?:batch|bulk)'
+        r'[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # UPLOAD / IMPORT / OVERWRITE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:upload|import|overwrite)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:upload|import|overwrite)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # SEND / DISPATCH / NOTIFY
+    #
+    # 这些可能触发真实外部副作用。
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:send|dispatch|notify|notification)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:send|dispatch|notify|notification)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # INVITE / KICK / REMOVE MEMBER
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:invite|kick)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:invite|kick)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # MOVE / COPY / CLONE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:move|copy|clone)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:move|copy|clone)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # SYNC / REPLICATE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:sync|replicate)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:sync|replicate)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # PROVISION / DEPROVISION
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:provision|deprovision)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:provision|deprovision)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # INITIALIZE / FINALIZE
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:initialize|finalize)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:initialize|finalize)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # SYSTEM CONTROL
+    #
+    # restart / reboot / shutdown 明显可能产生服务端副作用。
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:restart|reboot|shutdown)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:restart|reboot|shutdown)[a-z0-9]*$'
+    ),
+
+
+    # =========================================================================
+    # CACHE / INDEX 等状态改变
+    # =========================================================================
+
+    re.compile(
+        r'(?:^|[/_.-])(?:invalidate|reindex|rebuild)'
+        r'(?:$|[/_.-]|[a-z0-9])'
+    ),
+
+    re.compile(
+        r'(?:^|[/_.-])(?:invalidate|reindex|rebuild)[a-z0-9]*$'
+    ),
+)
+
+
+def is_api_path_blacklisted(path: str) -> bool:
+    if not path or not isinstance(path, str):
+        return True
+    path_lower = path.lower().split('?')[0]
+    return any(p.search(path_lower) for p in API_PATH_BLACKLIST_PATTERNS)
+
 
 # =============================================================================
 # 10. 响应解析配置
