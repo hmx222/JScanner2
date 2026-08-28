@@ -116,7 +116,7 @@ class Scanner:
         self.ai_auditor = None
         if self.args.findparam:
             try:
-                self.ai_auditor = AISecurityAuditor()
+                self.ai_auditor = AISecurityAuditor(request_validation=self.args.request_validation)
             except Exception as e:
                 print(f"[AI] AI 安全审计器初始化失败：{e}")
                 self.ai_auditor = None
