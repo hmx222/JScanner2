@@ -1,15 +1,6 @@
 {
   "models": [
-    "glm-4.7-flash",
-    "minimax/minimax-m2.5:free",
-    "glm-4.7",
-    "glm-5",
-   "minimax-m2.7",
-    "deepseek-ai/DeepSeek-V4-Flash",
-    "minimax-m2.5",
-    "glm-5.1",
-    "deepseek-v3.2",
-    "deepseek-v3.1-terminus",
+    "qwen3.7-flash",
     "qwen3.5-flash"
   ]
 }
