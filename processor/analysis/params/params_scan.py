@@ -25,7 +25,8 @@ class AISecurityAuditor:
     # 代码最大长度阈值
     CODE_MAX_LENGTH = 12000
 
-    def __init__(self):
+    def __init__(self, request_validation: bool = False):
+        self.request_validation = request_validation
         self._no_param_bloom = DiskBloomFilter(
             "Result/no_param_cache.bloom", capacity=500000, error_rate=0.001
         )
@@ -305,11 +306,18 @@ class AISecurityAuditor:
         if param_keys and len(param_keys) > 0:
             param_keys_hint = f"Level 2 检测到的参数名线索：{param_keys}\n（仅供参考，以代码实际内容为准）\n\n"
 
+        if self.request_validation:
+            value_hint = "参数值要求：禁止使用代码中的真实值，必须生成同类型但不可能存在的测试值（如 orderId→999999999, userId→-1, phone→10000000000）"
+        else:
+            value_hint = "参数值要求：从代码中提取真实参数值，无法确定时根据参数语义给出合理默认值"
+
         user_prompt = f"""
 {param_keys_hint}=== 【前端 JS 代码证据】 ===
 {full_code}
 
 目标 API: {api_url}
+
+{value_hint}
 
 请严格按照 Prompt 要求提取请求信息。
 """

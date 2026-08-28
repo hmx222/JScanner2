@@ -29,8 +29,8 @@ class ModelStatus:
     is_available: bool = True
     cooldown_until: float = 0.0
     error_count: int = 0
-    COOLDOWN_BASE = 30
-    MAX_COOLDOWN = 600
+    COOLDOWN_BASE = 5
+    MAX_COOLDOWN = 30
 
     def get_cooldown_time(self) -> int:
         return min(self.error_count * self.COOLDOWN_BASE, self.MAX_COOLDOWN)
@@ -56,6 +56,7 @@ class ModelStatus:
         if not self.is_available and time.time() >= self.cooldown_until:
             self.is_available = True
             self.cooldown_until = 0.0
+            self.error_count = 0
             logger.info(f"🔄 模型 [{self.model_name}] 冷却到期，重新投入池中")
             return True
         return False
