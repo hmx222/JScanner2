@@ -12,6 +12,7 @@ import json_repair
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError, APITimeoutError
 
 from config.config import BASE_URL, API_KEY, ENABLE_PROMPT_CACHE, CACHE_CONTROL_TYPE, MIN_CACHE_TOKENS, MAX_CACHE_MARKERS
+from infra import watchdog
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -175,6 +176,7 @@ class AIHubClient:
             
             curr_model = model_status.model_name
             logger.info(f"🔄 尝试模型 [{curr_model}] (第 {attempt_num + 1}/{max_attempts} 次)")
+            watchdog.beat("ai_call", f"model={curr_model}")
             try:
                 response = self._client.chat.completions.create(
                     model=curr_model,
@@ -190,6 +192,7 @@ class AIHubClient:
 
                 model_status.mark_success()
                 final_text = self._clean_content(raw_text)
+                watchdog.beat("ai_done", f"model={curr_model}")
 
                 if require_json:
                     obj = json_repair.repair_json(final_text, return_objects=True)

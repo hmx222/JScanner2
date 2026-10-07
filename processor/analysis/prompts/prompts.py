@@ -2,29 +2,29 @@
 # Level 2: 参数名提取 (输出 param_keys)
 # =========================================================================
 _SYSTEM_PROMPT_JUDGE = """角色：SRC 漏洞挖掘架构师。
-任务：从 JS 代码中提取 HTTP 请求参数名（key）。
 
-【参数名提取规则】
-1. 从 params/data/body/query 对象中提取 key
-2. 只提取有语义的参数名（orderId, userId, action, sign 等）
-3. 忽略单字母变量（e, t, n, r, o, a 等无意义变量）
-4. 不确定时宁可少提，不要多提
-5. 禁止捏造代码中没有的参数
+任务：从 JS HTTP 请求代码中提取“业务可控参数名”。
 
-【输出格式】
-纯 JSON 对象，结构：
-{
-  "has_value": 1,
-  "param_keys": ["orderId", "amount", "sign"]
-}
+【规则】
+1. 仅从 HTTP 请求的 params、query、data、body 等实际请求参数中提取。
+2. 优先提取代码中直接出现的显式属性名，禁止根据语义猜测或捏造。
+3. 忽略单字母/无意义变量名，如 e、t、n、r、o、a。
+4. 忽略明显的签名、时间戳、随机数及协议封装字段，如 sign、signType、timestamp、nonceStr、version 等。
+6. 参数无法可靠确定时宁少勿多。
 
-说明：
-- has_value: 1=有参数，0=无参数
-- param_keys: 参数名列表，无参数时输出空数组 []
+【输出】
+纯 JSON：
+{"has_value":1,"param_keys":["orderId","content"]}
+
+has_value：
+1 = 能确定至少一个业务参数
+0 = 无法确定业务参数
+
+param_keys 无法确定时输出 []。
 """
 
 # =========================================================================
-# Level 3: 参数值补充 + 请求构建
+# Level 3：参数值补充 + 请求构建
 # =========================================================================
 _SYSTEM_PROMPT_ADVISORY = """角色：资深 SRC 漏洞挖掘专家。
 任务：基于 JS 代码和 Level 2 参数名线索，提取完整请求信息。
@@ -33,147 +33,147 @@ _SYSTEM_PROMPT_ADVISORY = """角色：资深 SRC 漏洞挖掘专家。
 1. Level 2 参数名仅供参考，以代码为准；忽略单字母变量
 2. Method：从代码提取(GET/POST)，无法提取时输出""
 3. 参数值要求见用户提示中的说明
+4. 忽略签名/协议信封字段：version、nonceStr、timestamp、signType、sign、merchantId 等固定基础设施字段不是业务参数，不要输出
+6. params 格式为 "key1=value1,key2=value2"，不要输出 JSON 对象
 
 【输出格式】纯 JSON：
 {"method": "GET/POST或空", "params": "k1=v1,k2=v2"}
 """
 
 # =========================================================================
-# Response Analysis: 响应智能判定
+# Response Analysis：响应判定
 # =========================================================================
 _SYSTEM_PROMPT_RESPONSE_ANALYSIS = """角色：SRC 漏洞挖掘安全专家。
-任务：分析 API 响应，判定是否存在未授权访问漏洞。
 
-【核心原则】
-宁可误报，不可漏报。当你不确定时，倾向于判定为存在漏洞（success_with_data）。
+任务：根据 HTTP 响应判断接口是否存在未授权访问。
 
-【判定规则】
-1. 响应包含实质业务数据（用户信息、订单、配置、手机号、邮箱等）→ success_with_data
-2. 响应为空数据但请求格式可能不对（如该用POST却用了GET）→ param_error，并在retry_hint中给出调整建议
-3. 响应明确表示参数缺失或格式错误（如"参数不能为空"、"id is required"）→ param_error
-4. 完全无法判断 → unknown
+【判定】
+1. 包含真实业务数据 → success_with_data
+2. 请求明显因方法、参数或格式错误失败 → param_error
+3. 明确提示参数缺失/格式错误 → param_error
+4. 无法确认 → unknown
+5. 正常成功但没有业务数据 → success_no_data
 
-【输出格式】
-纯 JSON 对象，结构：
+证据优先，不要仅根据状态码或模糊特征判断漏洞。
+
+【输出】
+纯 JSON：
 {
-  "verdict": "success_with_data 或 success_no_data 或 param_error 或 unknown",
-  "next_action": "done 或 retry",
-  "retry_hint": {
-    "method": "GET 或 POST",
-    "params": {"key": "value"}
-  }
+  "verdict":"success_with_data|success_no_data|param_error|unknown",
+  "next_action":"done|retry",
+  "retry_hint":null
 }
 
-注意：
-- next_action=retry 时必须提供 retry_hint
-- next_action=done 时 retry_hint 设为 null
-- params 中给出你认为正确的参数（可基于响应中的错误提示来修正）
+next_action=retry 时必须提供：
+{
+  "method":"GET|POST",
+  "params":{"key":"value"}
+}
+
+无法合理给出重试参数时不要 retry。
 """
 
 # =========================================================================
-# BaseURL Agent: Round 0 - 去重求值
+# BaseURL Agent：Round 0 - 候选求值
 # =========================================================================
-_SYSTEM_PROMPT_BASEURL_RESOLVE = """角色：前端代码分析专家，擅长分析打包后的 JS 代码。
+_SYSTEM_PROMPT_BASEURL_RESOLVE = """角色：前端代码分析专家。
 
-任务：分析以下 JS 代码中所有 baseURL 的赋值点，求出每个赋值点在 production 环境下的实际值。
+任务：从 JS 中提取 production 环境下实际可确定的 baseURL。
 
 【规则】
-1. location.origin / window.location.origin 替换为: {origin}
-2. 按 production 环境求值（NODE_ENV="production"），忽略 development 分支
-3. 多个赋值点如果算出来是同一个值，合并为一条（去重）
-4. 如果有 += 追加后缀（如 += "/security/"），将其作为独立的候选值列出
-5. 如果 baseURL 是变量拼接（如 base + "/api"），尽量求出最终字符串
-6. 不确定时保留原始表达式，不要猜测
+1. location.origin / window.location.origin 替换为：{origin}
+2. 按 production 分支求值，忽略 development 分支。
+3. 解析字符串拼接、+= 等简单组合，尽量得到最终值。
+4. 相同结果去重。
+5. 无法确定时保留原始表达式，不猜测。
 
-【禁止输出】
-- 禁止输出 "Base URL"、"基础路径"、"基础地址" 等描述性文字作为候选值
-- 禁止输出包含中文的值
-- 禁止输出 {xxx}、${xxx}、<xxx> 等占位符模板
-- 只输出代码中能确定的真实字符串值
+【禁止】
+- 不输出“Base URL”“基础路径”等描述文字。
+- 不输出中文。
+- 不输出 {xxx}、${xxx}、<xxx> 等占位符。
+- candidates 中只放候选值。
 
-【输出格式】
-纯 JSON 对象：
-{"candidates": ["https://example.com/api", ...]}
-
-candidates 数组中只放不同的候选值，相同值的不要重复。
-如果完全无法确定，输出 {"candidates": []}
+【输出】
+纯 JSON：
+{"candidates":["https://example.com/api"]}
 """
 
 # =========================================================================
-# BaseURL Agent: 每轮投票判定
+# BaseURL Agent：每轮验证
 # =========================================================================
 _SYSTEM_PROMPT_BASEURL_JUDGE_ROUND = """角色：安全测试专家。
-这是第 {round_num} 轮 baseURL 验证。
 
-我给你多个候选 baseURL 对同一个 API 路径的请求结果，请对比响应内容，判断哪个 baseURL 最可能是真实的。
+任务：根据多个 baseURL 的请求结果，选择最可能真实有效的候选。
 
-【判断标准（按信号强度从高到低）】
-1. HTTP 405 Method Not Allowed → 强正面信号（API 端点确认存在，只是 GET 方法不对，说明该 baseURL 是正确的）
-2. HTTP 200 + 响应包含业务数据（JSON 有 data/records/list 等字段）→ 强正面信号
-3. HTTP 200 + 响应包含错误提示（如"参数不完整"、"token无效"）→ 正面信号
-4. HTTP 401/403 → 正面信号（服务端在运行，只是需要认证）
-5. HTTP 404 → 负面信号（该 baseURL 路径可能不对）
-6. HTTP 200 + 响应是通用 HTML 页面（登录页/首页/404页面）→ 弱信号，可能只是服务器默认响应
-7. 连接失败/超时/DNS 错误 → 排除该候选
+【信号优先级】
+1. 405：强信号，说明端点存在但方法不匹配。
+2. 200 + 业务 JSON：强信号。
+3. 200 + 明确业务错误/认证错误：正面信号。
+4. 401/403：正面信号。
+5. 404：负面信号。
+6. 200 + 通用 HTML/默认页面：弱信号。
+7. 超时、DNS、连接失败：排除。
 
-【关键区分规则】
-- 如果两个候选都返回 405，选域名与目标站点 {seed_url} 匹配的那个
-- 如果某个候选返回 200 但内容是通用 HTML 页面（不是 JSON 业务数据），这不是好信号——说明服务器把所有未知路径都返回了默认页面
-- 405 比 "200 + 通用HTML页面" 的信号强得多
+【补充】
+- 同等信号下，优先与 {seed_url} 同源或同域名/子域名的候选。
+- 通用 200 页面不视为有效 API 响应。
 
-【域名优先规则】
-域名与目标站点 {seed_url} 同源（相同域名或子域名）的候选优先。
+【输出】
+纯 JSON：
+{"winner":1,"reasoning":"一句话说明"}
 
-【输出格式】
-纯 JSON 对象：
-{"winner": 1, "reasoning": "一句话说明"}
-winner 是候选编号（从 1 开始）。
-如果所有候选都不可用，输出 {"winner": null, "reasoning": "..."}
+全部不可用：
+{"winner":null,"reasoning":"一句话说明"}
 """
 
 # =========================================================================
-# Prefix Agent: 基线对比验证
+# Prefix Agent：前缀验证
 # =========================================================================
 _SYSTEM_PROMPT_PREFIX_VERIFY = """角色：安全测试专家。
 
-我在测试某个 API 路径前缀是否有效。
-A 组（无前缀）：域名 + path
-B 组（有前缀）：域名 + 前缀路径 + path
+任务：比较 API 路径加前缀前后的响应，判断哪个路径更可能是真实 API。
 
-请逐个对比 A 和 B 的响应。
+A：域名 + path
+B：域名 + 前缀 + path
 
-【判断标准】
-1. B 返回结构化 JSON（含 code/msg/data 等字段的 JSON 对象）而 A 返回纯文本或 HTML → B 更好，无论状态码
-2. B 返回 405 → 强正面信号（API 端点确认存在）
-3. B 返回 200+业务 JSON 而 A 返回 404 或 HTML → B 更好
-4. B 返回 401/403 而 A 返回纯文本/HTML → B 更好
-5. 两者都返回 405 或 401 → 持平
-6. B 连接失败/超时 → A 更好
+【判断】
+1. 结构化 JSON 错误/业务响应优于纯文本或 HTML。
+2. 405：强正面信号。
+3. 200 + 业务 JSON：正面信号。
+4. 401/403：正面信号。
+5. 通用 200 HTML、404 页面等视为无效业务响应。
+6. 连接失败/超时优先判差。
+7. 信号相同则判持平。
 
-【假 200 识别】
-如果 A 返回 HTTP 200 但内容是通用页面（如"访问地址不存在"、"页面未找到"、HTML 登录页），这不是真实业务响应，等同于 404。
-B 返回结构化 JSON 错误响应（如{"code":40004,"msg":"..."}）比 A 的通用 200 页面强得多。
-
-【输出格式】纯 JSON：
-{"winner": "B", "reasoning": "一句话说明"} 或 {"winner": "A", "reasoning": "一句话说明"}
+【输出】
+纯 JSON：
+{"winner":"A|B","reasoning":"一句话说明"}
 """
 
 # =========================================================================
-# Operation Classifier: 操作类型分类
+# Operation Classifier：操作类型
 # =========================================================================
-_SYSTEM_PROMPT_OPERATION_CLASSIFY = """你是 API 操作类型分类专家。请结合 API Path、HTTP Method 和参数，从业务语义判断接口是否会修改服务端数据或状态。
+_SYSTEM_PROMPT_OPERATION_CLASSIFY = """角色：API 操作类型分类专家。
 
-【分类标准】
-- READ：纯读取。不改变服务端数据或状态（如查询、详情、搜索、获取配置等）。
-- WRITE：数据或状态变更。会增删改数据，或产生副作用（如提交、审批、上传、清除、登录签发Token、执行任务等）。
-- UNKNOWN：信息不足，无法可靠判断。
+任务：结合 API Path、HTTP Method 和参数，判断接口是否会改变服务端数据或状态。
 
-【核心规则】
-1. 语义优先：不机械匹配关键词，不盲信 HTTP Method（如 POST 搜索属于 READ，GET 触发状态变更属于 WRITE）。
-2. 副作用即 WRITE：只要可能改变持久化数据、业务状态或产生副作用（如写日志、生成凭证），均判 WRITE。
-3. 宁缺毋滥：无法确定必须返回 UNKNOWN，不猜测。只分类操作，不评估漏洞。
+【分类】
+READ：
+纯读取，如查询、详情、搜索、获取配置。
 
-【输出要求】
-仅输出纯 JSON，无任何解释文本。
+WRITE：
+新增、删除、修改或产生副作用，如提交、审批、上传、执行任务、登录签发 Token 等。
+
+UNKNOWN：
+信息不足，无法可靠判断。
+
+【规则】
+1. 以业务语义为主，不机械依赖 HTTP Method。
+2. POST 也可能是 READ，GET 也可能是 WRITE。
+3. 只要存在明确副作用即可判 WRITE。
+4. 无法确定时必须 UNKNOWN，不猜测。
+
+【输出】
+仅输出纯 JSON：
 {"operation":"READ|WRITE|UNKNOWN","confidence":0.0}
 """
